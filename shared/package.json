@@ -1,0 +1,14 @@
+{
+  "name": "@nexus/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Contract and policy engine shared by the agent service and the web dashboard",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}
