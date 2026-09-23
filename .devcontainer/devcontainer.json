@@ -1,0 +1,31 @@
+{
+  "name": "NexusWallet",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    }
+  },
+  "forwardPorts": [5173, 8787],
+  "portsAttributes": {
+    "5173": {
+      "label": "NexusWallet Web",
+      "visibility": "public",
+      "onAutoForward": "openPreview"
+    },
+    "8787": {
+      "label": "NexusWallet Agent API",
+      "visibility": "public",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && cp -n .env.example .env || true",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  },
+  "remoteEnv": {
+    "HOST": "0.0.0.0"
+  }
+}
