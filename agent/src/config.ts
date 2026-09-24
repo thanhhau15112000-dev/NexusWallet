@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { PubkeySchema } from '@nexus/shared';
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   HOST: z.string().default('127.0.0.1'),
+  DEPLOYMENT_MODE: z.enum(['local', 'hosted']).default('local'),
 
   // This MVP is intentionally Devnet-only. Do not let an environment typo
   // move the agent signer onto another Solana cluster.
@@ -18,6 +20,8 @@ const EnvSchema = z.object({
 
   /** Pin the owner wallet. Left empty, the first wallet that connects is bound. */
   OWNER_PUBKEY: z.string().trim().default(''),
+  SESSION_COOKIE_SECRET: z.string().min(1).default('local-dev-session-cookie-secret-change-me'),
+  AUTH_SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(28_800).default(1800),
 
   /** `auto` uses a provider when its key is set, `mock` never calls one. */
   MODEL_MODE: z.enum(['auto', 'mock']).default('auto'),
@@ -69,11 +73,37 @@ export function loadConfig() {
 
   const env = EnvSchema.parse(process.env);
 
-  const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1']);
-  if (!loopbackHosts.has(env.HOST.toLowerCase())) {
-    throw new Error(
-      `HOST must be a loopback address (127.0.0.1 or localhost) in local-only MVP; received "${env.HOST}"`,
-    );
+  const hosted = env.DEPLOYMENT_MODE === 'hosted';
+  if (hosted) {
+    if (env.HOST !== '0.0.0.0' && env.HOST !== '::') {
+      throw new Error('hosted mode must bind HOST to 0.0.0.0 or :: inside the container');
+    }
+    if (!PubkeySchema.safeParse(env.OWNER_PUBKEY).success) {
+      throw new Error('hosted mode requires OWNER_PUBKEY to pin the demo to its Phantom wallet');
+    }
+    if (env.SESSION_COOKIE_SECRET.length < 32 || env.SESSION_COOKIE_SECRET.startsWith('local-dev-')) {
+      throw new Error('hosted mode requires a random SESSION_COOKIE_SECRET of at least 32 characters');
+    }
+    if (
+      env.AGENT_KEYSTORE_PASSPHRASE.length < 32 ||
+      env.AGENT_KEYSTORE_PASSPHRASE === 'nexus-devnet-demo-passphrase' ||
+      env.AUDIT_ENCRYPTION_PASSPHRASE.length < 32 ||
+      env.AUDIT_ENCRYPTION_PASSPHRASE === 'nexus-devnet-demo-audit-key' ||
+      env.AGENT_KEYSTORE_PASSPHRASE === env.AUDIT_ENCRYPTION_PASSPHRASE ||
+      env.SESSION_COOKIE_SECRET === env.AGENT_KEYSTORE_PASSPHRASE ||
+      env.SESSION_COOKIE_SECRET === env.AUDIT_ENCRYPTION_PASSPHRASE
+    ) {
+      throw new Error(
+        'hosted mode requires a random cookie secret and separate random keystore and audit passphrases, each at least 32 characters',
+      );
+    }
+  } else {
+    const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1']);
+    if (!loopbackHosts.has(env.HOST.toLowerCase())) {
+      throw new Error(
+        `HOST must be a loopback address (127.0.0.1 or localhost) in local mode; received "${env.HOST}"`,
+      );
+    }
   }
 
   if (!isAllowedDevnetRpcUrl(env.SOLANA_RPC_URL)) {
@@ -87,17 +117,38 @@ export function loadConfig() {
     .filter(Boolean);
 
   for (const origin of allowedOrigins) {
-    if (!LOCAL_ORIGIN_REGEX.test(origin)) {
+    const validHostedOrigin = (() => {
+      if (!hosted) return false;
+      try {
+        const url = new URL(origin);
+        return (
+          url.protocol === 'https:' &&
+          url.origin === origin &&
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !url.hash
+        );
+      } catch {
+        return false;
+      }
+    })();
+    if (!LOCAL_ORIGIN_REGEX.test(origin) && !validHostedOrigin) {
       throw new Error(
-        `WEB_ORIGIN contains non-local origin "${origin}"; only local origins are permitted`,
+        `WEB_ORIGIN contains an origin not permitted for ${env.DEPLOYMENT_MODE} mode: "${origin}"`,
       );
     }
+  }
+
+  if (hosted && allowedOrigins.length !== 1) {
+    throw new Error('hosted mode requires exactly one HTTPS WEB_ORIGIN for the dashboard');
   }
 
   const dataDir = resolve(process.cwd(), env.AGENT_DATA_DIR);
 
   return {
     ...env,
+    authRequired: hosted,
     dataDir,
     statePath: resolve(dataDir, 'state.json'),
     auditPath: resolve(dataDir, 'audit.jsonl'),

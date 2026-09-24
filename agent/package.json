@@ -10,7 +10,9 @@
     "e2e": "tsx scripts/e2e.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^10.0.1",
     "@fastify/cors": "^10.0.2",
+    "@fastify/static": "^8.3.0",
     "@nexus/shared": "workspace:*",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.98.0",
