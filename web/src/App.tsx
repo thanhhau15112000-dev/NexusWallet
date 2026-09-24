@@ -4,8 +4,8 @@ import {
   type AuditEntryView,
   type PaymentRequest,
 } from '@nexus/shared';
-import { api, type AgentState } from './api.js';
-import { getPhantom, signApproval } from './phantom.js';
+import { api, ApiError, type AgentState } from './api.js';
+import { getPhantom, signPhantomMessage } from './phantom.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
@@ -40,6 +40,10 @@ export function App() {
   const [audit, setAudit] = useState<AuditEntryView[]>([]);
   const [wallet, setWallet] = useState<string | null>(null);
   const [hasPhantom, setHasPhantom] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authOwner, setAuthOwner] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [offline, setOffline] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -66,15 +70,69 @@ export function App() {
       setOffline(null);
     } catch (err) {
       if (sequence !== refreshSequence.current) return;
+      if (err instanceof ApiError && err.status === 401) {
+        refreshSequence.current += 1;
+        setAuthenticated(false);
+        setAuthOwner(null);
+        setState(null);
+        setRequests([]);
+        setAudit([]);
+        setOffline('Session expired. Sign in with the pinned Phantom wallet again.');
+        return;
+      }
       setOffline(errorText(err));
     }
   }, []);
 
   useEffect(() => {
+    let current = true;
+    void (async () => {
+      try {
+        const health = await api.health();
+        if (!current) return;
+        setAuthRequired(health.authRequired);
+        if (health.authRequired) {
+          const session = await api.authSession();
+          if (!current) return;
+          setAuthenticated(session.authenticated);
+          setAuthOwner(session.owner);
+        } else {
+          setAuthenticated(true);
+          setAuthOwner(null);
+        }
+      } catch (err) {
+        if (!current) return;
+        setOffline(errorText(err));
+      } finally {
+        if (current) setAuthReady(true);
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || (authRequired && !authenticated)) return;
     void refresh();
     const timer = setInterval(() => void refresh(), 6000);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [authReady, authRequired, authenticated, refresh]);
+
+  const logoutSession = useCallback(async () => {
+    if (!authRequired) return;
+    refreshSequence.current += 1;
+    try {
+      await api.authLogout();
+    } catch {
+      // Expired sessions are already unusable; clear local state either way.
+    }
+    setAuthenticated(false);
+    setAuthOwner(null);
+    setState(null);
+    setRequests([]);
+    setAudit([]);
+  }, [authRequired]);
 
   useEffect(() => {
     const provider = getPhantom();
@@ -86,7 +144,10 @@ export function App() {
       .then((res) => setWallet(res.publicKey.toString()))
       .catch(() => undefined);
 
-    const onDisconnect = () => setWallet(null);
+    const onDisconnect = () => {
+      setWallet(null);
+      if (authRequired) void logoutSession();
+    };
     const onAccountChanged = (next: unknown) => {
       setWallet(next ? String(next) : null);
       bindAttempt.current = null;
@@ -98,12 +159,19 @@ export function App() {
       provider.off?.('disconnect', onDisconnect);
       provider.off?.('accountChanged', onAccountChanged);
     };
-  }, []);
+  }, [authRequired, logoutSession]);
+
+  useEffect(() => {
+    if (authRequired && authenticated && authOwner && wallet && wallet !== authOwner) {
+      void logoutSession();
+    }
+  }, [authRequired, authenticated, authOwner, wallet, logoutSession]);
 
   // Bind the connected wallet as the agent owner. Attempted once per wallet so a
   // rejected bind cannot loop.
   useEffect(() => {
     if (!wallet || !state) return;
+    if (authRequired && (!authenticated || wallet !== authOwner)) return;
     if (state.owner === wallet || bindAttempt.current === wallet) return;
     bindAttempt.current = wallet;
     api
@@ -115,7 +183,7 @@ export function App() {
         if (!state.ownerPinned) bindAttempt.current = null;
         setToast({ tone: 'bad', text: errorText(err) });
       });
-  }, [wallet, state, refresh]);
+  }, [wallet, state, refresh, authRequired, authenticated, authOwner]);
 
   useEffect(() => {
     if (!toast) return;
@@ -129,8 +197,22 @@ export function App() {
     setFlag('connect', true);
     try {
       const res = await provider.connect();
-      setWallet(res.publicKey.toString());
+      const pubkey = res.publicKey.toString();
+      setWallet(pubkey);
+      if (authRequired && (!authenticated || authOwner !== pubkey)) {
+        const challenge = await api.authChallenge(pubkey);
+        const signature = await signPhantomMessage(challenge.message);
+        const session = await api.authLogin({
+          challengeId: challenge.challengeId,
+          pubkey,
+          signature,
+        });
+        setAuthenticated(true);
+        setAuthOwner(session.owner);
+        setOffline(null);
+      }
     } catch (err) {
+      setOffline(errorText(err));
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
       setFlag('connect', false);
@@ -141,6 +223,7 @@ export function App() {
     await getPhantom()?.disconnect().catch(() => undefined);
     setWallet(null);
     bindAttempt.current = null;
+    await logoutSession();
   };
 
   const savePolicy = async (input: Parameters<typeof api.savePolicy>[0]) => {
@@ -201,7 +284,7 @@ export function App() {
       if (expected !== request.approval.message) {
         throw new Error('approval message does not match its payload; refusing to sign');
       }
-      const signature = await signApproval(expected);
+      const signature = await signPhantomMessage(expected);
       const res = await api.approve(request.id, signature, wallet);
       setToast(summarise(res.request));
     } catch (err) {
@@ -213,11 +296,28 @@ export function App() {
   };
 
   if (!state) {
+    const needsSignIn = authReady && authRequired && !authenticated;
     return (
       <main className="boot">
         <h1>NexusWallet</h1>
-        <p>{offline ? 'Service unavailable' : 'Loading'}</p>
+        <p>{needsSignIn ? 'Sign in required' : offline ? 'Service unavailable' : 'Loading'}</p>
         {offline ? <p className="bad-text">{offline}</p> : null}
+        {authReady && authRequired && !authenticated ? (
+          <>
+            <p>Sign in with the pinned Phantom wallet. The message signature only creates a session.</p>
+            <button
+              type="button"
+              className="primary"
+              disabled={!hasPhantom || Boolean(busy.connect)}
+              onClick={() => void connect()}
+            >
+              {busy.connect ? 'Connecting…' : 'Sign in with Phantom'}
+            </button>
+            {!hasPhantom ? (
+              <p><a href="https://phantom.app/download" target="_blank" rel="noreferrer">Install Phantom</a></p>
+            ) : null}
+          </>
+        ) : null}
       </main>
     );
   }

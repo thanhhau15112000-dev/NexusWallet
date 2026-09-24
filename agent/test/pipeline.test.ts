@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execute, runCommand } from '../src/pipeline.js';
 import { Store } from '../src/store.js';
+import { SessionManager } from '../src/sessions.js';
 import type { AppContext } from '../src/context.js';
 
 const TREASURY = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
@@ -64,6 +65,7 @@ function makeContext(overrides: {
     signer: {} as never,
     agentPubkey: TREASURY,
     ownerPinned: false,
+    sessions: new SessionManager(TREASURY, 1800),
   };
 }
 

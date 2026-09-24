@@ -1,4 +1,4 @@
-# Agent service image. The dashboard is served separately by Vite.
+# Single-container Devnet demo: Fastify serves both the API and the dashboard.
 FROM node:22-bookworm-slim
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -10,13 +10,18 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.json ./
 COPY shared/package.json shared/
 COPY agent/package.json agent/
+COPY web/package.json web/
 
-RUN pnpm install --filter @nexus/agent... --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 COPY shared ./shared
 COPY agent ./agent
+COPY web ./web
+
+RUN pnpm build
 
 ENV NODE_ENV=production
+ENV DEPLOYMENT_MODE=hosted
 ENV HOST=0.0.0.0
 ENV PORT=8787
 ENV AGENT_DATA_DIR=/data

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NexusWallet extension settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <span class="eyebrow">NEXUSWALLET DEVNET</span>
+      <h1>Dashboard connection</h1>
+      <p>Enter the HTTPS origin where the private demo backend serves its dashboard. Local HTTP is allowed for development.</p>
+      <form id="settings-form">
+        <label for="origin">Dashboard origin</label>
+        <input id="origin" name="origin" type="url" autocomplete="url" placeholder="https://demo.example.com" required>
+        <button class="primary" type="submit">Save and grant host access</button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -3,6 +3,7 @@ import { createConnection, keypairFromSecret, type Connection, type Keypair } fr
 import type { AppConfig } from './config.js';
 import { loadOrCreateAgentKey } from './crypto.js';
 import { createModelPipeline, type ModelPipeline } from './model/index.js';
+import { SessionManager } from './sessions.js';
 import { Store } from './store.js';
 
 export type AppContext = {
@@ -16,6 +17,7 @@ export type AppContext = {
   agentPubkey: string;
   /** True when OWNER_PUBKEY pins the owner, so /api/owner cannot rebind it. */
   ownerPinned: boolean;
+  sessions: SessionManager;
 };
 
 export function createContext(config: AppConfig): AppContext {
@@ -35,5 +37,6 @@ export function createContext(config: AppConfig): AppContext {
     signer: keypairFromSecret(key.secretKey),
     agentPubkey: key.publicKey,
     ownerPinned: config.OWNER_PUBKEY.length > 0,
+    sessions: new SessionManager(config.OWNER_PUBKEY, config.AUTH_SESSION_TTL_SECONDS),
   };
 }

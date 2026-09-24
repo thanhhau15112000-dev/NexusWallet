@@ -26,10 +26,10 @@ export function getPhantom(): PhantomProvider | null {
 export const PHANTOM_INSTALL_URL = 'https://phantom.app/download';
 
 /**
- * Ask Phantom to sign the approval message. Phantom returns a raw 64-byte
- * signature; the agent service verifies it base58-encoded against the owner key.
+ * Ask Phantom to sign a UTF-8 message. Phantom returns a raw 64-byte signature;
+ * the agent service verifies it base58-encoded against the owner key.
  */
-export async function signApproval(message: string): Promise<string> {
+export async function signPhantomMessage(message: string): Promise<string> {
   const provider = getPhantom();
   if (!provider) throw new Error('Phantom is not installed');
   const encoded = new TextEncoder().encode(message);

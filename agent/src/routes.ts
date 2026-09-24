@@ -1,10 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AllowlistEntrySchema, PubkeySchema, solToLamports, type Policy } from '@nexus/shared';
 import { explorerAddressUrl, getLamportBalance, isValidAddress, requestAirdrop } from './chain.js';
 import { ApprovalError, approveRequest } from './approvals.js';
 import type { AppContext } from './context.js';
 import { runCommand } from './pipeline.js';
+import { SESSION_COOKIE_NAME } from './sessions.js';
 
 const CommandBody = z.object({
   prompt: z.string().trim().min(1).max(600),
@@ -26,6 +27,20 @@ const ApproveBody = z.object({
 });
 
 const AirdropBody = z.object({ sol: z.number().positive().max(5).default(1) });
+const ChallengeBody = z.object({ pubkey: PubkeySchema });
+const LoginBody = z.object({
+  challengeId: z.string().regex(/^[a-f0-9]{64}$/i),
+  pubkey: PubkeySchema,
+  signature: z.string().trim().min(32).max(200),
+});
+
+function getSession(ctx: AppContext, req: FastifyRequest) {
+  const cookie = req.cookies?.[SESSION_COOKIE_NAME];
+  if (!cookie) return null;
+  const unsigned = req.unsignCookie(cookie);
+  if (!unsigned.valid || !unsigned.value) return null;
+  return ctx.sessions.getSession(unsigned.value);
+}
 
 function publicPolicy(policy: Policy) {
   return { ...policy, maxSolPerTx: policy.maxSolLamportsPerTx / 1_000_000_000 };
@@ -36,8 +51,66 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     ok: true,
     agentId: ctx.config.AGENT_ID,
     cluster: ctx.config.SOLANA_CLUSTER,
+    authRequired: ctx.config.authRequired,
     models: ctx.model.describe(),
   }));
+
+  app.post('/api/auth/challenge', async (req, reply) => {
+    if (!ctx.config.authRequired) {
+      return reply.status(404).send({ error: 'auth_disabled' });
+    }
+    const { pubkey } = ChallengeBody.parse(req.body);
+    const origin = req.headers.origin;
+    if (!origin || origin !== ctx.config.allowedOrigins[0]) {
+      return reply.status(403).send({ error: 'origin_not_allowed' });
+    }
+    const challenge = ctx.sessions.createChallenge(pubkey, origin);
+    if (!challenge) return reply.status(403).send({ error: 'wallet_not_owner' });
+    return challenge;
+  });
+
+  app.post('/api/auth/login', async (req, reply) => {
+    if (!ctx.config.authRequired) {
+      return reply.status(404).send({ error: 'auth_disabled' });
+    }
+    const { challengeId, pubkey, signature } = LoginBody.parse(req.body);
+    const origin = req.headers.origin;
+    if (!origin || origin !== ctx.config.allowedOrigins[0]) {
+      return reply.status(403).send({ error: 'origin_not_allowed' });
+    }
+    const session = ctx.sessions.verifyChallenge({ challengeId, pubkey, signature });
+    if (!session) return reply.status(401).send({ error: 'invalid_login_signature' });
+    reply.setCookie(SESSION_COOKIE_NAME, session.token, {
+      signed: true,
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      path: '/',
+      maxAge: ctx.config.AUTH_SESSION_TTL_SECONDS,
+    });
+    return { authenticated: true, owner: pubkey, expiresAt: session.expiresAt };
+  });
+
+  app.get('/api/auth/session', async (req) => {
+    const session = getSession(ctx, req);
+    if (!session) return { authenticated: false, owner: null, expiresAt: null };
+    return { authenticated: true, owner: session.owner, expiresAt: session.expiresAt };
+  });
+
+  app.post('/api/auth/logout', async (req, reply) => {
+    const cookie = req.cookies?.[SESSION_COOKIE_NAME];
+    if (cookie) {
+      const unsigned = req.unsignCookie(cookie);
+      if (unsigned.valid && unsigned.value) ctx.sessions.revoke(unsigned.value);
+    }
+    reply.clearCookie(SESSION_COOKIE_NAME, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      path: '/',
+    });
+    return { authenticated: false };
+  });
 
   app.get('/api/state', async () => {
     let lamports: number | null = null;
