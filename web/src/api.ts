@@ -16,6 +16,31 @@ export type AgentState = {
   policy: Policy & { maxSolPerTx: number };
 };
 
+export type AgentHealth = {
+  ok: boolean;
+  agentId: string;
+  cluster: string;
+  authRequired: boolean;
+  models: { stage1: string; stage2: string; mode: string };
+};
+
+export type AuthSession = {
+  authenticated: boolean;
+  owner: string | null;
+  expiresAt: string | null;
+};
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 const API_OVERRIDE_KEY = 'nexus.apiBase';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
@@ -62,9 +87,8 @@ function persistApiBase(value: string): void {
 }
 
 /**
- * The agent API lives on a different port than the dev server. Codespaces
- * forwards each port on its own hostname (`<name>-5173.app.github.dev`), so the
- * port is swapped in the hostname rather than appended.
+ * Local Vite and the agent use separate ports. Hosted mode serves both from one
+ * origin; Codespaces forwards each port on its own hostname.
  */
 export function resolveApiBase(): string {
   const fromQuery = new URLSearchParams(window.location.search).get('api');
@@ -82,7 +106,8 @@ export function resolveApiBase(): string {
   if (/-\d+\.(app\.github\.dev|githubpreview\.dev)$/i.test(hostname)) {
     return `${protocol}//${hostname.replace(/-\d+\./, '-8787.')}`;
   }
-  return `${protocol}//${hostname}:8787`;
+  if (LOOPBACK_HOSTS.has(hostname.toLowerCase())) return `${protocol}//${hostname}:8787`;
+  return window.location.origin;
 }
 
 export const API_BASE = resolveApiBase();
@@ -90,6 +115,7 @@ export const API_BASE = resolveApiBase();
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: 'same-origin',
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
   });
   const text = await response.text();
@@ -106,12 +132,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body && typeof body === 'object' ? (body as { message?: unknown; error?: unknown }) : {};
     const message = typeof errorBody.message === 'string' ? errorBody.message : undefined;
     const code = typeof errorBody.error === 'string' ? errorBody.error : 'request failed';
-    throw new Error(message ?? `${code} (${response.status})`);
+    throw new ApiError(message ?? `${code} (${response.status})`, response.status, code);
   }
   return body as T;
 }
 
 export const api = {
+  health: () => request<AgentHealth>('/api/health'),
+
+  authSession: () => request<AuthSession>('/api/auth/session'),
+
+  authChallenge: (pubkey: string) =>
+    request<{ challengeId: string; message: string; expiresAt: string }>('/api/auth/challenge', {
+      method: 'POST',
+      body: JSON.stringify({ pubkey }),
+    }),
+
+  authLogin: (input: { challengeId: string; pubkey: string; signature: string }) =>
+    request<{ authenticated: true; owner: string; expiresAt: string }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  authLogout: () =>
+    request<{ authenticated: false }>('/api/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
   state: () => request<AgentState>('/api/state'),
 
   bindOwner: (pubkey: string) =>
