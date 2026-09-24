@@ -24,10 +24,11 @@ user text prompt
 | Off-allowlist recipient is denied, not escalated | [policy.ts](shared/src/policy.ts) |
 | Approval is bound to request, amount, recipient, policy version, nonce, expiry | [contract.ts](shared/src/contract.ts) |
 | Approval must be signed by the bound owner wallet, single use | [approvals.ts](agent/src/approvals.ts) |
+| Hosted API requires an expiring session created by the pinned owner's Phantom signature | [sessions.ts](agent/src/sessions.ts) |
 | Agent private key is AES-256-GCM encrypted at rest, never logged, never in a prompt | [crypto.ts](agent/src/crypto.ts) |
 | Audit payloads sealed with AES-256-GCM, append-only | [audit.ts](agent/src/audit.ts) |
 | Only the official Solana Devnet RPC endpoint is accepted at startup | [config.ts](agent/src/config.ts) |
-| Loopback host and local CORS origins strictly enforced | [config.ts](agent/src/config.ts) |
+| Local mode is loopback-only; hosted mode requires one HTTPS dashboard origin | [config.ts](agent/src/config.ts) |
 
 The model never sees a private key, a signer handle or an RPC endpoint. It receives the user's
 text plus the allowlist labels, and returns structured action JSON only. It cannot craft raw transactions
@@ -42,8 +43,9 @@ has to rebuild the approval message and render policy verdicts itself.
 shared/src/contract.ts   units, the two model-stage schemas, approval message, request shape
 shared/src/policy.ts     evaluatePolicy - the one function that authorises a signature
 
-agent/src/server.ts      entry point: fastify, CORS, error handler
-agent/src/routes.ts      the whole HTTP surface (10 routes)
+agent/src/server.ts      entry point: Fastify, CORS, signed cookies, hosted dashboard
+agent/src/routes.ts      API endpoints and Phantom login challenge
+agent/src/sessions.ts    one-time login challenges and expiring server-side sessions
 agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny
 agent/src/approvals.ts   owner signature verification
 agent/src/chain.ts       every Solana RPC call, including the signer
@@ -56,6 +58,9 @@ web/src/App.tsx          all dashboard state and actions
 web/src/api.ts           typed client, resolves the agent host
 web/src/phantom.ts       provider detection and signMessage
 web/src/components/      one file per panel
+
+extension/               Manifest V3 popup, host settings, and Devnet health check
+scripts/build-extension.mjs  creates the unpacked Chrome build under dist/
 
 infra/                   Dockerfile + compose for the agent service
 ```
@@ -84,6 +89,41 @@ to force it.
 The agent runs strictly on loopback (`127.0.0.1`) and accepts requests only from local CORS origins
 (`http://localhost:5173`). Public wildcard bindings (`0.0.0.0`) and non-official/non-Devnet RPC
 URLs are rejected at startup to prevent exposing the agent API or keys to untrusted networks.
+
+### Hosted hackathon demo
+
+The hosted image serves the API and dashboard from one HTTPS origin. It is a single-owner,
+single-instance Devnet demo. Before starting it, configure these environment variables on the host:
+
+- `DEPLOYMENT_MODE=hosted`, `HOST=0.0.0.0`, and `AGENT_DATA_DIR=/data`.
+- `OWNER_PUBKEY` to the exact Phantom public key allowed to sign in.
+- `WEB_ORIGIN` to the dashboard's HTTPS origin, with no path or trailing slash.
+- `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, and
+  `AUDIT_ENCRYPTION_PASSPHRASE` as three distinct random values of at least 32 characters.
+- Persist `/data` across restarts so the agent key, policy, request state, and audit log survive.
+
+The container expects TLS to terminate at the hosting platform or a reverse proxy. Keep its
+8787 port private behind that HTTPS origin. Sessions and login challenges are held in memory,
+and the JSON store is for one replica; do not run multiple app instances. A private source repo
+does not make the running backend private: the HTTPS endpoint is reachable publicly, while API
+access is limited by the owner signature and session cookie.
+
+`infra/docker-compose.yml` binds port 8787 to host loopback for a reverse proxy. Use the same
+hosted environment values when running it; the local `.env.example` passphrases are rejected in
+hosted mode.
+
+### Chrome extension Developer mode
+
+```bash
+pnpm extension:build
+```
+
+In Chrome, open `chrome://extensions`, turn on Developer mode, choose **Load unpacked**, and select
+`dist/chrome-extension`. Open the extension's settings and enter the dashboard HTTPS origin. Chrome
+asks for access to that one host when saving. The popup checks the public health endpoint and opens
+the dashboard in a tab, where Phantom is injected by the normal HTTPS page. Sign-in uses a separate
+message that creates a session; it is not a transaction approval. This build is for Developer mode,
+not a Chrome Web Store submission.
 
 ### Fund the agent wallet
 
@@ -135,8 +175,8 @@ In: devnet, SOL, text-only input, one agent wallet, one policy, per-transaction 
 Phantom approval, encrypted audit log. SPL transfer is implemented and gated by the mint allowlist,
 but ships with an empty allowlist — configure a mint to enable it.
 
-Out: mainnet, voice / Gemini Live, public hosted runtime / auth session, swaps, staking, NFTs, arbitrary programs,
-a browser extension, seed-phrase handling, daily budgets, fiat conversion.
+Out: mainnet, voice / Gemini Live, multi-owner hosted service, swaps, staking, NFTs, arbitrary programs,
+seed-phrase handling, daily budgets, fiat conversion.
 
 ## Security notes
 
@@ -147,5 +187,9 @@ a browser extension, seed-phrase handling, daily budgets, fiat conversion.
 - Approving is signing a message, not a transaction. The message states the exact amount,
   recipient, policy version and expiry, and the dashboard refuses to sign if the server's copy of
   the message does not match the payload it was derived from.
+- Hosted login is a separate signed message bound to the pinned wallet and dashboard origin. The
+  resulting HttpOnly cookie expires; it does not authorize a payment by itself.
+- The extension stores only the configured dashboard origin and checks `/api/health`; it does not
+  store wallet keys or session cookies.
 - `.env`, `data/` (keystore, state, audit log) are gitignored. Do not reuse these passphrases for
   anything real.

@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "NexusWallet Devnet Demo",
+  "version": "0.1.0",
+  "description": "Check the NexusWallet Devnet backend and open its Phantom-enabled dashboard.",
+  "minimum_chrome_version": "111",
+  "permissions": ["storage", "permissions"],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "NexusWallet Devnet",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}
