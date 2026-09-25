@@ -4,8 +4,10 @@ import { AllowlistEntrySchema, PubkeySchema, solToLamports, type Policy } from '
 import { explorerAddressUrl, getLamportBalance, isValidAddress, requestAirdrop } from './chain.js';
 import { ApprovalError, approveRequest } from './approvals.js';
 import type { AppContext } from './context.js';
+import { dispenseInitialSeed } from './funder.js';
 import { runCommand } from './pipeline.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
+import { LOCAL_ORIGIN_REGEX } from './config.js';
 
 const CommandBody = z.object({
   prompt: z.string().trim().min(1).max(600),
@@ -42,8 +44,31 @@ function getSession(ctx: AppContext, req: FastifyRequest) {
   return ctx.sessions.getSession(unsigned.value);
 }
 
+function resolveUserContext(ctx: AppContext, req: FastifyRequest): AppContext {
+  const session = getSession(ctx, req);
+  if (session?.owner && ctx.getUserContext) {
+    return ctx.getUserContext(session.owner);
+  }
+  const headerOwner = req.headers['x-owner-pubkey'] as string | undefined;
+  if (headerOwner && PubkeySchema.safeParse(headerOwner).success && ctx.getUserContext) {
+    return ctx.getUserContext(headerOwner);
+  }
+  const boundOwner = ctx.store.getOwner();
+  if (boundOwner && ctx.getUserContext) {
+    return ctx.getUserContext(boundOwner);
+  }
+  return ctx;
+}
+
 function publicPolicy(policy: Policy) {
   return { ...policy, maxSolPerTx: policy.maxSolLamportsPerTx / 1_000_000_000 };
+}
+
+function isOriginAllowed(origin: string | undefined, ctx: AppContext): boolean {
+  if (!origin) return true;
+  if (ctx.config.allowedOrigins.includes(origin)) return true;
+  if (LOCAL_ORIGIN_REGEX.test(origin)) return true;
+  return false;
 }
 
 export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
@@ -51,31 +76,26 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     ok: true,
     agentId: ctx.config.AGENT_ID,
     cluster: ctx.config.SOLANA_CLUSTER,
-    authRequired: ctx.config.authRequired,
+    authRequired: true,
     models: ctx.model.describe(),
   }));
 
   app.post('/api/auth/challenge', async (req, reply) => {
-    if (!ctx.config.authRequired) {
-      return reply.status(404).send({ error: 'auth_disabled' });
-    }
     const { pubkey } = ChallengeBody.parse(req.body);
     const origin = req.headers.origin;
-    if (!origin || origin !== ctx.config.allowedOrigins[0]) {
+    if (origin && !isOriginAllowed(origin, ctx)) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
-    const challenge = ctx.sessions.createChallenge(pubkey, origin);
-    if (!challenge) return reply.status(403).send({ error: 'wallet_not_owner' });
+    const fallbackOrigin = ctx.config.allowedOrigins[0] ?? 'http://localhost:5173';
+    const challenge = ctx.sessions.createChallenge(pubkey, origin ?? fallbackOrigin);
+    if (!challenge) return reply.status(403).send({ error: 'wallet_not_allowed' });
     return challenge;
   });
 
   app.post('/api/auth/login', async (req, reply) => {
-    if (!ctx.config.authRequired) {
-      return reply.status(404).send({ error: 'auth_disabled' });
-    }
     const { challengeId, pubkey, signature } = LoginBody.parse(req.body);
     const origin = req.headers.origin;
-    if (!origin || origin !== ctx.config.allowedOrigins[0]) {
+    if (origin && !isOriginAllowed(origin, ctx)) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
     const session = ctx.sessions.verifyChallenge({ challengeId, pubkey, signature });
@@ -83,7 +103,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     reply.setCookie(SESSION_COOKIE_NAME, session.token, {
       signed: true,
       httpOnly: true,
-      secure: true,
+      secure: ctx.config.authRequired,
       sameSite: 'strict',
       path: '/',
       maxAge: ctx.config.AUTH_SESSION_TTL_SECONDS,
@@ -93,8 +113,13 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
 
   app.get('/api/auth/session', async (req) => {
     const session = getSession(ctx, req);
-    if (!session) return { authenticated: false, owner: null, expiresAt: null };
-    return { authenticated: true, owner: session.owner, expiresAt: session.expiresAt };
+    if (!session) return { authenticated: false, owner: null, expiresAt: null, isAdmin: false };
+    return {
+      authenticated: true,
+      owner: session.owner,
+      expiresAt: session.expiresAt,
+      isAdmin: session.isAdmin,
+    };
   });
 
   app.post('/api/auth/logout', async (req, reply) => {
@@ -105,36 +130,56 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     }
     reply.clearCookie(SESSION_COOKIE_NAME, {
       httpOnly: true,
-      secure: true,
+      secure: ctx.config.authRequired,
       sameSite: 'strict',
       path: '/',
     });
     return { authenticated: false };
   });
 
-  app.get('/api/state', async () => {
+  app.get('/api/state', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const session = getSession(ctx, req);
     let lamports: number | null = null;
     let rpcError: string | null = null;
     try {
-      lamports = await getLamportBalance(ctx.connection, ctx.agentPubkey);
+      lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
     } catch (err) {
       rpcError = err instanceof Error ? err.message : String(err);
     }
 
+    const isAdmin = Boolean(session?.isAdmin || (session?.owner && session.owner === ctx.config.adminPubkey));
+    let masterFunderBalance: number | null = null;
+    if (isAdmin && ctx.masterFunderPubkey) {
+      try {
+        masterFunderBalance = await getLamportBalance(ctx.connection, ctx.masterFunderPubkey);
+      } catch {
+        // Ignore balance read failure
+      }
+    }
+
     return {
-      cluster: ctx.config.SOLANA_CLUSTER,
-      rpcUrl: ctx.config.SOLANA_RPC_URL,
-      models: ctx.model.describe(),
-      owner: ctx.store.getOwner(),
-      ownerPinned: ctx.ownerPinned,
+      cluster: userCtx.config.SOLANA_CLUSTER,
+      rpcUrl: userCtx.config.SOLANA_RPC_URL,
+      models: userCtx.model.describe(),
+      owner: userCtx.store.getOwner(),
+      ownerPinned: false,
+      isAdmin,
+      claimedInitialFunding: userCtx.store.hasClaimedInitialFunding(),
+      masterFunder: isAdmin && ctx.masterFunderPubkey
+        ? {
+            pubkey: ctx.masterFunderPubkey,
+            lamports: masterFunderBalance,
+          }
+        : null,
       agent: {
-        agentId: ctx.config.AGENT_ID,
-        pubkey: ctx.agentPubkey,
+        agentId: userCtx.config.AGENT_ID,
+        pubkey: userCtx.agentPubkey,
         lamports,
         rpcError,
-        explorerUrl: explorerAddressUrl(ctx.agentPubkey, ctx.config.SOLANA_CLUSTER),
+        explorerUrl: explorerAddressUrl(userCtx.agentPubkey, userCtx.config.SOLANA_CLUSTER),
       },
-      policy: publicPolicy(ctx.store.getPolicy()),
+      policy: publicPolicy(userCtx.store.getPolicy()),
     };
   });
 
@@ -143,41 +188,78 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     if (!isValidAddress(body.pubkey)) {
       return reply.status(400).send({ error: 'invalid_pubkey', message: 'not a Solana address' });
     }
-    const current = ctx.store.getOwner();
-    if (ctx.ownerPinned && current !== body.pubkey) {
-      return reply
-        .status(409)
-        .send({ error: 'owner_pinned', message: 'OWNER_PUBKEY pins this agent to another wallet' });
-    }
-    if (current !== body.pubkey) {
-      ctx.store.setOwner(body.pubkey);
-      ctx.audit.record('owner.bound', null, { previous: current, owner: body.pubkey });
-    }
+    const userCtx = ctx.getUserContext ? ctx.getUserContext(body.pubkey) : ctx;
+    userCtx.store.setOwner(body.pubkey);
     return { owner: body.pubkey };
   });
 
+  app.post('/api/agent/claim-seed', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    if (userCtx.store.hasClaimedInitialFunding()) {
+      return reply.status(409).send({
+        error: 'already_claimed',
+        message: 'Initial demo funding (0.1 SOL) has already been claimed for this agent wallet.',
+      });
+    }
+
+    if (!ctx.masterFunder) {
+      return reply.status(503).send({
+        error: 'funder_unavailable',
+        message: 'Master Funder is not configured on this instance.',
+      });
+    }
+
+    try {
+      const amountLamports = 100_000_000; // 0.1 SOL
+      const result = await dispenseInitialSeed({
+        connection: ctx.connection,
+        funder: ctx.masterFunder,
+        recipientPubkey: userCtx.agentPubkey,
+        amountLamports,
+      });
+
+      userCtx.store.setClaimedInitialFunding(true);
+      userCtx.audit.record('agent.initial_seed_claimed', null, {
+        recipient: userCtx.agentPubkey,
+        amountLamports,
+        signature: result.signature,
+      });
+
+      const lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
+      return { signature: result.signature, lamports, claimedInitialFunding: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(502).send({
+        error: 'funder_failed',
+        message,
+      });
+    }
+  });
+
   app.put('/api/policy', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
     const body = PolicyBody.parse(req.body);
-    const policy = ctx.store.setPolicy({
+    const policy = userCtx.store.setPolicy({
       maxSolLamportsPerTx: solToLamports(body.maxSolPerTx),
       allowedRecipients: body.allowedRecipients,
       allowedMints: body.allowedMints,
       maxTokenAmountByMint: body.maxTokenAmountByMint,
     });
-    ctx.audit.record('policy.updated', null, { policy });
+    userCtx.audit.record('policy.updated', null, { policy });
     return { policy: publicPolicy(policy) };
   });
 
   app.post('/api/agent/airdrop', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
     const body = AirdropBody.parse(req.body ?? {});
     try {
       const signature = await requestAirdrop({
-        connection: ctx.connection,
-        address: ctx.agentPubkey,
+        connection: userCtx.connection,
+        address: userCtx.agentPubkey,
         lamports: solToLamports(body.sol),
       });
-      ctx.audit.record('agent.airdrop', null, { sol: body.sol, signature });
-      const lamports = await getLamportBalance(ctx.connection, ctx.agentPubkey);
+      userCtx.audit.record('agent.airdrop', null, { sol: body.sol, signature });
+      const lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
       return { signature, lamports };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -189,28 +271,34 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   });
 
   app.post('/api/commands', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
     const body = CommandBody.parse(req.body);
-    const request = await runCommand(ctx, {
+    const request = await runCommand(userCtx, {
       prompt: body.prompt,
       idempotencyKey: body.idempotencyKey ?? null,
     });
     return { request };
   });
 
-  app.get('/api/requests', async () => ({ requests: ctx.store.listRequests() }));
+  app.get('/api/requests', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
+    return { requests: userCtx.store.listRequests() };
+  });
 
   app.get('/api/requests/:id', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
     const { id } = req.params as { id: string };
-    const request = ctx.store.getRequest(id);
+    const request = userCtx.store.getRequest(id);
     if (!request) return reply.status(404).send({ error: 'not_found' });
     return { request };
   });
 
   app.post('/api/requests/:id/approve', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
     const { id } = req.params as { id: string };
     const body = ApproveBody.parse(req.body);
     try {
-      const request = await approveRequest(ctx, {
+      const request = await approveRequest(userCtx, {
         requestId: id,
         signature: body.signature,
         signerPubkey: body.signerPubkey,
@@ -226,8 +314,9 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   });
 
   app.get('/api/audit', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
     const raw = Number((req.query as { limit?: string }).limit ?? 100);
     const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 500) : 100;
-    return { entries: ctx.audit.list(limit) };
+    return { entries: userCtx.audit.list(limit) };
   });
 }

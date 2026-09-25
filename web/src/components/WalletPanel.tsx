@@ -50,7 +50,7 @@ export function WalletPanel(props: {
             </div>
           </div>
           {boundToThisWallet ? (
-            <Pill tone="ok">Owner</Pill>
+            <Pill tone={state.isAdmin ? 'wallet' : 'ok'}>{state.isAdmin ? 'Admin' : 'Owner'}</Pill>
           ) : owner ? (
             <Pill tone="warn">Bound {shorten(owner, 4)}</Pill>
           ) : (

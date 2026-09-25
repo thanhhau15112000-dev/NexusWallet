@@ -1,7 +1,10 @@
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { AuditLog } from './audit.js';
 import { createConnection, keypairFromSecret, type Connection, type Keypair } from './chain.js';
 import type { AppConfig } from './config.js';
 import { loadOrCreateAgentKey } from './crypto.js';
+import { loadOrCreateMasterFunder } from './funder.js';
 import { createModelPipeline, type ModelPipeline } from './model/index.js';
 import { SessionManager } from './sessions.js';
 import { Store } from './store.js';
@@ -12,31 +15,96 @@ export type AppContext = {
   audit: AuditLog;
   model: ModelPipeline;
   connection: Connection;
-  /** The only signer in the system. Held in memory, never exposed over HTTP. */
+  /** The agent signer for this context. Held in memory, never exposed over HTTP. */
   signer: Keypair;
   agentPubkey: string;
   /** True when OWNER_PUBKEY pins the owner, so /api/owner cannot rebind it. */
   ownerPinned: boolean;
   sessions: SessionManager;
+  masterFunder?: Keypair;
+  masterFunderPubkey?: string;
+  getUserContext?: (ownerPubkey: string) => AppContext;
 };
 
 export function createContext(config: AppConfig): AppContext {
-  const key = loadOrCreateAgentKey(config.keystorePath, config.AGENT_KEYSTORE_PASSPHRASE);
-  const audit = new AuditLog(config.auditPath, config.saltPath, config.AUDIT_ENCRYPTION_PASSPHRASE);
-  const store = new Store(config.statePath, config.AGENT_ID, config.MAX_REQUESTS_KEPT);
+  mkdirSync(config.dataDir, { recursive: true });
+  mkdirSync(config.usersDir, { recursive: true });
 
-  if (config.OWNER_PUBKEY) store.setOwner(config.OWNER_PUBKEY);
-  if (key.created) audit.record('agent.keypair_created', null, { publicKey: key.publicKey });
+  const funder = loadOrCreateMasterFunder({
+    masterFunderPath: config.masterFunderPath,
+    legacyKeystorePath: config.legacyKeystorePath,
+    passphrase: config.AGENT_KEYSTORE_PASSPHRASE,
+  });
+
+  const connection = createConnection(config.SOLANA_RPC_URL);
+  const model = createModelPipeline(config);
+  const sessions = new SessionManager(config.allowedOwners, config.AUTH_SESSION_TTL_SECONDS, config.adminPubkey);
+
+  const userContexts = new Map<string, AppContext>();
+
+  function getUserContext(ownerPubkey: string): AppContext {
+    const cached = userContexts.get(ownerPubkey);
+    if (cached) return cached;
+
+    const userDir = resolve(config.usersDir, ownerPubkey);
+    mkdirSync(userDir, { recursive: true });
+
+    const userKeystorePath = resolve(userDir, 'agent-keystore.json');
+    const userStatePath = resolve(userDir, 'state.json');
+    const userAuditPath = resolve(userDir, 'audit.jsonl');
+    const userSaltPath = resolve(userDir, 'audit-salt');
+
+    // If this is the admin and legacy state exists, migrate legacy files to admin directory
+    const isAdmin = ownerPubkey === config.adminPubkey;
+    if (isAdmin) {
+      if (!existsSync(userStatePath) && existsSync(config.statePath)) {
+        copyFileSync(config.statePath, userStatePath);
+      }
+      if (!existsSync(userAuditPath) && existsSync(config.auditPath)) {
+        copyFileSync(config.auditPath, userAuditPath);
+      }
+      if (!existsSync(userSaltPath) && existsSync(config.saltPath)) {
+        copyFileSync(config.saltPath, userSaltPath);
+      }
+    }
+
+    const key = loadOrCreateAgentKey(userKeystorePath, config.AGENT_KEYSTORE_PASSPHRASE);
+    const audit = new AuditLog(userAuditPath, userSaltPath, config.AUDIT_ENCRYPTION_PASSPHRASE);
+    const store = new Store(userStatePath, config.AGENT_ID, config.MAX_REQUESTS_KEPT, ownerPubkey);
+
+    if (key.created) {
+      audit.record('agent.keypair_created', null, { publicKey: key.publicKey, owner: ownerPubkey });
+    }
+
+    const signer = keypairFromSecret(key.secretKey);
+    const userCtx: AppContext = {
+      config,
+      store,
+      audit,
+      model,
+      connection,
+      signer,
+      agentPubkey: key.publicKey,
+      ownerPinned: false,
+      sessions,
+      masterFunder: funder.keypair,
+      masterFunderPubkey: funder.pubkey,
+      getUserContext,
+    };
+
+    userContexts.set(ownerPubkey, userCtx);
+    return userCtx;
+  }
+
+  const defaultOwner = config.adminPubkey;
+  const defaultUserCtx = getUserContext(defaultOwner);
 
   return {
+    ...defaultUserCtx,
     config,
-    store,
-    audit,
-    model: createModelPipeline(config),
-    connection: createConnection(config.SOLANA_RPC_URL),
-    signer: keypairFromSecret(key.secretKey),
-    agentPubkey: key.publicKey,
-    ownerPinned: config.OWNER_PUBKEY.length > 0,
-    sessions: new SessionManager(config.OWNER_PUBKEY, config.AUTH_SESSION_TTL_SECONDS),
+    sessions,
+    masterFunder: funder.keypair,
+    masterFunderPubkey: funder.pubkey,
+    getUserContext,
   };
 }

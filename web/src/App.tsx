@@ -6,7 +6,7 @@ import {
   type PaymentRequest,
 } from '@nexus/shared';
 import { api, ApiError, type AgentState } from './api.js';
-import { getPhantom, signPhantomMessage } from './phantom.js';
+import { getPhantom, sendSolFromPhantom, signPhantomMessage } from './phantom.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
@@ -168,29 +168,45 @@ export function App() {
     }
   }, [authRequired, authenticated, authOwner, wallet, logoutSession]);
 
-  // Bind the connected wallet as the agent owner. Attempted once per wallet so a
-  // rejected bind cannot loop.
-  useEffect(() => {
-    if (!wallet || !state) return;
-    if (authRequired && (!authenticated || wallet !== authOwner)) return;
-    if (state.owner === wallet || bindAttempt.current === wallet) return;
-    bindAttempt.current = wallet;
-    api
-      .bindOwner(wallet)
-      .then(() => refresh())
-      .catch((err) => {
-        // Allow a transient network failure to retry on the next refresh. A
-        // pinned owner is intentionally not retried until the wallet changes.
-        if (!state.ownerPinned) bindAttempt.current = null;
-        setToast({ tone: 'bad', text: errorText(err) });
-      });
-  }, [wallet, state, refresh, authRequired, authenticated, authOwner]);
+  // In multi-tenant mode, the owner is bound to their session upon Phantom login.
 
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 6000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  const claimSeed = async () => {
+    setFlag('seed', true);
+    try {
+      await api.claimSeed();
+      await refresh();
+      setToast({ tone: 'ok', text: '0.1 SOL demo seed claimed!' });
+    } catch (err) {
+      setToast({ tone: 'bad', text: errorText(err) });
+    } finally {
+      setFlag('seed', false);
+    }
+  };
+
+  const deposit = async (amountSol: number) => {
+    if (!wallet || !state) return;
+    setFlag('deposit', true);
+    try {
+      const signature = await sendSolFromPhantom({
+        rpcUrl: state.rpcUrl,
+        fromPubkey: wallet,
+        toPubkey: state.agent.pubkey,
+        amountSol,
+      });
+      setToast({ tone: 'ok', text: `Deposit of ${amountSol} SOL sent! Tx: ${signature.slice(0, 8)}…` });
+      await refresh();
+    } catch (err) {
+      setToast({ tone: 'bad', text: errorText(err) });
+    } finally {
+      setFlag('deposit', false);
+    }
+  };
 
   const connect = async () => {
     const provider = getPhantom();
@@ -340,7 +356,13 @@ export function App() {
       {offline ? <div className="banner bad">Service unavailable: {offline}</div> : null}
 
       <div className="workspace-grid">
-        <AgentPanel state={state} busy={Boolean(busy.airdrop)} onAirdrop={() => void airdrop()} />
+        <AgentPanel
+          state={state}
+          busy={Boolean(busy.airdrop || busy.seed || busy.deposit)}
+          onAirdrop={() => void airdrop()}
+          onClaimSeed={() => void claimSeed()}
+          onDeposit={(amount) => void deposit(amount)}
+        />
         <WalletPanel
           state={state}
           wallet={wallet}

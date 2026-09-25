@@ -8,6 +8,7 @@ export type StoreData = {
   requests: PaymentRequest[];
   /** idempotency key -> request id, so a retried command never sends twice. */
   idempotency: Record<string, string>;
+  claimedInitialFunding?: boolean;
 };
 
 /**
@@ -22,6 +23,7 @@ export class Store {
     private readonly path: string,
     private readonly agentId: string,
     private readonly maxRequests: number,
+    private readonly initialOwner?: string,
   ) {
     this.data = this.read();
   }
@@ -31,9 +33,10 @@ export class Store {
       const raw = JSON.parse(readFileSync(this.path, 'utf8')) as StoreData;
       return {
         policy: PolicySchema.parse(raw.policy),
-        ownerPubkey: raw.ownerPubkey ?? null,
+        ownerPubkey: raw.ownerPubkey ?? this.initialOwner ?? null,
         requests: Array.isArray(raw.requests) ? raw.requests : [],
         idempotency: raw.idempotency ?? {},
+        claimedInitialFunding: Boolean(raw.claimedInitialFunding),
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -41,11 +44,16 @@ export class Store {
         if (!(err instanceof SyntaxError)) throw err;
         throw new Error(`state file ${this.path} is not valid JSON; move it aside to reset`);
       }
+      const policy = defaultPolicy(this.agentId);
+      if (this.initialOwner) {
+        policy.allowedRecipients = [{ label: 'my-wallet', address: this.initialOwner }];
+      }
       return {
-        policy: defaultPolicy(this.agentId),
-        ownerPubkey: null,
+        policy,
+        ownerPubkey: this.initialOwner ?? null,
         requests: [],
         idempotency: {},
+        claimedInitialFunding: false,
       };
     }
   }
@@ -75,6 +83,15 @@ export class Store {
 
   getOwner(): string | null {
     return this.data.ownerPubkey;
+  }
+
+  hasClaimedInitialFunding(): boolean {
+    return Boolean(this.data.claimedInitialFunding);
+  }
+
+  setClaimedInitialFunding(claimed: boolean): void {
+    this.data.claimedInitialFunding = claimed;
+    this.flush();
   }
 
   setOwner(pubkey: string | null): void {
