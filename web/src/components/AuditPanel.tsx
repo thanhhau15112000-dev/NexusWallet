@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { ClipboardList } from 'lucide-react';
 import type { AuditEntryView } from '@nexus/shared';
 import { Card, Empty, Mono } from './ui.js';
+import { useI18n } from '../i18n/context.js';
 
 export function AuditPanel(props: { entries: AuditEntryView[] }) {
+  const { dict } = useI18n();
   const [showSealed, setShowSealed] = useState(false);
 
   return (
     <Card
-      title="Audit"
+      title={dict.audit.title}
       titleIcon={<ClipboardList size={16} />}
       className="panel-audit"
       actions={
@@ -16,7 +18,7 @@ export function AuditPanel(props: { entries: AuditEntryView[] }) {
       }
     >
       <details className="audit-details">
-        <summary>Show log</summary>
+        <summary>{dict.audit.showLog}</summary>
         <div className="audit-tools">
           <label className="toggle">
             <input
@@ -24,11 +26,11 @@ export function AuditPanel(props: { entries: AuditEntryView[] }) {
               checked={showSealed}
               onChange={(e) => setShowSealed(e.target.checked)}
             />
-            Ciphertext
+            {dict.audit.ciphertext}
           </label>
         </div>
         {props.entries.length === 0 ? (
-          <Empty>No entries</Empty>
+          <Empty>{dict.audit.noEntries}</Empty>
         ) : (
           <ul className="audit-list">
             {props.entries.map((entry) => (

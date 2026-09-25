@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import type { AgentState } from '../api.js';
 import { Card, Mono, shorten } from './ui.js';
+import { useI18n } from '../i18n/context.js';
 
 type Entry = { label: string; address: string };
 
@@ -16,6 +17,7 @@ export function PolicyPanel(props: {
     maxTokenAmountByMint: Record<string, number>;
   }) => Promise<void>;
 }) {
+  const { dict } = useI18n();
   const { policy } = props.state;
   const [maxSol, setMaxSol] = useState(String(policy.maxSolPerTx));
   const [recipients, setRecipients] = useState<Entry[]>(policy.allowedRecipients);
@@ -62,13 +64,13 @@ export function PolicyPanel(props: {
 
   return (
     <Card
-      title="Policy"
+      title={dict.policy.title}
       titleIcon={<ShieldCheck size={16} />}
       className="panel-policy"
       actions={<span className="version">v{policy.version}</span>}
     >
       <label className="field">
-        <span>Max per transaction</span>
+        <span>{dict.policy.maxPerTx}</span>
         <div className="input-with-suffix">
           <input
             type="number"
@@ -86,11 +88,11 @@ export function PolicyPanel(props: {
 
       <div className="field">
         <div className="field-row">
-          <span>Recipients</span>
+          <span>{dict.policy.recipients}</span>
           <span className="count">{recipients.length}</span>
         </div>
         {recipients.length === 0 ? (
-          <p className="empty">No recipients</p>
+          <p className="empty">{dict.policy.noRecipients}</p>
         ) : (
           <ul className="entry-list">
             {recipients.map((entry) => (
@@ -107,7 +109,7 @@ export function PolicyPanel(props: {
                     setDirty(true);
                   }}
                 >
-                  Remove
+                  {dict.policy.remove}
                 </button>
               </li>
             ))}
@@ -117,14 +119,14 @@ export function PolicyPanel(props: {
 
       <div className="row">
         <input
-          aria-label="Recipient name"
-          placeholder="Name"
+          aria-label={dict.policy.namePlaceholder}
+          placeholder={dict.policy.namePlaceholder}
           value={label}
           onChange={(e) => setLabel(e.target.value.trim())}
         />
         <input
-          aria-label="Recipient address"
-          placeholder="Address"
+          aria-label={dict.policy.addressPlaceholder}
+          placeholder={dict.policy.addressPlaceholder}
           value={address}
           onChange={(e) => setAddress(e.target.value.trim())}
         />
@@ -136,7 +138,7 @@ export function PolicyPanel(props: {
             setAddress('');
           }}
         >
-          Add recipient
+          {dict.policy.addRecipient}
         </button>
       </div>
 
@@ -147,13 +149,13 @@ export function PolicyPanel(props: {
           disabled={!props.wallet}
           onClick={() => props.wallet && addEntry({ label: 'my-wallet', address: props.wallet })}
         >
-          Use owner wallet
+          {dict.policy.useOwnerWallet}
         </button>
         <button type="button" className="primary" disabled={props.busy || !dirty} onClick={save}>
-          {props.busy ? 'Saving' : 'Save'}
+          {props.busy ? dict.policy.saving : dict.policy.save}
         </button>
       </div>
-      {dirty ? <p className="hint warn">Unsaved</p> : null}
+      {dirty ? <p className="hint warn">{dict.policy.unsaved}</p> : null}
     </Card>
   );
 }

@@ -13,6 +13,8 @@ import { ConsolePanel } from './components/ConsolePanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
 import { WalletPanel } from './components/WalletPanel.js';
+import { SettingsMenu } from './components/SettingsMenu.js';
+import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
@@ -20,22 +22,8 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function summarise(request: PaymentRequest): Toast {
-  switch (request.status) {
-    case 'confirmed':
-      return { tone: 'ok', text: 'Confirmed on devnet' };
-    case 'pending_approval':
-      return { tone: 'warn', text: 'Approval required' };
-    case 'denied':
-      return { tone: 'bad', text: 'Denied by policy' };
-    case 'failed':
-      return { tone: 'bad', text: 'Execution failed' };
-    default:
-      return { tone: 'warn', text: request.status.replace('_', ' ') };
-  }
-}
-
 export function App() {
+  const { dict, interpolate } = useI18n();
   const [state, setState] = useState<AgentState | null>(null);
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [audit, setAudit] = useState<AuditEntryView[]>([]);
@@ -176,12 +164,30 @@ export function App() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const summarise = useCallback(
+    (request: PaymentRequest): Toast => {
+      switch (request.status) {
+        case 'confirmed':
+          return { tone: 'ok', text: dict.toasts.confirmed };
+        case 'pending_approval':
+          return { tone: 'warn', text: dict.toasts.approvalRequired };
+        case 'denied':
+          return { tone: 'bad', text: dict.toasts.denied };
+        case 'failed':
+          return { tone: 'bad', text: dict.toasts.executionFailed };
+        default:
+          return { tone: 'warn', text: request.status.replace('_', ' ') };
+      }
+    },
+    [dict.toasts],
+  );
+
   const claimSeed = async () => {
     setFlag('seed', true);
     try {
       await api.claimSeed();
       await refresh();
-      setToast({ tone: 'ok', text: '0.1 SOL demo seed claimed!' });
+      setToast({ tone: 'ok', text: dict.toasts.seedClaimed });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
@@ -199,7 +205,13 @@ export function App() {
         toPubkey: state.agent.pubkey,
         amountSol,
       });
-      setToast({ tone: 'ok', text: `Deposit of ${amountSol} SOL sent! Tx: ${signature.slice(0, 8)}…` });
+      setToast({
+        tone: 'ok',
+        text: interpolate(dict.toasts.depositSent, {
+          amount: amountSol,
+          tx: `${signature.slice(0, 8)}…`,
+        }),
+      });
       await refresh();
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
@@ -248,7 +260,7 @@ export function App() {
     try {
       await api.savePolicy(input);
       await refresh();
-      setToast({ tone: 'ok', text: 'Policy saved' });
+      setToast({ tone: 'ok', text: dict.toasts.policySaved });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
       throw err;
@@ -262,7 +274,7 @@ export function App() {
     try {
       await api.airdrop(1);
       await refresh();
-      setToast({ tone: 'ok', text: 'Airdrop requested' });
+      setToast({ tone: 'ok', text: dict.toasts.airdropRequested });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
@@ -316,22 +328,25 @@ export function App() {
     const needsSignIn = authReady && authRequired && !authenticated;
     return (
       <main className="boot">
+        <div className="boot-header">
+          <SettingsMenu />
+        </div>
         <h1>nexusPay</h1>
-        <p>{needsSignIn ? 'Sign in required' : offline ? 'Service unavailable' : 'Loading'}</p>
+        <p>{needsSignIn ? dict.boot.signInRequired : offline ? dict.boot.serviceUnavailable : dict.boot.loading}</p>
         {offline ? <p className="bad-text">{offline}</p> : null}
         {authReady && authRequired && !authenticated ? (
           <>
-            <p>Sign in with the pinned Phantom wallet. The message signature only creates a session.</p>
+            <p>{dict.boot.signInDesc}</p>
             <button
               type="button"
               className="primary"
               disabled={!hasPhantom || Boolean(busy.connect)}
               onClick={() => void connect()}
             >
-              {busy.connect ? 'Connecting…' : 'Sign in with Phantom'}
+              {busy.connect ? dict.boot.connecting : dict.boot.signInBtn}
             </button>
             {!hasPhantom ? (
-              <p><a href="https://phantom.app/download" target="_blank" rel="noreferrer">Install Phantom</a></p>
+              <p><a href="https://phantom.app/download" target="_blank" rel="noreferrer">{dict.boot.installPhantom}</a></p>
             ) : null}
           </>
         ) : null}
@@ -347,9 +362,12 @@ export function App() {
             <h1>nexusPay</h1>
           </div>
         </div>
-        <div className={`service-state ${offline ? 'is-offline' : ''}`}>
-          <Activity size={15} aria-hidden="true" />
-          {offline ? 'Offline' : 'Ready'}
+        <div className="topbar-right">
+          <div className={`service-state ${offline ? 'is-offline' : ''}`}>
+            <Activity size={15} aria-hidden="true" />
+            {offline ? dict.topbar.offline : dict.topbar.ready}
+          </div>
+          <SettingsMenu />
         </div>
       </header>
 
