@@ -25,25 +25,32 @@ export function loadOrCreateMasterFunder(params: {
   };
 }
 
-export async function dispenseInitialSeed(params: {
+let funderQueue: Promise<unknown> = Promise.resolve();
+
+export function dispenseInitialSeed(params: {
   connection: Connection;
   funder: Keypair;
   recipientPubkey: string;
   amountLamports: number;
 }): Promise<{ signature: string; slot: number | null }> {
-  const funderPubkey = params.funder.publicKey.toBase58();
-  const balance = await getLamportBalance(params.connection, funderPubkey);
-  // Estimate transaction fee ~5000 lamports
-  if (balance < params.amountLamports + 5000) {
-    throw new Error(
-      `Master Funder wallet (${funderPubkey}) does not have enough Devnet SOL (${balance / 1e9} SOL available). Please fund it.`,
-    );
-  }
+  const op = funderQueue.then(async () => {
+    const funderPubkey = params.funder.publicKey.toBase58();
+    const balance = await getLamportBalance(params.connection, funderPubkey);
+    // Estimate transaction fee ~5000 lamports
+    if (balance < params.amountLamports + 5000) {
+      throw new Error(
+        `Master Funder wallet (${funderPubkey}) does not have enough Devnet SOL (${balance / 1e9} SOL available). Please fund it.`,
+      );
+    }
 
-  return transferSol({
-    connection: params.connection,
-    payer: params.funder,
-    recipient: params.recipientPubkey,
-    lamports: params.amountLamports,
+    return transferSol({
+      connection: params.connection,
+      payer: params.funder,
+      recipient: params.recipientPubkey,
+      lamports: params.amountLamports,
+    });
   });
+
+  funderQueue = op.catch(() => {});
+  return op;
 }

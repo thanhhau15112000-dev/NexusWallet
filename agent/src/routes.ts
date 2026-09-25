@@ -193,8 +193,19 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     return { owner: body.pubkey };
   });
 
+const inFlightClaims = new Set<string>();
+
   app.post('/api/agent/claim-seed', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
+    const claimKey = userCtx.agentPubkey;
+
+    if (inFlightClaims.has(claimKey)) {
+      return reply.status(409).send({
+        error: 'claim_in_progress',
+        message: 'A seed claim is already in progress for this agent.',
+      });
+    }
+
     if (userCtx.store.hasClaimedInitialFunding()) {
       return reply.status(409).send({
         error: 'already_claimed',
@@ -209,7 +220,15 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       });
     }
 
+    inFlightClaims.add(claimKey);
     try {
+      if (userCtx.store.hasClaimedInitialFunding()) {
+        return reply.status(409).send({
+          error: 'already_claimed',
+          message: 'Initial demo funding (0.1 SOL) has already been claimed for this agent wallet.',
+        });
+      }
+
       const amountLamports = 100_000_000; // 0.1 SOL
       const result = await dispenseInitialSeed({
         connection: ctx.connection,
@@ -233,6 +252,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
         error: 'funder_failed',
         message,
       });
+    } finally {
+      inFlightClaims.delete(claimKey);
     }
   });
 

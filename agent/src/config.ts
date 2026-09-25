@@ -21,7 +21,7 @@ const EnvSchema = z.object({
   /** Pin the owner wallet. Left empty, the first wallet that connects is bound. */
   OWNER_PUBKEY: z.string().trim().default(''),
   /** Recognized administrator wallet pubkey for multi-tenant demo. */
-  ADMIN_PUBKEY: z.string().trim().default('GePDtss1nywz1RZcS2tvcRwKCkh8J3HdamfhWAkDrard'),
+  ADMIN_PUBKEY: z.string().trim().default(''),
   /** Optional comma-separated list of allowed owner pubkeys. Empty allows all. */
   ALLOWED_OWNERS: z.string().trim().default(''),
   SESSION_COOKIE_SECRET: z.string().min(1).default('local-dev-session-cookie-secret-change-me'),

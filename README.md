@@ -90,17 +90,20 @@ The agent runs strictly on loopback (`127.0.0.1`) and accepts requests only from
 (`http://localhost:5173`). Public wildcard bindings (`0.0.0.0`) and non-official/non-Devnet RPC
 URLs are rejected at startup to prevent exposing the agent API or keys to untrusted networks.
 
-### Hosted hackathon demo
+### Hosted demo (Multi-tenant)
 
-The hosted image serves the API and dashboard from one HTTPS origin. It is a single-owner,
-single-instance Devnet demo. Before starting it, configure these environment variables on the host:
+The hosted image serves the API and dashboard from one HTTPS origin. It operates in a multi-tenant
+isolated agent model on Solana Devnet: any connected Phantom wallet receives its own dedicated,
+encrypted agent keypair and policy. Before starting it, configure these environment variables on the host:
 
 - `DEPLOYMENT_MODE=hosted`, `HOST=0.0.0.0`, and `AGENT_DATA_DIR=/data`.
-- `OWNER_PUBKEY` to the exact Phantom public key allowed to sign in.
+- `ADMIN_PUBKEY` (or `OWNER_PUBKEY`) to the administrator's Phantom public key.
+- `ALLOWED_OWNERS` (optional) comma-separated list of allowed Phantom public keys. Left empty, any Phantom wallet can connect.
 - `WEB_ORIGIN` to the dashboard's HTTPS origin, with no path or trailing slash.
 - `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, and
   `AUDIT_ENCRYPTION_PASSPHRASE` as three distinct random values of at least 32 characters.
-- Persist `/data` across restarts so the agent key, policy, request state, and audit log survive.
+- Mount a persistent disk to `/data` across restarts (e.g. Render Persistent Disk or Docker volume)
+  so user agent keys, policies, master funder state, and audit logs survive service redeploys.
 
 The container expects TLS to terminate at the hosting platform or a reverse proxy. Keep its
 8787 port private behind that HTTPS origin. Sessions and login challenges are held in memory,
@@ -171,11 +174,11 @@ agent: `tsx` runs the TypeScript directly, and `pnpm build` is what proves it co
 
 ## Scope
 
-In: devnet, SOL, text-only input, one agent wallet, one policy, per-transaction limits, recipient/mint allowlists,
-Phantom approval, encrypted audit log. SPL transfer is implemented and gated by the mint allowlist,
+In: devnet, SOL, text-only input, multi-tenant isolated agent wallets, per-user spending policies, per-transaction limits, recipient/mint allowlists,
+Phantom approval, one-time master funder seed, encrypted audit log. SPL transfer is implemented and gated by the mint allowlist,
 but ships with an empty allowlist — configure a mint to enable it.
 
-Out: mainnet, voice / Gemini Live, multi-owner hosted service, swaps, staking, NFTs, arbitrary programs,
+Out: mainnet, voice / Gemini Live, swaps, staking, NFTs, arbitrary programs,
 seed-phrase handling, daily budgets, fiat conversion.
 
 ## Security notes

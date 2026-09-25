@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -171,5 +171,111 @@ describe('Multi-tenant Store & Context Isolation', () => {
 
     expect(ctx1.store.getPolicy().maxSolLamportsPerTx).toBe(200_000_000);
     expect(ctx2.store.getPolicy().maxSolLamportsPerTx).toBe(100_000_000); // unaffected default
+  });
+
+  it('rejects concurrent claim-seed calls to prevent double funding', async () => {
+    const dir = makeTempDir();
+    const config = {
+      ...loadConfig(),
+      AGENT_DATA_DIR: dir,
+      dataDir: dir,
+      usersDir: join(dir, 'users'),
+      masterFunderPath: join(dir, 'master-funder.json'),
+      legacyKeystorePath: join(dir, 'agent-keystore.json'),
+      statePath: join(dir, 'state.json'),
+      auditPath: join(dir, 'audit.jsonl'),
+      keystorePath: join(dir, 'agent-keystore.json'),
+      saltPath: join(dir, 'audit-salt'),
+    };
+
+    const masterCtx = createContext(config);
+    const userKey = nacl.sign.keyPair();
+    const user = bs58.encode(userKey.publicKey);
+
+    // Mock dispenseInitialSeed via vi.mock or mock funder method
+    const userCtx = masterCtx.getUserContext!(user);
+    expect(userCtx.store.hasClaimedInitialFunding()).toBe(false);
+
+    // Dynamic import to test Fastify route with cookie
+    const Fastify = (await import('fastify')).default;
+    const cookie = (await import('@fastify/cookie')).default;
+    const { registerRoutes } = await import('../src/routes.js');
+    const { SESSION_COOKIE_NAME } = await import('../src/sessions.js');
+
+    const app = Fastify();
+    await app.register(cookie, { secret: config.SESSION_COOKIE_SECRET });
+
+    // Mock dispenseInitialSeed to simulate on-chain delay
+    const funderModule = await import('../src/funder.js');
+    let callCount = 0;
+    const dispenseSpy = vi.spyOn(funderModule, 'dispenseInitialSeed').mockImplementation(async () => {
+      callCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { signature: 'sig_mock_123', slot: 100 };
+    });
+
+    try {
+      await registerRoutes(app, masterCtx);
+
+      // 1. Get challenge via HTTP
+      const challengeRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/challenge',
+        payload: { pubkey: user },
+      });
+      expect(challengeRes.statusCode).toBe(200);
+      const challenge = JSON.parse(challengeRes.body);
+
+      // 2. Sign and login via HTTP
+      const sig = bs58.encode(
+        nacl.sign.detached(new TextEncoder().encode(challenge.message), userKey.secretKey),
+      );
+      const loginRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: {
+          challengeId: challenge.challengeId,
+          pubkey: user,
+          signature: sig,
+        },
+      });
+      expect(loginRes.statusCode).toBe(200);
+      const sessionCookie = loginRes.cookies.find((c: { name: string }) => c.name === SESSION_COOKIE_NAME);
+      expect(sessionCookie).toBeDefined();
+
+      const cookieHeader = `${sessionCookie!.name}=${sessionCookie!.value}`;
+
+      // 3. Fire 2 concurrent requests with the authenticated session
+      const [res1, res2] = await Promise.all([
+        app.inject({
+          method: 'POST',
+          url: '/api/agent/claim-seed',
+          headers: { cookie: cookieHeader },
+        }),
+        app.inject({
+          method: 'POST',
+          url: '/api/agent/claim-seed',
+          headers: { cookie: cookieHeader },
+        }),
+      ]);
+
+      const statuses = [res1.statusCode, res2.statusCode].sort();
+      // One request must succeed (200) and the other must be rejected (409)
+      expect(statuses).toEqual([200, 409]);
+      expect(callCount).toBe(1); // exactly one on-chain transfer was executed
+      expect(userCtx.store.hasClaimedInitialFunding()).toBe(true);
+
+      // A subsequent third request must also be rejected with 409
+      const res3 = await app.inject({
+        method: 'POST',
+        url: '/api/agent/claim-seed',
+        headers: { cookie: cookieHeader },
+      });
+      expect(res3.statusCode).toBe(409);
+      expect(callCount).toBe(1);
+    } finally {
+      dispenseSpy.mockRestore();
+      await app.close();
+    }
   });
 });
