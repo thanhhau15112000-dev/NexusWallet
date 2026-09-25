@@ -328,9 +328,6 @@ export function App() {
     const needsSignIn = authReady && authRequired && !authenticated;
     return (
       <main className="boot">
-        <div className="boot-header">
-          <SettingsMenu />
-        </div>
         <h1>nexusPay</h1>
         <p>{needsSignIn ? dict.boot.signInRequired : offline ? dict.boot.serviceUnavailable : dict.boot.loading}</p>
         {offline ? <p className="bad-text">{offline}</p> : null}
@@ -367,7 +364,7 @@ export function App() {
             <Activity size={15} aria-hidden="true" />
             {offline ? dict.topbar.offline : dict.topbar.ready}
           </div>
-          <SettingsMenu />
+          <SettingsMenu onLogout={() => void disconnect()} />
         </div>
       </header>
 

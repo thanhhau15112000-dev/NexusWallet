@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Globe, Settings, X } from 'lucide-react';
+import { Check, ChevronDown, Globe, LogOut, Settings, X } from 'lucide-react';
 import { useI18n } from '../i18n/context.js';
 import type { Locale } from '../i18n/types.js';
 
-export function SettingsMenu() {
+type SettingsMenuProps = {
+  onLogout?: () => void;
+};
+
+export function SettingsMenu({ onLogout }: SettingsMenuProps = {}) {
   const { lang, setLanguage, dict } = useI18n();
   const [open, setOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
@@ -102,6 +106,22 @@ export function SettingsMenu() {
               </div>
             ) : null}
           </div>
+
+          {onLogout ? (
+            <div className="settings-footer">
+              <button
+                type="button"
+                className="settings-logout-btn"
+                onClick={() => {
+                  setOpen(false);
+                  onLogout();
+                }}
+              >
+                <LogOut size={14} className="logout-icon" />
+                <span>{dict.settings.logout}</span>
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

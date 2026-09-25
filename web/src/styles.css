@@ -203,13 +203,6 @@ input::placeholder {
   display: inline-flex;
 }
 
-.boot-header {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
-  margin-bottom: 12px;
-}
-
 .settings-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -412,6 +405,39 @@ input::placeholder {
 
 .settings-lang-option .check-icon {
   color: var(--accent);
+  flex-shrink: 0;
+}
+
+.settings-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bad);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.settings-logout-btn:hover {
+  background: #fdf2f2;
+  border-color: #fbd5d5;
+}
+
+.settings-logout-btn .logout-icon {
+  color: var(--bad);
   flex-shrink: 0;
 }
 

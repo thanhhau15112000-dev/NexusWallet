@@ -13,6 +13,7 @@ export const en: TranslationDictionary = {
     english: 'English',
     vietnamese: 'Tiếng Việt',
     close: 'Close',
+    logout: 'Log out',
   },
   boot: {
     serviceUnavailable: 'Service unavailable',

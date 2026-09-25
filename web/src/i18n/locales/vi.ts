@@ -13,6 +13,7 @@ export const vi: TranslationDictionary = {
     english: 'English',
     vietnamese: 'Tiếng Việt',
     close: 'Đóng',
+    logout: 'Đăng xuất',
   },
   boot: {
     serviceUnavailable: 'Dịch vụ tạm thời không khả dụng',
