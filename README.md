@@ -1,6 +1,6 @@
-# NexusWallet
+# nexusPay
 
-Payment Guard for AI agents on Solana Devnet.
+nexusPay is a payment guard for AI agents on Solana Devnet.
 
 An agent gets its own wallet and a spending policy. Transfers inside the policy are signed by the
 agent automatically. Anything outside it is held until the owner signs an approval in Phantom.

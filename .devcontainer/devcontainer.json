@@ -1,5 +1,5 @@
 {
-  "name": "NexusWallet",
+  "name": "nexusPay",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
@@ -9,12 +9,12 @@
   "forwardPorts": [5173, 8787],
   "portsAttributes": {
     "5173": {
-      "label": "NexusWallet Web",
+      "label": "nexusPay Web",
       "visibility": "public",
       "onAutoForward": "openPreview"
     },
     "8787": {
-      "label": "NexusWallet Agent API",
+      "label": "nexusPay Agent API",
       "visibility": "public",
       "onAutoForward": "silent"
     }

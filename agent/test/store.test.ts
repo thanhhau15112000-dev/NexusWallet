@@ -44,7 +44,7 @@ describe('Store', () => {
           nonce: 'nonce12345678',
           expiresAt: '2030-01-01T00:00:00.000Z',
         },
-        message: 'NexusWallet approval',
+        message: 'nexusPay approval',
         signature: null,
         signerPubkey: null,
         signedAt: null,

@@ -299,7 +299,7 @@ export function App() {
     const needsSignIn = authReady && authRequired && !authenticated;
     return (
       <main className="boot">
-        <h1>NexusWallet</h1>
+        <h1>nexusPay</h1>
         <p>{needsSignIn ? 'Sign in required' : offline ? 'Service unavailable' : 'Loading'}</p>
         {offline ? <p className="bad-text">{offline}</p> : null}
         {authReady && authRequired && !authenticated ? (
@@ -327,7 +327,7 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <div>
-            <h1>NexusWallet</h1>
+            <h1>nexusPay</h1>
           </div>
         </div>
         <div className={`service-state ${offline ? 'is-offline' : ''}`}>

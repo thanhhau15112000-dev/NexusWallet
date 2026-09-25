@@ -40,7 +40,7 @@ export class SessionManager {
     const challengeId = randomNonce(32);
     const expiresAt = Date.now() + CHALLENGE_TTL_MS;
     const message = [
-      'NexusWallet login',
+      'nexusPay login',
       `Origin: ${origin}`,
       `Wallet: ${this.ownerPubkey}`,
       `Nonce: ${randomNonce(32)}`,

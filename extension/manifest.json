@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "NexusWallet Devnet Demo",
+  "name": "nexusPay Devnet Demo",
   "version": "0.1.0",
-  "description": "Check the NexusWallet Devnet backend and open its Phantom-enabled dashboard.",
+  "description": "Check the nexusPay Devnet backend and open its Phantom-enabled dashboard.",
   "minimum_chrome_version": "111",
   "permissions": ["storage", "permissions"],
   "optional_host_permissions": [
@@ -15,7 +15,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "NexusWallet Devnet",
+    "default_title": "nexusPay Devnet",
     "default_popup": "popup.html"
   },
   "options_ui": {
