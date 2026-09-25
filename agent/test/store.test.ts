@@ -86,6 +86,27 @@ describe('Store', () => {
     expect(byIdem?.id).toBe('req_pending_1');
   });
 
+  it('persists pending seed transfer and clears it only when marked claimed', () => {
+    const store1 = new Store(statePath, 'agent-001', 50);
+    const pending = {
+      signature: 'seed-signature',
+      serializedTransaction: 'c2lnbmVkLXRyYW5zYWN0aW9u',
+      blockhash: 'blockhash',
+      lastValidBlockHeight: 123,
+      recipientPubkey: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin',
+      amountLamports: 100_000_000,
+    };
+
+    store1.setPendingInitialFunding(pending);
+    const storeAfterRestart = new Store(statePath, 'agent-001', 50);
+    expect(storeAfterRestart.getPendingInitialFunding()).toEqual(pending);
+
+    storeAfterRestart.setClaimedInitialFunding(true);
+    const storeAfterConfirmation = new Store(statePath, 'agent-001', 50);
+    expect(storeAfterConfirmation.hasClaimedInitialFunding()).toBe(true);
+    expect(storeAfterConfirmation.getPendingInitialFunding()).toBeUndefined();
+  });
+
   it('prevents duplicate requests via idempotency key', () => {
     const store = new Store(statePath, 'agent-001', 50);
 

@@ -4,7 +4,11 @@ import { AllowlistEntrySchema, PubkeySchema, solToLamports, type Policy } from '
 import { explorerAddressUrl, getLamportBalance, isValidAddress, requestAirdrop } from './chain.js';
 import { ApprovalError, approveRequest } from './approvals.js';
 import type { AppContext } from './context.js';
-import { dispenseInitialSeed } from './funder.js';
+import {
+  dispenseInitialSeed,
+  SeedTransferFailedError,
+  SeedTransferOutcomeUnknownError,
+} from './funder.js';
 import { runCommand } from './pipeline.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
@@ -235,6 +239,8 @@ const inFlightClaims = new Set<string>();
         funder: ctx.masterFunder,
         recipientPubkey: userCtx.agentPubkey,
         amountLamports,
+        pending: userCtx.store.getPendingInitialFunding(),
+        persistPending: (pending) => userCtx.store.setPendingInitialFunding(pending),
       });
 
       userCtx.store.setClaimedInitialFunding(true);
@@ -247,6 +253,15 @@ const inFlightClaims = new Set<string>();
       const lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
       return { signature: result.signature, lamports, claimedInitialFunding: true };
     } catch (err) {
+      if (err instanceof SeedTransferFailedError) {
+        userCtx.store.clearPendingInitialFunding();
+      }
+      if (err instanceof SeedTransferOutcomeUnknownError) {
+        return reply.status(409).send({
+          error: 'claim_outcome_unknown',
+          message: 'The previous seed transfer is still being reconciled. Retry later; a second transfer will not be sent.',
+        });
+      }
       const message = err instanceof Error ? err.message : String(err);
       return reply.status(502).send({
         error: 'funder_failed',

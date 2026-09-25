@@ -18,7 +18,7 @@ export type AppContext = {
   /** The agent signer for this context. Held in memory, never exposed over HTTP. */
   signer: Keypair;
   agentPubkey: string;
-  /** True when OWNER_PUBKEY pins the owner, so /api/owner cannot rebind it. */
+  /** Legacy response field; multi-tenant wallet sessions are not pinned. */
   ownerPinned: boolean;
   sessions: SessionManager;
   masterFunder?: Keypair;

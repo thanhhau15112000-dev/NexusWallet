@@ -208,10 +208,21 @@ describe('Multi-tenant Store & Context Isolation', () => {
     // Mock dispenseInitialSeed to simulate on-chain delay
     const funderModule = await import('../src/funder.js');
     let callCount = 0;
-    const dispenseSpy = vi.spyOn(funderModule, 'dispenseInitialSeed').mockImplementation(async () => {
+    const dispenseSpy = vi.spyOn(funderModule, 'dispenseInitialSeed').mockImplementation(async (params) => {
       callCount += 1;
+      const signature = params.pending?.signature ?? 'mock-seed-signature';
+      if (!params.pending) {
+        params.persistPending({
+          signature,
+          serializedTransaction: 'bW9jay10cmFuc2FjdGlvbg==',
+          blockhash: '11111111111111111111111111111111',
+          lastValidBlockHeight: 1000,
+          recipientPubkey: params.recipientPubkey,
+          amountLamports: params.amountLamports,
+        });
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
-      return { signature: 'sig_mock_123', slot: 100 };
+      return { signature, slot: 100 };
     });
 
     try {

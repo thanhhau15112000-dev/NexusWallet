@@ -18,7 +18,7 @@ const EnvSchema = z.object({
   AGENT_KEYSTORE_PASSPHRASE: z.string().min(8).default('nexus-devnet-demo-passphrase'),
   AUDIT_ENCRYPTION_PASSPHRASE: z.string().min(8).default('nexus-devnet-demo-audit-key'),
 
-  /** Pin the owner wallet. Left empty, the first wallet that connects is bound. */
+  /** Legacy alias for ADMIN_PUBKEY; it does not restrict which wallets can sign in. */
   OWNER_PUBKEY: z.string().trim().default(''),
   /** Recognized administrator wallet pubkey for multi-tenant demo. */
   ADMIN_PUBKEY: z.string().trim().default(''),

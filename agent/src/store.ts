@@ -1,6 +1,18 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { defaultPolicy, PolicySchema, type PaymentRequest, type Policy } from '@nexus/shared';
+import { z } from 'zod';
+
+const PendingInitialFundingSchema = z.object({
+  signature: z.string().min(1),
+  serializedTransaction: z.string().min(1),
+  blockhash: z.string().min(1),
+  lastValidBlockHeight: z.number().int().nonnegative(),
+  recipientPubkey: z.string().min(32).max(44),
+  amountLamports: z.number().int().positive(),
+});
+
+export type PendingInitialFunding = z.infer<typeof PendingInitialFundingSchema>;
 
 export type StoreData = {
   policy: Policy;
@@ -9,6 +21,7 @@ export type StoreData = {
   /** idempotency key -> request id, so a retried command never sends twice. */
   idempotency: Record<string, string>;
   claimedInitialFunding?: boolean;
+  pendingInitialFunding?: PendingInitialFunding;
 };
 
 /**
@@ -31,12 +44,16 @@ export class Store {
   private read(): StoreData {
     try {
       const raw = JSON.parse(readFileSync(this.path, 'utf8')) as StoreData;
+      const claimedInitialFunding = Boolean(raw.claimedInitialFunding);
       return {
         policy: PolicySchema.parse(raw.policy),
         ownerPubkey: raw.ownerPubkey ?? this.initialOwner ?? null,
         requests: Array.isArray(raw.requests) ? raw.requests : [],
         idempotency: raw.idempotency ?? {},
-        claimedInitialFunding: Boolean(raw.claimedInitialFunding),
+        claimedInitialFunding,
+        pendingInitialFunding: claimedInitialFunding || raw.pendingInitialFunding === undefined
+          ? undefined
+          : PendingInitialFundingSchema.parse(raw.pendingInitialFunding),
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -89,8 +106,26 @@ export class Store {
     return Boolean(this.data.claimedInitialFunding);
   }
 
+  getPendingInitialFunding(): PendingInitialFunding | undefined {
+    return this.data.pendingInitialFunding;
+  }
+
+  setPendingInitialFunding(pending: PendingInitialFunding): void {
+    if (this.hasClaimedInitialFunding()) {
+      throw new Error('initial funding has already been claimed');
+    }
+    this.data.pendingInitialFunding = PendingInitialFundingSchema.parse(pending);
+    this.flush();
+  }
+
+  clearPendingInitialFunding(): void {
+    delete this.data.pendingInitialFunding;
+    this.flush();
+  }
+
   setClaimedInitialFunding(claimed: boolean): void {
     this.data.claimedInitialFunding = claimed;
+    if (claimed) delete this.data.pendingInitialFunding;
     this.flush();
   }
 
