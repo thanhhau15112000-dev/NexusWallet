@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import type { AgentState } from '../api.js';
 import { Card, Mono, shorten } from './ui.js';
 
@@ -62,6 +63,7 @@ export function PolicyPanel(props: {
   return (
     <Card
       title="Policy"
+      titleIcon={<ShieldCheck size={16} />}
       className="panel-policy"
       actions={<span className="version">v{policy.version}</span>}
     >

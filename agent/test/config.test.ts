@@ -100,4 +100,19 @@ describe('loadConfig - loopback and local runtime', () => {
     process.env.OWNER_PUBKEY = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
     expect(loadConfig().OWNER_PUBKEY).toBe('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin');
   });
+
+  it('correctly resolves adminPubkey precedence', () => {
+    delete process.env.ADMIN_PUBKEY;
+    delete process.env.OWNER_PUBKEY;
+    // Default fallback
+    expect(loadConfig().adminPubkey).toBe('GePDtss1nywz1RZcS2tvcRwKCkh8J3HdamfhWAkDrard');
+
+    // OWNER_PUBKEY override
+    process.env.OWNER_PUBKEY = 'BUoN4cmXh5JhYRBDhEw3rFSSwJmm9bHN9whQSitZZ44d';
+    expect(loadConfig().adminPubkey).toBe('BUoN4cmXh5JhYRBDhEw3rFSSwJmm9bHN9whQSitZZ44d');
+
+    // ADMIN_PUBKEY takes highest precedence
+    process.env.ADMIN_PUBKEY = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+    expect(loadConfig().adminPubkey).toBe('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin');
+  });
 });

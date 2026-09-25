@@ -2,11 +2,13 @@ import { createHash, randomBytes } from 'node:crypto';
 import { randomNonce, verifyMessageSignature } from './crypto.js';
 
 type Challenge = {
+  pubkey: string;
   message: string;
   expiresAt: number;
 };
 
 type Session = {
+  owner: string;
   expiresAt: number;
 };
 
@@ -21,15 +23,23 @@ function tokenHash(token: string): string {
 export class SessionManager {
   private readonly challenges = new Map<string, Challenge>();
   private readonly sessions = new Map<string, Session>();
+  private readonly allowedOwners: string[];
 
   constructor(
-    private readonly ownerPubkey: string,
-    private readonly ttlSeconds: number,
-  ) {}
+    allowedOwners: string | string[] = [],
+    private readonly ttlSeconds: number = 1800,
+    private readonly adminPubkey?: string,
+  ) {
+    this.allowedOwners = Array.isArray(allowedOwners)
+      ? allowedOwners
+      : allowedOwners ? [allowedOwners] : [];
+  }
 
   createChallenge(pubkey: string, origin: string): { challengeId: string; message: string; expiresAt: string } | null {
     this.prune();
-    if (pubkey !== this.ownerPubkey) return null;
+    if (this.allowedOwners.length > 0 && !this.allowedOwners.includes(pubkey)) {
+      return null;
+    }
 
     while (this.challenges.size >= MAX_CHALLENGES) {
       const oldest = this.challenges.keys().next().value as string | undefined;
@@ -42,7 +52,7 @@ export class SessionManager {
     const message = [
       'nexusPay login',
       `Origin: ${origin}`,
-      `Wallet: ${this.ownerPubkey}`,
+      `Wallet: ${pubkey}`,
       `Nonce: ${randomNonce(32)}`,
       `Issued At: ${new Date().toISOString()}`,
       `Expires At: ${new Date(expiresAt).toISOString()}`,
@@ -50,7 +60,7 @@ export class SessionManager {
       'This signature only establishes a login session. It does not authorize a transaction.',
     ].join('\n');
 
-    this.challenges.set(challengeId, { message, expiresAt });
+    this.challenges.set(challengeId, { pubkey, message, expiresAt });
     return { challengeId, message, expiresAt: new Date(expiresAt).toISOString() };
   }
 
@@ -58,11 +68,11 @@ export class SessionManager {
     challengeId: string;
     pubkey: string;
     signature: string;
-  }): { token: string; expiresAt: string } | null {
+  }): { token: string; expiresAt: string; owner: string } | null {
     this.prune();
     const challenge = this.challenges.get(input.challengeId);
     this.challenges.delete(input.challengeId);
-    if (!challenge || input.pubkey !== this.ownerPubkey || challenge.expiresAt <= Date.now()) {
+    if (!challenge || input.pubkey !== challenge.pubkey || challenge.expiresAt <= Date.now()) {
       return null;
     }
     if (
@@ -77,15 +87,16 @@ export class SessionManager {
 
     const token = randomBytes(32).toString('base64url');
     const expiresAt = Date.now() + this.ttlSeconds * 1000;
-    this.sessions.set(tokenHash(token), { expiresAt });
-    return { token, expiresAt: new Date(expiresAt).toISOString() };
+    this.sessions.set(tokenHash(token), { owner: input.pubkey, expiresAt });
+    return { token, expiresAt: new Date(expiresAt).toISOString(), owner: input.pubkey };
   }
 
-  getSession(token: string): { owner: string; expiresAt: string } | null {
+  getSession(token: string): { owner: string; expiresAt: string; isAdmin: boolean } | null {
     this.prune();
     const session = this.sessions.get(tokenHash(token));
     if (!session || session.expiresAt <= Date.now()) return null;
-    return { owner: this.ownerPubkey, expiresAt: new Date(session.expiresAt).toISOString() };
+    const isAdmin = Boolean(this.adminPubkey && session.owner === this.adminPubkey);
+    return { owner: session.owner, expiresAt: new Date(session.expiresAt).toISOString(), isAdmin };
   }
 
   revoke(token: string): void {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { LAMPORTS_PER_SOL, type PaymentRequest, type RequestStatus } from '@nexus/shared';
 import { Card, Empty, Mono, Pill, shorten } from './ui.js';
 
@@ -84,11 +85,12 @@ function RequestRow(props: {
           <div className="approval-bar">
             <button
               type="button"
-              className="primary"
+              className="primary button-with-icon"
               disabled={!props.canApprove || props.busy}
               onClick={() => props.onApprove(request)}
             >
               {props.busy ? 'Waiting for wallet' : 'Approve'}
+              <ShieldCheck size={15} aria-hidden="true" />
             </button>
             <span className="hint">
               Expires {new Date(request.approval.payload.expiresAt).toLocaleTimeString()}

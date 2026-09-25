@@ -43,11 +43,13 @@ async function main(): Promise<void> {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
+  const ctx = createContext(config);
+
   app.addHook('preHandler', async (req, reply) => {
     if (!config.authRequired || !req.url.startsWith('/api/')) return;
     const pathname = req.url.split('?', 1)[0] ?? req.url;
     const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
-    if (mutating && req.headers.origin !== config.allowedOrigins[0]) {
+    if (mutating && req.headers.origin && !config.allowedOrigins.includes(req.headers.origin) && !LOCAL_ORIGIN.test(req.headers.origin)) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
     if (PUBLIC_AUTH_PATHS.has(pathname)) return;
@@ -67,8 +69,8 @@ async function main(): Promise<void> {
     return reply.status(500).send({ error: 'internal_error', message });
   });
 
-  const ctx = createContext(config);
   await registerRoutes(app, ctx);
+  app.log.info({ masterFunder: ctx.masterFunderPubkey, adminPubkey: config.adminPubkey }, 'Master Funder loaded');
 
   if (config.authRequired) {
     const webRoot = resolve(process.cwd(), '../web/dist');

@@ -6,6 +6,12 @@ export type AgentState = {
   models: { stage1: string; stage2: string; mode: string };
   owner: string | null;
   ownerPinned: boolean;
+  isAdmin?: boolean;
+  claimedInitialFunding?: boolean;
+  masterFunder?: {
+    pubkey: string;
+    lamports: number | null;
+  } | null;
   agent: {
     agentId: string;
     pubkey: string;
@@ -28,6 +34,7 @@ export type AuthSession = {
   authenticated: boolean;
   owner: string | null;
   expiresAt: string | null;
+  isAdmin?: boolean;
 };
 
 export class ApiError extends Error {
@@ -184,6 +191,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ sol }),
     }),
+
+  claimSeed: () =>
+    request<{ signature: string; lamports: number; claimedInitialFunding: boolean }>(
+      '/api/agent/claim-seed',
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
 
   command: (prompt: string, idempotencyKey?: string) =>
     request<{ request: PaymentRequest }>('/api/commands', {
