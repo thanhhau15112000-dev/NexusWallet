@@ -1,6 +1,7 @@
 import { LAMPORTS_PER_SOL } from '@nexus/shared';
+import { Bot } from 'lucide-react';
 import type { AgentState } from '../api.js';
-import { Card, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 
 export function AgentPanel(props: {
   state: AgentState;
@@ -14,6 +15,7 @@ export function AgentPanel(props: {
   return (
     <Card
       title="Agent wallet"
+      titleIcon={<Bot size={16} />}
       className="panel-agent wallet-hero"
       actions={<Pill tone="wallet">{props.state.cluster}</Pill>}
     >
@@ -36,9 +38,12 @@ export function AgentPanel(props: {
           <div className="agent-meta">
             <div>
               <span className="wallet-label">Address</span>
-              <a href={agent.explorerUrl} target="_blank" rel="noreferrer" className="mono">
-                {shorten(agent.pubkey, 6)}
-              </a>
+              <div className="address-line">
+                <a href={agent.explorerUrl} target="_blank" rel="noreferrer" className="mono">
+                  {shorten(agent.pubkey, 6)}
+                </a>
+                <CopyAddressButton value={agent.pubkey} label="Copy agent wallet address" />
+              </div>
             </div>
             <div>
               <span className="wallet-label">Agent</span>

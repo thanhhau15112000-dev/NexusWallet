@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Send } from 'lucide-react';
 import type { AgentState } from '../api.js';
 import { Card, Pill } from './ui.js';
 
@@ -54,8 +55,13 @@ export function ConsolePanel(props: {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
-        <button type="submit" className="primary" disabled={props.busy || !prompt.trim()}>
+        <button
+          type="submit"
+          className="primary button-with-icon"
+          disabled={props.busy || !prompt.trim()}
+        >
           {props.busy ? 'Running' : 'Run'}
+          <Send size={15} aria-hidden="true" />
         </button>
       </form>
 

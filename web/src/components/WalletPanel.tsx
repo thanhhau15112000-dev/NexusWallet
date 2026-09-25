@@ -1,6 +1,7 @@
 import type { AgentState } from '../api.js';
+import { Wallet } from 'lucide-react';
 import { PHANTOM_INSTALL_URL } from '../phantom.js';
-import { Card, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 
 export function WalletPanel(props: {
   state: AgentState;
@@ -17,6 +18,7 @@ export function WalletPanel(props: {
   return (
     <Card
       title="Owner wallet"
+      titleIcon={<Wallet size={16} />}
       className="panel-owner"
       actions={
         wallet ? (
@@ -42,7 +44,10 @@ export function WalletPanel(props: {
         <div className="wallet-summary">
           <div>
             <span className="eyebrow">Connected</span>
-            <Mono title={wallet}>{shorten(wallet, 6)}</Mono>
+            <div className="address-line">
+              <Mono title={wallet}>{shorten(wallet, 6)}</Mono>
+              <CopyAddressButton value={wallet} label="Copy owner wallet address" />
+            </div>
           </div>
           {boundToThisWallet ? (
             <Pill tone="ok">Owner</Pill>

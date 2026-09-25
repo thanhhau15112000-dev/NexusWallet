@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Activity } from 'lucide-react';
 import {
   buildApprovalMessage,
   type AuditEntryView,
@@ -331,7 +332,7 @@ export function App() {
           </div>
         </div>
         <div className={`service-state ${offline ? 'is-offline' : ''}`}>
-          <span className="status-dot" aria-hidden="true" />
+          <Activity size={15} aria-hidden="true" />
           {offline ? 'Offline' : 'Ready'}
         </div>
       </header>

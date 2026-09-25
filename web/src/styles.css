@@ -103,6 +103,13 @@ button.primary:active:not(:disabled) {
   background: #0e5948;
 }
 
+.button-with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
 button.ghost {
   background: transparent;
 }
@@ -195,15 +202,13 @@ input::placeholder {
   color: var(--bad);
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--ok);
+.service-state svg {
+  flex: 0 0 auto;
+  color: var(--ok);
 }
 
-.service-state.is-offline .status-dot {
-  background: var(--bad);
+.service-state.is-offline svg {
+  color: var(--bad);
 }
 
 .workspace-grid {
@@ -234,10 +239,19 @@ input::placeholder {
 }
 
 .card-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.card-title-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--accent);
 }
 
 .card-actions {
@@ -268,6 +282,10 @@ input::placeholder {
 .wallet-hero .card-head h2 {
   color: #f7fffc;
   font-size: 15px;
+}
+
+.wallet-hero .card-title-icon {
+  color: #bcebdc;
 }
 
 .wallet-hero .card-body {
@@ -356,6 +374,60 @@ input::placeholder {
 
 .wallet-hero .agent-meta a {
   text-decoration-color: rgb(241 255 249 / 45%);
+}
+
+.address-line,
+.copy-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.icon-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-color: var(--line);
+  padding: 0;
+  color: var(--muted);
+}
+
+.icon-button:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.copy-status {
+  color: var(--ok);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.copy-status.is-error {
+  color: var(--bad);
+}
+
+.wallet-hero .icon-button {
+  border-color: rgb(238 255 248 / 28%);
+  background: transparent;
+  color: #f1fff9;
+}
+
+.wallet-hero .icon-button:hover:not(:disabled) {
+  border-color: rgb(238 255 248 / 55%);
+  background: rgb(238 255 248 / 10%);
+  color: #ffffff;
+}
+
+.wallet-hero .copy-status {
+  color: #e3fff4;
+}
+
+.wallet-hero .copy-status.is-error {
+  color: #ffe8e8;
 }
 
 .wallet-hero .hint.warn {
