@@ -1,18 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getMintMock, getOrCreateAssociatedTokenAccountMock, splTransferMock } = vi.hoisted(() => ({
+const {
+  getMintMock,
+  getAccountMock,
+  getAssociatedTokenAddressMock,
+  createAtaMock,
+  createTransferCheckedMock,
+  tokenProgramId,
+  token2022ProgramId,
+} = vi.hoisted(() => ({
   getMintMock: vi.fn(),
-  getOrCreateAssociatedTokenAccountMock: vi.fn(),
-  splTransferMock: vi.fn(),
+  getAccountMock: vi.fn(),
+  getAssociatedTokenAddressMock: vi.fn(),
+  createAtaMock: vi.fn(() => ({
+    keys: [],
+    programId: { toBase58: () => '11111111111111111111111111111111' },
+    data: Buffer.alloc(0),
+  })),
+  createTransferCheckedMock: vi.fn(() => ({
+    keys: [],
+    programId: { toBase58: () => '11111111111111111111111111111111' },
+    data: Buffer.alloc(0),
+  })),
+  tokenProgramId: { kind: 'classic-token-program', toBase58: () => '11111111111111111111111111111111' },
+  token2022ProgramId: { kind: 'token-2022-program', toBase58: () => '11111111111111111111111111111111' },
 }));
 
 vi.mock('@solana/spl-token', () => ({
   getMint: getMintMock,
-  getOrCreateAssociatedTokenAccount: getOrCreateAssociatedTokenAccountMock,
-  transfer: splTransferMock,
+  getAccount: getAccountMock,
+  getAssociatedTokenAddress: getAssociatedTokenAddressMock,
+  TOKEN_PROGRAM_ID: tokenProgramId,
+  TOKEN_2022_PROGRAM_ID: token2022ProgramId,
+  ASSOCIATED_TOKEN_PROGRAM_ID: { toBase58: () => '11111111111111111111111111111111' },
+  createAssociatedTokenAccountIdempotentInstruction: createAtaMock,
+  createTransferCheckedInstruction: createTransferCheckedMock,
 }));
 
-import { toBaseUnits, transferSpl, withRpcRetry } from '../src/chain.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
+import { calculatePriorityFee, toBaseUnits, transferSpl, withRpcRetry } from '../src/chain.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -27,6 +53,14 @@ describe('toBaseUnits', () => {
   it('rejects amounts that would be rounded before signing', () => {
     expect(() => toBaseUnits(1.239, 2)).toThrow(/more precision/i);
     expect(() => toBaseUnits(0.000000001, 2)).toThrow(/more precision/i);
+  });
+});
+
+describe('calculatePriorityFee', () => {
+  it('uses a bounded median and returns zero for an empty sample', () => {
+    expect(calculatePriorityFee([])).toBe(0);
+    expect(calculatePriorityFee([{ prioritizationFee: 90 }, { prioritizationFee: 10 }, { prioritizationFee: 30 }])).toBe(30);
+    expect(calculatePriorityFee([{ prioritizationFee: 999_999 }], 100_000)).toBe(100_000);
   });
 });
 
@@ -83,19 +117,77 @@ describe('withRpcRetry', () => {
 describe('transferSpl submission retry safety', () => {
   it('does not re-submit after an ambiguous timeout', async () => {
     getMintMock.mockResolvedValue({ decimals: 0 });
-    getOrCreateAssociatedTokenAccountMock.mockResolvedValue({ address: 'token-account', amount: '10' });
-    splTransferMock.mockRejectedValue(new Error('timeout after broadcast'));
+    getAccountMock.mockResolvedValue({ amount: 10n });
+    getAssociatedTokenAddressMock.mockResolvedValue(new PublicKey('11111111111111111111111111111111'));
+    const payer = Keypair.generate();
+    const connection = {
+      getAccountInfo: vi.fn().mockResolvedValue({ owner: { equals: (value: { kind?: string }) => value.kind === 'classic-token-program' } }),
+      getLatestBlockhash: vi.fn().mockResolvedValue({ blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1 }),
+      getRecentPrioritizationFees: vi.fn().mockResolvedValue([]),
+      simulateTransaction: vi.fn().mockResolvedValue({ value: { err: null, logs: [] } }),
+      sendTransaction: vi.fn().mockRejectedValue(new Error('timeout after broadcast')),
+    };
 
     await expect(
       transferSpl({
-        connection: {} as never,
-        payer: { publicKey: { toBase58: () => '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin' } } as never,
-        recipient: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin',
-        mint: 'So11111111111111111111111111111111111111112',
+        connection: connection as never,
+        payer,
+        recipient: payer.publicKey.toBase58(),
+        mint: payer.publicKey.toBase58(),
         amount: 1,
       }),
     ).rejects.toThrow('timeout after broadcast');
 
-    expect(splTransferMock).toHaveBeenCalledTimes(1);
+    expect(connection.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('selects Token-2022 for mint lookup and transfer instructions', async () => {
+    getMintMock.mockResolvedValue({ decimals: 0 });
+    getAccountMock.mockResolvedValue({ amount: 10n });
+    getAssociatedTokenAddressMock.mockResolvedValue(new PublicKey('11111111111111111111111111111111'));
+    const payer = Keypair.generate();
+    const connection = {
+      getAccountInfo: vi.fn().mockResolvedValue({ owner: { equals: (value: { kind?: string }) => value === token2022ProgramId } }),
+      getLatestBlockhash: vi.fn().mockResolvedValue({ blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1 }),
+      getRecentPrioritizationFees: vi.fn().mockResolvedValue([]),
+      simulateTransaction: vi.fn().mockResolvedValue({ value: { err: null, logs: [] } }),
+      sendTransaction: vi.fn().mockResolvedValue('signature'),
+      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } }),
+      getSignatureStatus: vi.fn().mockResolvedValue({ value: { slot: 7 } }),
+    };
+
+    const result = await transferSpl({
+      connection: connection as never,
+      payer,
+      recipient: payer.publicKey.toBase58(),
+      mint: payer.publicKey.toBase58(),
+      amount: 1,
+    });
+
+    expect(result).toEqual({ signature: 'signature', slot: 7 });
+    expect(getMintMock).toHaveBeenCalledWith(
+      connection,
+      expect.any(PublicKey),
+      'confirmed',
+      token2022ProgramId,
+    );
+    expect(createAtaMock).toHaveBeenCalledWith(
+      payer.publicKey,
+      expect.any(PublicKey),
+      expect.any(PublicKey),
+      expect.any(PublicKey),
+      token2022ProgramId,
+      expect.anything(),
+    );
+    expect(createTransferCheckedMock).toHaveBeenCalledWith(
+      expect.any(PublicKey),
+      expect.any(PublicKey),
+      expect.any(PublicKey),
+      payer.publicKey,
+      1n,
+      0,
+      [],
+      token2022ProgramId,
+    );
   });
 });
