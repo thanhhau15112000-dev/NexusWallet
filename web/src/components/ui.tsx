@@ -4,6 +4,7 @@ import { Copy } from 'lucide-react';
 export function Card(props: {
   title: string;
   titleIcon?: ReactNode;
+  titleAction?: ReactNode;
   actions?: ReactNode;
   className?: string;
   children: ReactNode;
@@ -18,6 +19,9 @@ export function Card(props: {
             </span>
           ) : null}
           {props.title}
+          {props.titleAction ? (
+            <span className="card-title-action">{props.titleAction}</span>
+          ) : null}
         </h2>
         {props.actions ? <div className="card-actions">{props.actions}</div> : null}
       </header>
