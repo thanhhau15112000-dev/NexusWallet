@@ -19,6 +19,7 @@ const PUBLIC_AUTH_PATHS = new Set([
   '/api/auth/session',
   '/api/auth/logout',
 ]);
+const PUBLIC_ACTION_PATH_PREFIX = '/api/actions/';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -49,10 +50,17 @@ async function main(): Promise<void> {
     if (!config.authRequired || !req.url.startsWith('/api/')) return;
     const pathname = req.url.split('?', 1)[0] ?? req.url;
     const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
-    if (mutating && req.headers.origin && !config.allowedOrigins.includes(req.headers.origin) && !LOCAL_ORIGIN.test(req.headers.origin)) {
+    const isPublicAction = pathname.startsWith(PUBLIC_ACTION_PATH_PREFIX);
+    if (
+      mutating &&
+      !isPublicAction &&
+      req.headers.origin &&
+      !config.allowedOrigins.includes(req.headers.origin) &&
+      !LOCAL_ORIGIN.test(req.headers.origin)
+    ) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
-    if (PUBLIC_AUTH_PATHS.has(pathname)) return;
+    if (PUBLIC_AUTH_PATHS.has(pathname) || isPublicAction) return;
 
     const cookieValue = req.cookies?.[SESSION_COOKIE_NAME];
     const unsigned = cookieValue ? req.unsignCookie(cookieValue) : null;
