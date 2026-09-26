@@ -16,7 +16,10 @@ import { buildApprovalMessage, type PaymentRequest } from '@nexus/shared';
 const BASE = process.env.AGENT_API ?? 'http://127.0.0.1:8787';
 const OFF_ALLOWLIST = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
 
-const owner = nacl.sign.keyPair();
+const configuredOwnerSecret = process.env.E2E_OWNER_SECRET;
+const owner = configuredOwnerSecret
+  ? nacl.sign.keyPair.fromSecretKey(bs58.decode(configuredOwnerSecret))
+  : nacl.sign.keyPair();
 const ownerPubkey = bs58.encode(owner.publicKey);
 
 let failures = 0;
@@ -32,7 +35,11 @@ async function call<T>(
 ): Promise<{ status: number; body: T & { error?: string; message?: string } }> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'content-type': 'application/json',
+      ...(path !== '/api/health' ? { 'x-owner-pubkey': ownerPubkey } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   const text = await res.text();
   return { status: res.status, body: (text ? JSON.parse(text) : {}) as T & { error?: string } };

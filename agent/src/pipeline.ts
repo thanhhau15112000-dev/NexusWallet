@@ -16,7 +16,13 @@ import {
   type PaymentRequest,
   type ResolvedAction,
 } from '@nexus/shared';
-import { explorerTxUrl, getLamportBalance, transferSol, transferSpl } from './chain.js';
+import {
+  TransactionSimulationError,
+  explorerTxUrl,
+  getLamportBalance,
+  transferSol,
+  transferSpl,
+} from './chain.js';
 import type { AppContext } from './context.js';
 import { randomNonce } from './crypto.js';
 
@@ -312,6 +318,12 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
 
     return ctx.store.putRequest({ ...request, status: 'confirmed', execution });
   } catch (err) {
+    if (err instanceof TransactionSimulationError) {
+      ctx.audit.record('tx.simulation_failed', request.id, {
+        error: err.simulationError,
+        logs: err.logs,
+      });
+    }
     ctx.audit.record('tx.failed', request.id, { error: errorMessage(err) });
     return ctx.store.putRequest({
       ...request,

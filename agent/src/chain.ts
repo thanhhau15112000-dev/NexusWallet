@@ -4,22 +4,56 @@
  */
 import {
   Connection,
+  ComputeBudgetProgram,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
-  Transaction,
-  sendAndConfirmTransaction,
+  TransactionMessage,
+  TransactionInstruction,
+  VersionedTransaction,
 } from '@solana/web3.js';
 import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
+  getAccount,
+  getAssociatedTokenAddress,
   getMint,
-  getOrCreateAssociatedTokenAccount,
-  transfer as splTransfer,
 } from '@solana/spl-token';
 
 export type Cluster = 'devnet';
 
 export type TransferResult = { signature: string; slot: number | null };
+
+export type PriorityFeeSample = { prioritizationFee: number };
+
+/** A bounded median keeps a single congested validator from setting an extreme fee. */
+export function calculatePriorityFee(samples: PriorityFeeSample[], maxMicroLamports = 100_000): number {
+  const fees = samples
+    .map((sample) => sample.prioritizationFee)
+    .filter((fee) => Number.isFinite(fee) && fee >= 0)
+    .sort((a, b) => a - b);
+  if (fees.length === 0) return 0;
+  const middle = Math.floor(fees.length / 2);
+  const median = fees.length % 2 === 0
+    ? Math.round(((fees[middle - 1] ?? 0) + (fees[middle] ?? 0)) / 2)
+    : (fees[middle] ?? 0);
+  return Math.min(Math.max(0, median), maxMicroLamports);
+}
+
+export class TransactionSimulationError extends Error {
+  readonly code = 'simulation_failed';
+
+  constructor(
+    readonly simulationError: unknown,
+    readonly logs: string[],
+  ) {
+    super(`transaction simulation failed: ${JSON.stringify(simulationError)}${logs.length ? `; ${logs.join(' | ')}` : ''}`);
+  }
+}
 
 /** Upper bound for a single-signature transfer fee, used for pre-flight checks. */
 const FEE_BUFFER_LAMPORTS = 10_000;
@@ -69,6 +103,68 @@ export function isValidAddress(address: string): boolean {
   }
 }
 
+type BuiltTransaction = {
+  transaction: VersionedTransaction;
+  blockhash: string;
+  lastValidBlockHeight: number;
+};
+
+async function buildVersionedTransaction(params: {
+  connection: Connection;
+  payer: PublicKey;
+  instructions: TransactionInstruction[];
+  computeUnitLimit: number;
+}): Promise<BuiltTransaction> {
+  const [latest, recentFees] = await Promise.all([
+    withRpcRetry(() => params.connection.getLatestBlockhash('confirmed')),
+    withRpcRetry(() => params.connection.getRecentPrioritizationFees()),
+  ]);
+  const priorityFee = calculatePriorityFee(recentFees);
+  const message = new TransactionMessage({
+    payerKey: params.payer,
+    recentBlockhash: latest.blockhash,
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: params.computeUnitLimit }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee }),
+      ...params.instructions,
+    ],
+  }).compileToV0Message();
+  return {
+    transaction: new VersionedTransaction(message),
+    blockhash: latest.blockhash,
+    lastValidBlockHeight: latest.lastValidBlockHeight,
+  };
+}
+
+async function simulateAndSend(
+  connection: Connection,
+  payer: Keypair,
+  built: BuiltTransaction,
+): Promise<string> {
+  const simulation = await withRpcRetry(() => connection.simulateTransaction(built.transaction));
+  if (simulation.value.err) {
+    throw new TransactionSimulationError(simulation.value.err, simulation.value.logs ?? []);
+  }
+
+  built.transaction.sign([payer]);
+  // Do not retry this call: a timeout can happen after the validator accepted
+  // the transaction, and resubmitting a freshly signed transfer could duplicate it.
+  const signature = await connection.sendTransaction(built.transaction, {
+    maxRetries: 3,
+    skipPreflight: true,
+  });
+  const confirmation = await withRpcRetry(() =>
+    connection.confirmTransaction(
+      { signature, blockhash: built.blockhash, lastValidBlockHeight: built.lastValidBlockHeight },
+      'confirmed',
+    ),
+  );
+  if (confirmation.value.err) {
+    throw new Error(`transaction confirmation failed: ${JSON.stringify(confirmation.value.err)}`);
+  }
+  return signature;
+}
+
 export function explorerTxUrl(signature: string, cluster: Cluster): string {
   return `https://explorer.solana.com/tx/${signature}?cluster=${cluster}`;
 }
@@ -98,17 +194,19 @@ export async function transferSol(params: {
     );
   }
 
-  const tx = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: payer.publicKey,
-      toPubkey: new PublicKey(recipient),
-      lamports,
-    }),
-  );
-
-  const signature = await withRpcRetry(() =>
-    sendAndConfirmTransaction(connection, tx, [payer], { commitment: 'confirmed', maxRetries: 3 }),
-  );
+  const built = await buildVersionedTransaction({
+    connection,
+    payer: payer.publicKey,
+    computeUnitLimit: 50_000,
+    instructions: [
+      SystemProgram.transfer({
+        fromPubkey: payer.publicKey,
+        toPubkey: new PublicKey(recipient),
+        lamports,
+      }),
+    ],
+  });
+  const signature = await simulateAndSend(connection, payer, built);
 
   const status = await connection.getSignatureStatus(signature);
   return { signature, slot: status.value?.slot ?? null };
@@ -146,33 +244,64 @@ export async function transferSpl(params: {
 }): Promise<TransferResult> {
   const { connection, payer, recipient, mint, amount } = params;
   const mintKey = new PublicKey(mint);
-  const info = await withRpcRetry(() => getMint(connection, mintKey));
+  const mintAccount = await withRpcRetry(() => connection.getAccountInfo(mintKey, 'confirmed'));
+  if (!mintAccount) throw new Error(`mint account ${mint} does not exist`);
+  const programId = mintAccount.owner.equals(TOKEN_2022_PROGRAM_ID)
+    ? TOKEN_2022_PROGRAM_ID
+    : mintAccount.owner.equals(TOKEN_PROGRAM_ID)
+      ? TOKEN_PROGRAM_ID
+      : null;
+  if (!programId) throw new Error(`mint ${mint} is owned by an unsupported token program`);
+  const info = await withRpcRetry(() => getMint(connection, mintKey, 'confirmed', programId));
   const baseUnits = toBaseUnits(amount, info.decimals);
 
-  const source = await getOrCreateAssociatedTokenAccount(connection, payer, mintKey, payer.publicKey);
-  const sourceAmount = BigInt(source.amount);
+  const sourceAta = await getAssociatedTokenAddress(
+    mintKey,
+    payer.publicKey,
+    false,
+    programId,
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+  );
+  const source = await withRpcRetry(() => getAccount(connection, sourceAta, 'confirmed', programId));
+  const sourceAmount = BigInt(source.amount.toString());
   if (sourceAmount < baseUnits) {
     throw new Error(`agent token account holds ${sourceAmount} base units, needs ${baseUnits}`);
   }
 
-  const destination = await getOrCreateAssociatedTokenAccount(
-    connection,
-    payer,
+  const recipientKey = new PublicKey(recipient);
+  const destinationAta = await getAssociatedTokenAddress(
     mintKey,
-    new PublicKey(recipient),
+    recipientKey,
+    false,
+    programId,
+    ASSOCIATED_TOKEN_PROGRAM_ID,
   );
-
-  // The SPL helper builds a fresh transaction on every call. An outer retry
-  // after a timeout could therefore submit a second transfer if the first was
-  // accepted but its confirmation response was lost.
-  const signature = await splTransfer(
+  const built = await buildVersionedTransaction({
     connection,
-    payer,
-    source.address,
-    destination.address,
-    payer,
-    baseUnits,
-  );
+    payer: payer.publicKey,
+    computeUnitLimit: 150_000,
+    instructions: [
+      createAssociatedTokenAccountIdempotentInstruction(
+        payer.publicKey,
+        destinationAta,
+        recipientKey,
+        mintKey,
+        programId,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      ),
+      createTransferCheckedInstruction(
+        sourceAta,
+        mintKey,
+        destinationAta,
+        payer.publicKey,
+        baseUnits,
+        info.decimals,
+        [],
+        programId,
+      ),
+    ],
+  });
+  const signature = await simulateAndSend(connection, payer, built);
 
   const status = await connection.getSignatureStatus(signature);
   return { signature, slot: status.value?.slot ?? null };
