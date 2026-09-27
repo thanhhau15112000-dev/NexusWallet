@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ClipboardList } from 'lucide-react';
 import type { AuditEntryView } from '@nexus/shared';
 import { Card, Empty, Mono } from './ui.js';
 
@@ -8,6 +9,7 @@ export function AuditPanel(props: { entries: AuditEntryView[] }) {
   return (
     <Card
       title="Audit"
+      titleIcon={<ClipboardList size={16} />}
       className="panel-audit"
       actions={
         <span className="version">{props.entries.length}</span>

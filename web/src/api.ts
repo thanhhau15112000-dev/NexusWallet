@@ -1,4 +1,11 @@
-import type { AuditEntryView, PaymentRequest, Policy } from '@nexus/shared';
+import type {
+  AuditEntryView,
+  PaymentRequest,
+  Policy,
+  TaskCapabilityRecord,
+  TaskPaymentRecord,
+  TaskReceiptRecord,
+} from '@nexus/shared';
 
 export type AgentState = {
   cluster: string;
@@ -6,6 +13,13 @@ export type AgentState = {
   models: { stage1: string; stage2: string; mode: string };
   owner: string | null;
   ownerPinned: boolean;
+  isAdmin?: boolean;
+  claimedInitialFunding?: boolean;
+  masterFunder?: {
+    pubkey: string;
+    lamports: number | null;
+  } | null;
+  mockWorker?: { pubkey: string } | null;
   agent: {
     agentId: string;
     pubkey: string;
@@ -28,6 +42,7 @@ export type AuthSession = {
   authenticated: boolean;
   owner: string | null;
   expiresAt: string | null;
+  isAdmin?: boolean;
 };
 
 export class ApiError extends Error {
@@ -41,72 +56,18 @@ export class ApiError extends Error {
   }
 }
 
-const API_OVERRIDE_KEY = 'nexus.apiBase';
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-
-function normaliseApiBase(value: string): string | null {
+/**
+ * The dashboard always calls the agent on its own origin: hosted mode serves both from one
+ * origin, and in development Vite proxies /api to the agent (vite.config.ts). A cross-origin
+ * API base would drop the session cookie, so every call after login would return 401.
+ */
+export function resolveApiBase(): string {
   try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    if (
-      !['http:', 'https:'].includes(url.protocol) ||
-      !LOOPBACK_HOSTS.has(host) ||
-      url.username ||
-      url.password ||
-      (url.pathname !== '' && url.pathname !== '/') ||
-      url.search ||
-      url.hash
-    ) {
-      return null;
-    }
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
-function readStoredApiBase(): string | null {
-  try {
-    const stored = window.localStorage.getItem(API_OVERRIDE_KEY);
-    if (!stored) return null;
-    const valid = normaliseApiBase(stored);
-    if (valid) return valid;
-    window.localStorage.removeItem(API_OVERRIDE_KEY);
+    // Older builds persisted a cross-origin API base override; it breaks sessions, so drop it.
+    window.localStorage.removeItem('nexus.apiBase');
   } catch {
     // Private browsing and restricted iframe contexts can deny storage access.
   }
-  return null;
-}
-
-function persistApiBase(value: string): void {
-  try {
-    window.localStorage.setItem(API_OVERRIDE_KEY, value);
-  } catch {
-    // A query override still works for this page even when storage is blocked.
-  }
-}
-
-/**
- * Local Vite and the agent use separate ports. Hosted mode serves both from one
- * origin; Codespaces forwards each port on its own hostname.
- */
-export function resolveApiBase(): string {
-  const fromQuery = new URLSearchParams(window.location.search).get('api');
-  if (fromQuery) {
-    const valid = normaliseApiBase(fromQuery);
-    if (valid) {
-      persistApiBase(valid);
-      return valid;
-    }
-  }
-  const stored = readStoredApiBase();
-  if (stored) return stored;
-
-  const { protocol, hostname } = window.location;
-  if (/-\d+\.(app\.github\.dev|githubpreview\.dev)$/i.test(hostname)) {
-    return `${protocol}//${hostname.replace(/-\d+\./, '-8787.')}`;
-  }
-  if (LOOPBACK_HOSTS.has(hostname.toLowerCase())) return `${protocol}//${hostname}:8787`;
   return window.location.origin;
 }
 
@@ -119,14 +80,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
   });
   const text = await response.text();
-  let body: unknown = {};
+  let body: unknown = null;
   if (text) {
     try {
       body = JSON.parse(text);
     } catch {
-      throw new Error(`agent returned an invalid response (${response.status})`);
+      body = null;
     }
   }
+  // The agent always answers errors with a JSON `error` field. A 5xx without one comes from
+  // the dev proxy (or a hosting layer) when the agent service itself is down.
+  const hasErrorField = Boolean(body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string');
+  if (response.status >= 500 && !hasErrorField) {
+    throw new Error('nexusPay agent service is not reachable. Start it with pnpm dev from the repository root, then reload.');
+  }
+  if (text && body === null) {
+    throw new Error(`agent returned an invalid response (${response.status})`);
+  }
+  body ??= {};
   if (!response.ok) {
     const errorBody =
       body && typeof body === 'object' ? (body as { message?: unknown; error?: unknown }) : {};
@@ -137,8 +108,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export type McpClientConfig = {
+  owner: string;
+  bundlePath: string;
+  bundleBuilt: boolean;
+  buildCommand: string;
+  env: { NEXUS_API_URL: string; NEXUS_AGENT_TOKEN: string };
+  mcpServersJson: string;
+  codexToml: string;
+};
+
 export const api = {
   health: () => request<AgentHealth>('/api/health'),
+
+  mcpConfig: () => request<McpClientConfig>('/api/mcp/config'),
+
+  rotateMcpToken: () =>
+    request<McpClientConfig>('/api/mcp/token/rotate', { method: 'POST', body: JSON.stringify({}) }),
 
   authSession: () => request<AuthSession>('/api/auth/session'),
 
@@ -185,6 +171,12 @@ export const api = {
       body: JSON.stringify({ sol }),
     }),
 
+  claimSeed: () =>
+    request<{ signature: string; lamports: number; claimedInitialFunding: boolean }>(
+      '/api/agent/claim-seed',
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
   command: (prompt: string, idempotencyKey?: string) =>
     request<{ request: PaymentRequest }>('/api/commands', {
       method: 'POST',
@@ -200,4 +192,83 @@ export const api = {
     }),
 
   audit: (limit = 60) => request<{ entries: AuditEntryView[] }>(`/api/audit?limit=${limit}`),
+  tasks: () => request<{ tasks: TaskCapabilityRecord[] }>('/api/tasks'),
+  taskDetail: (taskId: string) =>
+    request<{
+      task: TaskCapabilityRecord;
+      payments: TaskPaymentRecord[];
+      receipts: TaskReceiptRecord[];
+    }>(`/api/tasks/${taskId}`),
+  createTask: (input: {
+    taskId: string;
+    budgetLamports: number;
+    perPaymentCapLamports: number;
+    expiry: number;
+    allowedWorker?: string;
+    allowedServiceId?: string;
+    txSignature?: string;
+    isSimulated?: boolean;
+  }) =>
+    request<{ task: TaskCapabilityRecord }>('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  executeTaskPayment: (
+    taskId: string,
+    input: {
+      paymentId: string;
+      worker: string;
+      serviceId: string;
+      amountLamports: number;
+      requestHash: string;
+      txSignature?: string;
+      isSimulated?: boolean;
+    },
+  ) =>
+    request<{ task: TaskCapabilityRecord; payment: TaskPaymentRecord }>(
+      `/api/tasks/${taskId}/payments`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  settleTaskPayment: (
+    taskId: string,
+    paymentId: string,
+    input: {
+      resultHash: string;
+      workerPubkey: string;
+      workerSignature: string;
+      txSignature?: string;
+      isSimulated?: boolean;
+    },
+  ) =>
+    request<{ payment: TaskPaymentRecord; receipt: TaskReceiptRecord }>(
+      `/api/tasks/${taskId}/payments/${paymentId}/settle`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  closeTaskReceipt: (taskId: string, paymentId: string, txSignature: string) =>
+    request<{ receipt: TaskReceiptRecord }>(
+      `/api/tasks/${taskId}/receipts/${paymentId}/close`,
+      { method: 'POST', body: JSON.stringify({ txSignature }) },
+    ),
+  revokeTask: (taskId: string, txSignature?: string) =>
+    request<{ task: TaskCapabilityRecord }>(`/api/tasks/${taskId}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({ txSignature }),
+    }),
+  refundTask: (taskId: string, txSignature?: string) =>
+    request<{ task: TaskCapabilityRecord; refundedLamports: number }>(
+      `/api/tasks/${taskId}/refund`,
+      { method: 'POST', body: JSON.stringify({ txSignature }) },
+    ),
+  runMockService: (input: { taskId: string; paymentId?: string; serviceId: string; payload?: Record<string, unknown> }) =>
+    request<{
+      serviceId: string;
+      workerPubkey: string;
+      workerSignature: string;
+      requestHash: string;
+      resultHash: string;
+      resultPayload: unknown;
+    }>('/api/tasks/mock-service/run', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };

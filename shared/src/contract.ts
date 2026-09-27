@@ -146,7 +146,7 @@ export function buildApprovalMessage(payload: ApprovalPayload): string {
       : `${payload.amount} tokens of mint ${payload.mint}`;
 
   return [
-    'NexusWallet - agent payment approval',
+    'nexusPay - agent payment approval',
     '',
     `You are authorising ONE transaction by agent "${payload.agentId}".`,
     'This signature is not a transaction. It unlocks a single agent-signed transfer.',
@@ -242,6 +242,8 @@ export type AuditEntry = {
   event: string;
   /** AES-256-GCM ciphertext of the event detail. */
   sealed: { iv: string; tag: string; ciphertext: string };
+  prevHash?: string;
+  hash?: string;
 };
 
 export type AuditEntryView = AuditEntry & { detail: unknown };

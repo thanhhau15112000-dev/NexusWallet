@@ -1,0 +1,21 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+nexus_task_vault = "3N4GYuQXvqhDeFKLWh4GiXdD3pr3PWcNRtkUyxSYPaUK"
+
+[programs.devnet]
+nexus_task_vault = "3N4GYuQXvqhDeFKLWh4GiXdD3pr3PWcNRtkUyxSYPaUK"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "pnpm test"

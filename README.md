@@ -1,6 +1,6 @@
-# NexusWallet
+# nexusPay
 
-Payment Guard for AI agents on Solana Devnet.
+nexusPay is a payment guard for AI agents on Solana Devnet.
 
 An agent gets its own wallet and a spending policy. Transfers inside the policy are signed by the
 agent automatically. Anything outside it is held until the owner signs an approval in Phantom.
@@ -24,7 +24,7 @@ user text prompt
 | Off-allowlist recipient is denied, not escalated | [policy.ts](shared/src/policy.ts) |
 | Approval is bound to request, amount, recipient, policy version, nonce, expiry | [contract.ts](shared/src/contract.ts) |
 | Approval must be signed by the bound owner wallet, single use | [approvals.ts](agent/src/approvals.ts) |
-| Hosted API requires an expiring session created by the pinned owner's Phantom signature | [sessions.ts](agent/src/sessions.ts) |
+| Hosted API requires an expiring session created by a connected Solana wallet signature | [sessions.ts](agent/src/sessions.ts) |
 | Agent private key is AES-256-GCM encrypted at rest, never logged, never in a prompt | [crypto.ts](agent/src/crypto.ts) |
 | Audit payloads sealed with AES-256-GCM, append-only | [audit.ts](agent/src/audit.ts) |
 | Only the official Solana Devnet RPC endpoint is accepted at startup | [config.ts](agent/src/config.ts) |
@@ -36,7 +36,7 @@ or access RPC methods directly.
 
 ## Where things live
 
-Three workspace packages, one file per job. `shared` exists because the dashboard
+Four workspace packages, one file per job. `shared` exists because the dashboard
 has to rebuild the approval message and render policy verdicts itself.
 
 ```
@@ -46,7 +46,7 @@ shared/src/policy.ts     evaluatePolicy - the one function that authorises a sig
 agent/src/server.ts      entry point: Fastify, CORS, signed cookies, hosted dashboard
 agent/src/routes.ts      API endpoints and Phantom login challenge
 agent/src/sessions.ts    one-time login challenges and expiring server-side sessions
-agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny
+agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny (or a structured action -> policy)
 agent/src/approvals.ts   owner signature verification
 agent/src/chain.ts       every Solana RPC call, including the signer
 agent/src/crypto.ts      keystore, AES-256-GCM sealing, ed25519 verification
@@ -58,6 +58,9 @@ web/src/App.tsx          all dashboard state and actions
 web/src/api.ts           typed client, resolves the agent host
 web/src/phantom.ts       provider detection and signMessage
 web/src/components/      one file per panel
+
+mcp/src/tools.ts         MCP tools for personal agents; they call the agent API, never the chain
+mcp/scripts/build.mjs    bundles the MCP server into dist/mcp/nexuspay-mcp.mjs
 
 extension/               Manifest V3 popup, host settings, and Devnet health check
 scripts/build-extension.mjs  creates the unpacked Chrome build under dist/
@@ -90,23 +93,30 @@ The agent runs strictly on loopback (`127.0.0.1`) and accepts requests only from
 (`http://localhost:5173`). Public wildcard bindings (`0.0.0.0`) and non-official/non-Devnet RPC
 URLs are rejected at startup to prevent exposing the agent API or keys to untrusted networks.
 
-### Hosted hackathon demo
+### Hosted demo (Multi-tenant)
 
-The hosted image serves the API and dashboard from one HTTPS origin. It is a single-owner,
-single-instance Devnet demo. Before starting it, configure these environment variables on the host:
+The hosted image serves the API and dashboard from one HTTPS origin. It operates in a multi-tenant
+isolated agent model on Solana Devnet: any connected Phantom wallet receives its own dedicated,
+encrypted agent keypair and policy. Before starting it, configure these environment variables on the host:
 
 - `DEPLOYMENT_MODE=hosted`, `HOST=0.0.0.0`, and `AGENT_DATA_DIR=/data`.
-- `OWNER_PUBKEY` to the exact Phantom public key allowed to sign in.
+- `ADMIN_PUBKEY` (or `OWNER_PUBKEY`) to the administrator's Phantom public key.
+- `ALLOWED_OWNERS` (optional) comma-separated list of allowed Phantom public keys. Left empty, any Phantom wallet can connect.
 - `WEB_ORIGIN` to the dashboard's HTTPS origin, with no path or trailing slash.
 - `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, and
   `AUDIT_ENCRYPTION_PASSPHRASE` as three distinct random values of at least 32 characters.
-- Persist `/data` across restarts so the agent key, policy, request state, and audit log survive.
+- Mount a persistent disk to `/data` across restarts (e.g. Render Persistent Disk or Docker volume)
+  so user agent keys, policies, master funder state, and audit logs survive service redeploys.
 
 The container expects TLS to terminate at the hosting platform or a reverse proxy. Keep its
 8787 port private behind that HTTPS origin. Sessions and login challenges are held in memory,
 and the JSON store is for one replica; do not run multiple app instances. A private source repo
 does not make the running backend private: the HTTPS endpoint is reachable publicly, while API
-access is limited by the owner signature and session cookie.
+access is limited by a valid wallet signature and session cookie.
+
+Seed claims persist the exact signed transfer before submission and resume that same transaction
+after a restart. If the transaction expires and the RPC cannot establish its outcome, the claim stays
+pending rather than risking a second payment; an operator must reconcile it before clearing that state.
 
 `infra/docker-compose.yml` binds port 8787 to host loopback for a reverse proxy. Use the same
 hosted environment values when running it; the local `.env.example` passphrases are rejected in
@@ -162,20 +172,92 @@ over a tampered message, a replayed approval, and an approval issued under a sta
 It binds its own throwaway key as the owner, so reconnect Phantom afterwards.
 
 ```bash
-pnpm test        # policy, approval and fallback-pipeline unit tests
+pnpm test        # policy, approval, pipeline and MCP tool tests
 pnpm build       # web bundle + workspace typecheck
 ```
 
 One `tsconfig.json`, one lockfile, one `.env` at the root. There is no build step for the
 agent: `tsx` runs the TypeScript directly, and `pnpm build` is what proves it compiles.
 
+## Use it from a personal agent (MCP)
+
+`mcp/` is a stdio MCP server that lets Claude Desktop, Claude Code, Cursor or any MCP client use
+the agent wallet. The client is the planner: it sends a structured action to
+`POST /api/agent/intents`, which skips the two model stages and goes straight to `evaluatePolicy`.
+Nothing else changes. Inside the policy the agent signs, above the limit the request waits for the
+owner's Phantom approval in the dashboard, and off-allowlist recipients are denied.
+
+| Tool | What it does |
+| --- | --- |
+| `nexuspay_get_status` | wallet address, SOL balance, per-transaction limit, allowlist labels |
+| `nexuspay_list_requests` / `nexuspay_get_request` | request status, verdict, Explorer link |
+| `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | propose a transfer; the policy decides |
+
+There is no tool to change the policy, bind an owner or approve a request.
+
+This build is **local only**: it accepts a loopback `NEXUS_API_URL` and authenticates with
+`NEXUS_AGENT_TOKEN`, a per-owner token the agent service issues (`nxp_<owner>_<secret>`, stored in
+`agent/data/users/<owner>/mcp-token`). The MCP server sends it as `Authorization: Bearer`. The token
+only reaches four routes (status, request list, request detail, intents); policy, approvals, owner
+binding and funding still need the owner's wallet session. Hosted access is not implemented.
+
+**Security note on token storage:** The token is stored in plaintext on disk under
+`agent/data/users/<owner>/mcp-token`, sharing the same trust boundary as the agent's encrypted keystore.
+While POSIX permissions (`0600`) are applied on Unix systems, mode `0600` has no effect on Windows,
+where file access relies on Windows ACLs.
+
+### Connect an agent (Zero-Config)
+
+1. Start the stack: `pnpm dev` (this automatically runs `pnpm mcp:build`).
+2. Sign in to the dashboard (`http://localhost:5173`) with your Phantom wallet once to create the owner tenant and MCP token.
+3. Connect your AI agent:
+   - **Claude Code or Cursor:** Open the client **in the repository root** (not a subfolder: the committed entry uses the relative path `dist/mcp/nexuspay-mcp.mjs`) and approve the project's `.mcp.json` / `.cursor/mcp.json`. No secrets or paths to copy. If you open it elsewhere, register the server with an absolute path instead: Claude Code `claude mcp add -s user nexuspay -- node <absolute path to dist/mcp/nexuspay-mcp.mjs>`, Cursor: paste the JSON from `pnpm mcp:config` into `~/.cursor/mcp.json`. (`pnpm mcp:install` covers Codex, Claude Desktop and Antigravity only.)
+   - **Codex, Claude Desktop or Antigravity:** Run `pnpm mcp:install -- --client codex` (or `claude-desktop`, `antigravity`, or omit `--client` for all three) to register the server in the client's global configuration. `.codex/config.toml` is also committed, but Codex only reads project config for trusted projects and this has not been verified on every Codex build, so prefer the installer.
+   - **Fallback:** Copy the entry manually from the dashboard (agent card > **Connect an AI agent (MCP)**) or run `pnpm mcp:config`.
+
+Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to be on the client's PATH.
+
+| Client | Where the entry goes | Configuration method |
+| --- | --- | --- |
+| Claude Code | `.mcp.json` in project root | Pre-configured in repo (approve on launch) |
+| Cursor | `.cursor/mcp.json` in project root | Pre-configured in repo |
+| Codex (CLI, app, extension) | `~/.codex/config.toml` | Run `pnpm mcp:install -- --client codex` (project `.codex/config.toml` also committed; trusted projects only) |
+| Claude Desktop | `claude_desktop_config.json` | Run `pnpm mcp:install -- --client claude-desktop` |
+| Antigravity (app, IDE, CLI) | `~/.gemini/config/mcp_config.json` | Run `pnpm mcp:install -- --client antigravity` |
+
+On Windows, paths in config files use forward slashes (`G:/nexus/dist/...`); node accepts them and they need
+no escaping in JSON or TOML. Tool input schemas avoid `exclusiveMinimum` and similar keywords, because
+Gemini function calling (Antigravity) rejects them.
+
+Optional: `NEXUS_DASHBOARD_URL` (default `http://localhost:5173`, shown in approval hints) and
+`NEXUS_TIMEOUT_MS` (default 45000, kept below Codex's default 60 s tool timeout). Each transfer carries an idempotency key. If a call times out or the agent
+answers with a server error, the tool returns `outcome_unknown` with that key, and retrying with the same key cannot pay twice.
+Reusing a key for a different transfer returns `idempotency_conflict`. Two separate calls with
+different keys are two transfers, and only the policy limits those.
+
+### Troubleshooting (for the agent setting this up)
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Tool error `mcp_setup_required` with `no MCP token found` | Owner has not signed in to the dashboard on this machine | Sign in to the dashboard with your wallet once; the next tool call picks the token up, no client restart |
+| Tool error `mcp_setup_required` with `multiple owners with MCP tokens found` | More than one owner wallet has a token in the data directory | Set `NEXUS_OWNER_PUBKEY=<your_wallet_address>` in the client env |
+| Tool error `mcp_token_rejected` | Agent service is using a different data directory or token was rotated | Verify `NEXUS_AGENT_DATA_DIR` or sign in to the dashboard to refresh |
+| Server fails to start from `.mcp.json` (`Cannot find module`, "Connection closed", tool not available) | Client was started in a subfolder, so the relative bundle path does not resolve | Open the client in the repository root, or register an absolute path: `claude mcp add -s user nexuspay -- node <path from pnpm mcp:config>` (Claude Code) or the `pnpm mcp:config` JSON in `~/.cursor/mcp.json` (Cursor) |
+| Client cannot start the server: `Cannot find module .../nexuspay-mcp.mjs` | Bundle not built, or path points at another checkout | `pnpm mcp:build`; verify bundle in `dist/mcp/nexuspay-mcp.mjs` |
+| `node` not found | Node.js missing from the client's PATH | Install Node.js 22+, or put the absolute path of `node` in `command` |
+| Tool error `agent_unreachable` | Agent service not running or on another port | `pnpm dev` from the repository root; check `NEXUS_API_URL` |
+| Transfer returns `pending_approval` | Amount above the per-transaction limit | The owner approves in the dashboard; poll `nexuspay_get_request` |
+| Transfer returns `outcome_unknown` | Timeout or server error after submission | Retry with the same `idempotencyKey`; never change the amount |
+| Codex cuts the call at 60 s | Missing `tool_timeout_sec` | Keep `tool_timeout_sec = 90` in the TOML entry |
+| Antigravity rejects the tool schema | Old bundle | `pnpm mcp:build` and restart Antigravity |
+
 ## Scope
 
-In: devnet, SOL, text-only input, one agent wallet, one policy, per-transaction limits, recipient/mint allowlists,
-Phantom approval, encrypted audit log. SPL transfer is implemented and gated by the mint allowlist,
+In: devnet, SOL, text-only input, multi-tenant isolated agent wallets, per-user spending policies, per-transaction limits, recipient/mint allowlists,
+Phantom approval, one-time master funder seed, encrypted audit log. SPL transfer is implemented and gated by the mint allowlist,
 but ships with an empty allowlist — configure a mint to enable it.
 
-Out: mainnet, voice / Gemini Live, multi-owner hosted service, swaps, staking, NFTs, arbitrary programs,
+Out: mainnet, voice / Gemini Live, swaps, staking, NFTs, arbitrary programs,
 seed-phrase handling, daily budgets, fiat conversion.
 
 ## Security notes

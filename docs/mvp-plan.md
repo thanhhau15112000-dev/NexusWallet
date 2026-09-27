@@ -1,8 +1,8 @@
-# NexusWallet MVP — Agent Payment Guard
+# nexusPay MVP — Agent Payment Guard
 
 ## 1. Định hướng sản phẩm
 
-NexusWallet là lớp kiểm soát chi tiêu cho agent trên Solana, tập trung vào một flow hackathon hoàn chỉnh thay vì clone Phantom đầy đủ:
+nexusPay là lớp kiểm soát chi tiêu cho agent trên Solana, tập trung vào một flow hackathon hoàn chỉnh thay vì clone Phantom đầy đủ:
 
 - User kết nối Phantom làm ví gốc.
 - Agent chạy trên một VM bằng ví agent riêng.
@@ -284,4 +284,4 @@ Một video ngắn phải chứng minh:
 - Không để model quyết định quyền ký.
 - Không commit `.env`, keypair, seed hoặc secret.
 - Không dùng `git add .` khi bắt đầu commit; luôn kiểm tra `git status` và stage path cụ thể.
-- GitHub repo `NexusWallet` tạo sau khi source MVP đã được khởi tạo và kiểm tra local.
+- GitHub repository tạo sau khi source MVP đã được khởi tạo và kiểm tra local.

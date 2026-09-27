@@ -1,19 +1,60 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Activity,
+  BookOpen,
+  CheckCircle2,
+  ClipboardList,
+  Command,
+  Layers,
+  WalletCards,
+  ShieldCheck,
+  Wallet as WalletIcon,
+  X,
+} from 'lucide-react';
+import { getWallets } from '@wallet-standard/app';
+import {
   buildApprovalMessage,
   type AuditEntryView,
   type PaymentRequest,
 } from '@nexus/shared';
 import { api, ApiError, type AgentState } from './api.js';
-import { getPhantom, signPhantomMessage } from './phantom.js';
+import {
+  connectWallet,
+  discoverWallets,
+  disconnectWallet,
+  observeWallet,
+  sendSolFromWallet,
+  signMessageWithWallet,
+  type ConnectedWallet,
+  type WalletChoice,
+} from './solanaWallets.js';
+import { AgentFundingPanel } from './components/AgentFundingPanel.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
+import { DocsPanel } from './components/DocsPanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
+import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { WalletPanel } from './components/WalletPanel.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
+
+type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit' | 'docs';
+
+const FEATURE_TABS: Array<{
+  id: FeatureTab;
+  label: string;
+  icon: typeof WalletCards;
+}> = [
+  { id: 'wallet', label: 'Wallet', icon: WalletCards },
+  { id: 'tasks', label: 'Task Vault', icon: Layers },
+  { id: 'commands', label: 'Commands', icon: Command },
+  { id: 'policy', label: 'Policy', icon: ShieldCheck },
+  { id: 'approvals', label: 'Approvals', icon: CheckCircle2 },
+  { id: 'audit', label: 'Audit', icon: ClipboardList },
+  { id: 'docs', label: 'Docs', icon: BookOpen },
+];
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -34,26 +75,71 @@ function summarise(request: PaymentRequest): Toast {
   }
 }
 
+function WalletOptions(props: {
+  choices: WalletChoice[];
+  busy: boolean;
+  onSelect: (choice: WalletChoice) => void;
+}) {
+  if (!props.choices.length) {
+    return <p className="wallet-picker-empty">No compatible Solana wallet found. Install a wallet that supports message signing, then reload.</p>;
+  }
+
+  return (
+    <div className="wallet-picker-options" aria-label="Available Solana wallets">
+      {props.choices.map((choice) => (
+        <button
+          key={choice.id}
+          type="button"
+          className="wallet-option"
+          disabled={props.busy}
+          onClick={() => props.onSelect(choice)}
+        >
+          {choice.icon ? (
+            <img src={choice.icon} alt="" />
+          ) : (
+            <span className="wallet-option-fallback"><WalletIcon size={17} aria-hidden="true" /></span>
+          )}
+          <span>{choice.name}</span>
+          <span className="wallet-option-action">Continue</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function App() {
   const [state, setState] = useState<AgentState | null>(null);
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [audit, setAudit] = useState<AuditEntryView[]>([]);
   const [wallet, setWallet] = useState<string | null>(null);
-  const [hasPhantom, setHasPhantom] = useState(false);
+  const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
+  const [walletChoices, setWalletChoices] = useState<WalletChoice[]>([]);
+  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
+  const [ownerWalletSettingsOpen, setOwnerWalletSettingsOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authOwner, setAuthOwner] = useState<string | null>(null);
+  const [signInError, setSignInError] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [offline, setOffline] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FeatureTab>('wallet');
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const bindAttempt = useRef<string | null>(null);
+  const connectedWalletRef = useRef<ConnectedWallet | null>(null);
+  const autoConnectAttempted = useRef(false);
   const refreshSequence = useRef(0);
   const commandRetry = useRef<{ prompt: string; key: string } | null>(null);
 
   const setFlag = (key: string, value: boolean) =>
     setBusy((prev) => ({ ...prev, [key]: value }));
+
+  const setActiveWallet = useCallback((next: ConnectedWallet | null) => {
+    connectedWalletRef.current = next;
+    setConnectedWallet(next);
+    setWallet(next?.address ?? null);
+  }, []);
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
@@ -77,7 +163,7 @@ export function App() {
         setState(null);
         setRequests([]);
         setAudit([]);
-        setOffline('Session expired. Sign in with the pinned Phantom wallet again.');
+        setOffline('Session expired. Sign in with your wallet again.');
         return;
       }
       setOffline(errorText(err));
@@ -135,31 +221,64 @@ export function App() {
   }, [authRequired]);
 
   useEffect(() => {
-    const provider = getPhantom();
-    setHasPhantom(Boolean(provider));
-    if (!provider) return;
-    // Reconnect silently if this site was already trusted by the wallet.
-    provider
-      .connect({ onlyIfTrusted: true })
-      .then((res) => setWallet(res.publicKey.toString()))
-      .catch(() => undefined);
-
-    const onDisconnect = () => {
-      setWallet(null);
-      if (authRequired) void logoutSession();
-    };
-    const onAccountChanged = (next: unknown) => {
-      setWallet(next ? String(next) : null);
-      bindAttempt.current = null;
-    };
-    provider.on('disconnect', onDisconnect);
-    provider.on('accountChanged', onAccountChanged);
-
+    const registry = getWallets();
+    const refreshWallets = () => setWalletChoices(discoverWallets());
+    refreshWallets();
+    const unregisterRegistered = registry.on('register', refreshWallets);
+    const unregisterRemoved = registry.on('unregister', refreshWallets);
     return () => {
-      provider.off?.('disconnect', onDisconnect);
-      provider.off?.('accountChanged', onAccountChanged);
+      unregisterRegistered();
+      unregisterRemoved();
     };
-  }, [authRequired, logoutSession]);
+  }, []);
+
+  useEffect(() => {
+    if (connectedWallet || autoConnectAttempted.current || !walletChoices.length) return;
+
+    const alreadyAuthorized = walletChoices.find(
+      (choice) =>
+        choice.kind === 'standard' &&
+        choice.wallet.accounts.some((account) =>
+          account.chains.some((chain) => chain.startsWith('solana:')) &&
+          account.features.includes('solana:signMessage'),
+        ),
+    );
+    if (alreadyAuthorized?.kind === 'standard') {
+      const account = alreadyAuthorized.wallet.accounts.find((candidate) =>
+        candidate.chains.some((chain) => chain.startsWith('solana:')) &&
+        candidate.features.includes('solana:signMessage'),
+      );
+      if (account) {
+        autoConnectAttempted.current = true;
+        setActiveWallet({
+          kind: 'standard',
+          wallet: alreadyAuthorized.wallet,
+          account,
+          address: account.address,
+        });
+        return;
+      }
+    }
+
+    const phantom = walletChoices.find((choice) => choice.kind === 'phantom');
+    if (!phantom || phantom.kind !== 'phantom') return;
+    autoConnectAttempted.current = true;
+    void connectWallet(phantom, true)
+      .then((connected) => {
+        if (!connectedWalletRef.current) setActiveWallet(connected);
+      })
+      .catch(() => undefined);
+  }, [connectedWallet, walletChoices, setActiveWallet]);
+
+  useEffect(() => {
+    if (!connectedWallet) return;
+    return observeWallet(connectedWallet, (next) => {
+      if (connectedWalletRef.current !== connectedWallet) return;
+      bindAttempt.current = null;
+      setActiveWallet(next);
+      if (!next && authRequired) void logoutSession();
+    });
+  }, [connectedWallet, authRequired, logoutSession, setActiveWallet]);
 
   useEffect(() => {
     if (authRequired && authenticated && authOwner && wallet && wallet !== authOwner) {
@@ -167,23 +286,7 @@ export function App() {
     }
   }, [authRequired, authenticated, authOwner, wallet, logoutSession]);
 
-  // Bind the connected wallet as the agent owner. Attempted once per wallet so a
-  // rejected bind cannot loop.
-  useEffect(() => {
-    if (!wallet || !state) return;
-    if (authRequired && (!authenticated || wallet !== authOwner)) return;
-    if (state.owner === wallet || bindAttempt.current === wallet) return;
-    bindAttempt.current = wallet;
-    api
-      .bindOwner(wallet)
-      .then(() => refresh())
-      .catch((err) => {
-        // Allow a transient network failure to retry on the next refresh. A
-        // pinned owner is intentionally not retried until the wallet changes.
-        if (!state.ownerPinned) bindAttempt.current = null;
-        setToast({ tone: 'bad', text: errorText(err) });
-      });
-  }, [wallet, state, refresh, authRequired, authenticated, authOwner]);
+  // In multi-tenant mode, the owner is bound to their session upon wallet login.
 
   useEffect(() => {
     if (!toast) return;
@@ -191,17 +294,48 @@ export function App() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const connect = async () => {
-    const provider = getPhantom();
-    if (!provider) return;
+  const claimSeed = async () => {
+    setFlag('seed', true);
+    try {
+      await api.claimSeed();
+      await refresh();
+      setToast({ tone: 'ok', text: '0.1 SOL demo seed claimed!' });
+    } catch (err) {
+      setToast({ tone: 'bad', text: errorText(err) });
+    } finally {
+      setFlag('seed', false);
+    }
+  };
+
+  const deposit = async (amountSol: number) => {
+    if (!wallet || !state || !connectedWalletRef.current) return;
+    setFlag('deposit', true);
+    try {
+      const signature = await sendSolFromWallet({
+        connected: connectedWalletRef.current,
+        rpcUrl: state.rpcUrl,
+        fromPubkey: wallet,
+        toPubkey: state.agent.pubkey,
+        amountSol,
+      });
+      setToast({ tone: 'ok', text: `Deposit of ${amountSol} SOL sent! Tx: ${signature.slice(0, 8)}…` });
+      await refresh();
+    } catch (err) {
+      setToast({ tone: 'bad', text: errorText(err) });
+    } finally {
+      setFlag('deposit', false);
+    }
+  };
+
+  const connect = async (choice: WalletChoice) => {
     setFlag('connect', true);
     try {
-      const res = await provider.connect();
-      const pubkey = res.publicKey.toString();
-      setWallet(pubkey);
+      const active = await connectWallet(choice);
+      const pubkey = active.address;
+      setActiveWallet(active);
       if (authRequired && (!authenticated || authOwner !== pubkey)) {
         const challenge = await api.authChallenge(pubkey);
-        const signature = await signPhantomMessage(challenge.message);
+        const signature = await signMessageWithWallet(active, challenge.message);
         const session = await api.authLogin({
           challengeId: challenge.challengeId,
           pubkey,
@@ -209,10 +343,11 @@ export function App() {
         });
         setAuthenticated(true);
         setAuthOwner(session.owner);
-        setOffline(null);
       }
+      setSignInError(null);
+      setWalletPickerOpen(false);
     } catch (err) {
-      setOffline(errorText(err));
+      setSignInError(errorText(err));
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
       setFlag('connect', false);
@@ -220,8 +355,9 @@ export function App() {
   };
 
   const disconnect = async () => {
-    await getPhantom()?.disconnect().catch(() => undefined);
-    setWallet(null);
+    const active = connectedWalletRef.current;
+    setActiveWallet(null);
+    await disconnectWallet(active);
     bindAttempt.current = null;
     await logoutSession();
   };
@@ -275,7 +411,8 @@ export function App() {
   };
 
   const approve = async (request: PaymentRequest) => {
-    if (!wallet || !request.approval) return;
+    const active = connectedWalletRef.current;
+    if (!wallet || !active || !request.approval) return;
     setApprovingId(request.id);
     try {
       // Rebuild the message locally. If the server's copy differs in any byte,
@@ -284,7 +421,7 @@ export function App() {
       if (expected !== request.approval.message) {
         throw new Error('approval message does not match its payload; refusing to sign');
       }
-      const signature = await signPhantomMessage(expected);
+      const signature = await signMessageWithWallet(active, expected);
       const res = await api.approve(request.id, signature, wallet);
       setToast(summarise(res.request));
     } catch (err) {
@@ -295,29 +432,61 @@ export function App() {
     }
   };
 
+  const pendingApprovals = requests.filter((request) => request.status === 'pending_approval').length;
+
+  const selectTabWithKeyboard = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const nextIndex =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? FEATURE_TABS.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + FEATURE_TABS.length) % FEATURE_TABS.length;
+    const next = FEATURE_TABS[nextIndex];
+    if (!next) return;
+    setActiveTab(next.id);
+    document.getElementById(`feature-tab-${next.id}`)?.focus();
+  };
+
   if (!state) {
     const needsSignIn = authReady && authRequired && !authenticated;
     return (
-      <main className="boot">
-        <h1>NexusWallet</h1>
-        <p>{needsSignIn ? 'Sign in required' : offline ? 'Service unavailable' : 'Loading'}</p>
-        {offline ? <p className="bad-text">{offline}</p> : null}
-        {authReady && authRequired && !authenticated ? (
-          <>
-            <p>Sign in with the pinned Phantom wallet. The message signature only creates a session.</p>
-            <button
-              type="button"
-              className="primary"
-              disabled={!hasPhantom || Boolean(busy.connect)}
-              onClick={() => void connect()}
-            >
-              {busy.connect ? 'Connecting…' : 'Sign in with Phantom'}
-            </button>
-            {!hasPhantom ? (
-              <p><a href="https://phantom.app/download" target="_blank" rel="noreferrer">Install Phantom</a></p>
-            ) : null}
-          </>
-        ) : null}
+      <main className="boot-page">
+        <section className="boot" aria-labelledby="login-title">
+          <h1 id="login-title">nexusPay</h1>
+          <p className="boot-status">{needsSignIn ? 'Sign in required' : offline ? 'Service unavailable' : 'Loading'}</p>
+          {offline ? <p className="bad-text boot-error">{offline}</p> : null}
+          {signInError ? <p className="bad-text boot-error">{signInError}</p> : null}
+          {authReady && authRequired && !authenticated ? (
+            <>
+              <button
+                type="button"
+                className="primary boot-sign-in"
+                aria-expanded={walletPickerOpen}
+                aria-controls="login-wallet-options"
+                disabled={!walletChoices.length || Boolean(busy.connect)}
+                onClick={() => setWalletPickerOpen((open) => !open)}
+              >
+                {busy.connect ? 'Connecting…' : 'Sign in with wallet'}
+              </button>
+              {walletPickerOpen ? (
+                <div id="login-wallet-options" className="boot-wallet-picker">
+                  <WalletOptions
+                    choices={walletChoices}
+                    busy={Boolean(busy.connect)}
+                    onSelect={(choice) => void connect(choice)}
+                  />
+                </div>
+              ) : null}
+              {!walletChoices.length ? (
+                <p className="wallet-picker-empty boot-wallet-empty">
+                  No compatible Solana wallet found. Install a wallet that supports message signing, then reload.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </section>
       </main>
     );
   }
@@ -327,45 +496,187 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <div>
-            <h1>NexusWallet</h1>
+            <h1>nexusPay</h1>
           </div>
+          <span className="brand-network-tag">{state.cluster}</span>
         </div>
         <div className={`service-state ${offline ? 'is-offline' : ''}`}>
-          <span className="status-dot" aria-hidden="true" />
+          <Activity size={15} aria-hidden="true" />
           {offline ? 'Offline' : 'Ready'}
         </div>
       </header>
 
       {offline ? <div className="banner bad">Service unavailable: {offline}</div> : null}
 
-      <div className="workspace-grid">
-        <AgentPanel state={state} busy={Boolean(busy.airdrop)} onAirdrop={() => void airdrop()} />
-        <WalletPanel
-          state={state}
-          wallet={wallet}
-          hasPhantom={hasPhantom}
-          busy={Boolean(busy.connect)}
-          onConnect={() => void connect()}
-          onDisconnect={() => void disconnect()}
+      <nav className="feature-tabs" role="tablist" aria-label="App features">
+        {FEATURE_TABS.map((tab, index) => {
+          const Icon = tab.icon;
+          const selected = activeTab === tab.id;
+          const count = tab.id === 'approvals' ? pendingApprovals : tab.id === 'audit' ? audit.length : null;
+          return (
+            <button
+              key={tab.id}
+              id={`feature-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`feature-panel-${tab.id}`}
+              tabIndex={selected ? 0 : -1}
+              className={`feature-tab${selected ? ' is-active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              onKeyDown={(event) => selectTabWithKeyboard(event, index)}
+            >
+              <Icon size={15} aria-hidden="true" />
+              <span>{tab.label}</span>
+              {count !== null ? <span className="feature-tab-count">{count}</span> : null}
+            </button>
+          );
+        })}
+      </nav>
+
+      <section
+        id="feature-panel-wallet"
+        role="tabpanel"
+        aria-labelledby="feature-tab-wallet"
+        className="tab-panel"
+        hidden={activeTab !== 'wallet'}
+      >
+        <div className="workspace-grid">
+          <AgentPanel
+            state={state}
+            ownerWalletSettingsOpen={ownerWalletSettingsOpen}
+            onToggleOwnerWalletSettings={() => setOwnerWalletSettingsOpen((open) => !open)}
+            onCloseOwnerWalletSettings={() => setOwnerWalletSettingsOpen(false)}
+            ownerWallet={
+              <WalletPanel
+                state={state}
+                settingsOpen={ownerWalletSettingsOpen}
+                wallet={wallet}
+                hasWallet={walletChoices.length > 0}
+                busy={Boolean(busy.connect)}
+                onConnect={() => setWalletPickerOpen(true)}
+                onDisconnect={() => void disconnect()}
+              />
+            }
+          />
+          <AgentFundingPanel
+            state={state}
+            busy={Boolean(busy.airdrop || busy.seed || busy.deposit)}
+            onAirdrop={() => void airdrop()}
+            onClaimSeed={() => void claimSeed()}
+            onDeposit={(amount) => void deposit(amount)}
+          />
+        </div>
+      </section>
+
+      <section
+        id="feature-panel-tasks"
+        role="tabpanel"
+        aria-labelledby="feature-tab-tasks"
+        className="tab-panel"
+        hidden={activeTab !== 'tasks'}
+      >
+        <TaskVaultPanel
+          owner={state.owner}
+          agentPubkey={state.agent.pubkey}
+          mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
+          rpcUrl={state.rpcUrl}
+          onToast={setToast}
         />
+      </section>
+
+      <section
+        id="feature-panel-commands"
+        role="tabpanel"
+        aria-labelledby="feature-tab-commands"
+        className="tab-panel"
+        hidden={activeTab !== 'commands'}
+      >
+        <ConsolePanel state={state} busy={Boolean(busy.command)} onRun={runCommand} />
+      </section>
+
+      <section
+        id="feature-panel-policy"
+        role="tabpanel"
+        aria-labelledby="feature-tab-policy"
+        className="tab-panel"
+        hidden={activeTab !== 'policy'}
+      >
         <PolicyPanel
           state={state}
           wallet={wallet}
           busy={Boolean(busy.policy)}
           onSave={savePolicy}
         />
-        <ConsolePanel state={state} busy={Boolean(busy.command)} onRun={runCommand} />
-      </div>
+      </section>
 
-      <RequestList
-        requests={requests}
-        wallet={wallet}
-        owner={state.owner}
-        busyId={approvingId}
-        onApprove={(request) => void approve(request)}
-      />
+      <section
+        id="feature-panel-approvals"
+        role="tabpanel"
+        aria-labelledby="feature-tab-approvals"
+        className="tab-panel"
+        hidden={activeTab !== 'approvals'}
+      >
+        <RequestList
+          requests={requests}
+          wallet={wallet}
+          owner={state.owner}
+          busyId={approvingId}
+          onApprove={(request) => void approve(request)}
+        />
+      </section>
 
-      <AuditPanel entries={audit} />
+      <section
+        id="feature-panel-audit"
+        role="tabpanel"
+        aria-labelledby="feature-tab-audit"
+        className="tab-panel"
+        hidden={activeTab !== 'audit'}
+      >
+        <AuditPanel entries={audit} />
+      </section>
+
+      <section
+        id="feature-panel-docs"
+        role="tabpanel"
+        aria-labelledby="feature-tab-docs"
+        className="tab-panel"
+        hidden={activeTab !== 'docs'}
+      >
+        <DocsPanel onOpenTab={setActiveTab} />
+      </section>
+
+      {walletPickerOpen ? (
+        <div
+          className="wallet-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !busy.connect) setWalletPickerOpen(false);
+          }}
+        >
+          <section className="wallet-dialog" role="dialog" aria-modal="true" aria-labelledby="wallet-dialog-title">
+            <div className="wallet-dialog-head">
+              <div>
+                <h2 id="wallet-dialog-title">Connect a wallet</h2>
+                <p>Choose a Solana wallet to connect as owner.</p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Close wallet selection"
+                disabled={Boolean(busy.connect)}
+                onClick={() => setWalletPickerOpen(false)}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <WalletOptions
+              choices={walletChoices}
+              busy={Boolean(busy.connect)}
+              onSelect={(choice) => void connect(choice)}
+            />
+          </section>
+        </div>
+      ) : null}
 
       {toast ? <div className={`toast ${toast.tone}`}>{toast.text}</div> : null}
     </main>

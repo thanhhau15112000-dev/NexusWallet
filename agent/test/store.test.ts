@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -44,7 +44,7 @@ describe('Store', () => {
           nonce: 'nonce12345678',
           expiresAt: '2030-01-01T00:00:00.000Z',
         },
-        message: 'NexusWallet approval',
+        message: 'nexusPay approval',
         signature: null,
         signerPubkey: null,
         signedAt: null,
@@ -86,6 +86,27 @@ describe('Store', () => {
     expect(byIdem?.id).toBe('req_pending_1');
   });
 
+  it('persists pending seed transfer and clears it only when marked claimed', () => {
+    const store1 = new Store(statePath, 'agent-001', 50);
+    const pending = {
+      signature: 'seed-signature',
+      serializedTransaction: 'c2lnbmVkLXRyYW5zYWN0aW9u',
+      blockhash: 'blockhash',
+      lastValidBlockHeight: 123,
+      recipientPubkey: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin',
+      amountLamports: 100_000_000,
+    };
+
+    store1.setPendingInitialFunding(pending);
+    const storeAfterRestart = new Store(statePath, 'agent-001', 50);
+    expect(storeAfterRestart.getPendingInitialFunding()).toEqual(pending);
+
+    storeAfterRestart.setClaimedInitialFunding(true);
+    const storeAfterConfirmation = new Store(statePath, 'agent-001', 50);
+    expect(storeAfterConfirmation.hasClaimedInitialFunding()).toBe(true);
+    expect(storeAfterConfirmation.getPendingInitialFunding()).toBeUndefined();
+  });
+
   it('prevents duplicate requests via idempotency key', () => {
     const store = new Store(statePath, 'agent-001', 50);
 
@@ -118,5 +139,32 @@ describe('Store', () => {
     expect(store.findByIdempotencyKey('idem_1')).toBeUndefined();
     expect(store.getRequest('req_3')).toBeDefined();
     expect(store.findByIdempotencyKey('idem_3')?.id).toBe('req_3');
+  });
+
+  it('scopes task payment and receipt ids per task and re-keys legacy state files', () => {
+    const worker = '11111111111111111111111111111112';
+    const payment = (taskId: string) => ({
+      taskId,
+      paymentId: 'pay-1',
+      worker,
+      serviceId: 'svc',
+      amountLamports: 10,
+      requestHash: 'h',
+      status: 'held' as const,
+    });
+    const store1 = new Store(statePath, 'agent-001', 50);
+    store1.setPayment(payment('task-a'));
+    store1.setPayment(payment('task-b'));
+    expect(store1.getPayment('task-a', 'pay-1')?.taskId).toBe('task-a');
+    expect(store1.getPayment('task-b', 'pay-1')?.taskId).toBe('task-b');
+    expect(() => store1.setPayment(payment('task-a'))).toThrow(/already exists/);
+
+    // Older state files keyed payments by paymentId alone.
+    const raw = JSON.parse(readFileSync(statePath, 'utf8'));
+    raw.payments = { 'pay-1': payment('task-legacy') };
+    writeFileSync(statePath, JSON.stringify(raw));
+    const store2 = new Store(statePath, 'agent-001', 50);
+    expect(store2.getPayment('task-legacy', 'pay-1')?.taskId).toBe('task-legacy');
+    expect(store2.getPayment('task-a', 'pay-1')).toBeUndefined();
   });
 });

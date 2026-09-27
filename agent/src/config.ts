@@ -18,15 +18,19 @@ const EnvSchema = z.object({
   AGENT_KEYSTORE_PASSPHRASE: z.string().min(8).default('nexus-devnet-demo-passphrase'),
   AUDIT_ENCRYPTION_PASSPHRASE: z.string().min(8).default('nexus-devnet-demo-audit-key'),
 
-  /** Pin the owner wallet. Left empty, the first wallet that connects is bound. */
+  /** Legacy alias for ADMIN_PUBKEY; it does not restrict which wallets can sign in. */
   OWNER_PUBKEY: z.string().trim().default(''),
+  /** Recognized administrator wallet pubkey for multi-tenant demo. */
+  ADMIN_PUBKEY: z.string().trim().default(''),
+  /** Optional comma-separated list of allowed owner pubkeys. Empty allows all. */
+  ALLOWED_OWNERS: z.string().trim().default(''),
   SESSION_COOKIE_SECRET: z.string().min(1).default('local-dev-session-cookie-secret-change-me'),
   AUTH_SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(28_800).default(1800),
 
   /** `auto` uses a provider when its key is set, `mock` never calls one. */
   MODEL_MODE: z.enum(['auto', 'mock']).default('auto'),
   GEMINI_API_KEY: z.string().trim().default(''),
-  GEMINI_MODEL: z.string().trim().default('gemini-2.5-flash'),
+  GEMINI_MODEL: z.string().trim().default('gemini-3.8-flash'),
   GEMINI_THINKING_BUDGET: z.coerce.number().int().min(0).default(2048),
   GROQ_API_KEY: z.string().trim().default(''),
   GROQ_MODEL: z.string().trim().default('openai/gpt-oss-120b'),
@@ -78,8 +82,11 @@ export function loadConfig() {
     if (env.HOST !== '0.0.0.0' && env.HOST !== '::') {
       throw new Error('hosted mode must bind HOST to 0.0.0.0 or :: inside the container');
     }
-    if (!PubkeySchema.safeParse(env.OWNER_PUBKEY).success) {
-      throw new Error('hosted mode requires OWNER_PUBKEY to pin the demo to its Phantom wallet');
+    if (env.OWNER_PUBKEY && !PubkeySchema.safeParse(env.OWNER_PUBKEY).success) {
+      throw new Error('OWNER_PUBKEY must be a valid Solana address');
+    }
+    if (env.ADMIN_PUBKEY && !PubkeySchema.safeParse(env.ADMIN_PUBKEY).success) {
+      throw new Error('ADMIN_PUBKEY must be a valid Solana address');
     }
     if (env.SESSION_COOKIE_SECRET.length < 32 || env.SESSION_COOKIE_SECRET.startsWith('local-dev-')) {
       throw new Error('hosted mode requires a random SESSION_COOKIE_SECRET of at least 32 characters');
@@ -135,7 +142,7 @@ export function loadConfig() {
     })();
     if (!LOCAL_ORIGIN_REGEX.test(origin) && !validHostedOrigin) {
       throw new Error(
-        `WEB_ORIGIN contains an origin not permitted for ${env.DEPLOYMENT_MODE} mode: "${origin}"`,
+        `WEB_ORIGIN contains non-local origin not permitted for ${env.DEPLOYMENT_MODE} mode: "${origin}"`,
       );
     }
   }
@@ -145,11 +152,20 @@ export function loadConfig() {
   }
 
   const dataDir = resolve(process.cwd(), env.AGENT_DATA_DIR);
+  const adminPubkey = env.ADMIN_PUBKEY || env.OWNER_PUBKEY || 'GePDtss1nywz1RZcS2tvcRwKCkh8J3HdamfhWAkDrard';
+  const allowedOwners = env.ALLOWED_OWNERS
+    ? env.ALLOWED_OWNERS.split(',').map((p) => p.trim()).filter(Boolean)
+    : [];
 
   return {
     ...env,
+    adminPubkey,
+    allowedOwners,
     authRequired: hosted,
     dataDir,
+    usersDir: resolve(dataDir, 'users'),
+    masterFunderPath: resolve(dataDir, 'master-funder.json'),
+    legacyKeystorePath: resolve(dataDir, 'agent-keystore.json'),
     statePath: resolve(dataDir, 'state.json'),
     auditPath: resolve(dataDir, 'audit.jsonl'),
     keystorePath: resolve(dataDir, 'agent-keystore.json'),
