@@ -576,6 +576,7 @@ export function App() {
         <TaskVaultPanel
           owner={state.owner}
           agentPubkey={state.agent.pubkey}
+          mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
           rpcUrl={state.rpcUrl}
           onToast={setToast}
         />

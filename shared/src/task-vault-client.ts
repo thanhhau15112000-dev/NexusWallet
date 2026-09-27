@@ -59,6 +59,9 @@ export function deriveReceiptPda(
   );
 }
 
+// Receipt account: discriminator + 2 pubkeys + 4 x [u8; 32] + amount + settled_at + bump.
+export const TASK_RECEIPT_ACCOUNT_SIZE = 8 + 32 + 32 + 32 * 4 + 8 + 8 + 1;
+
 // -------------------------------------------------------- Instruction Builders
 
 const DISCRIMINATORS = {

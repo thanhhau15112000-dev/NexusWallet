@@ -23,6 +23,8 @@ export type AppContext = {
   sessions: SessionManager;
   masterFunder?: Keypair;
   masterFunderPubkey?: string;
+  /** Demo worker/service signer shared by all tenants; stored encrypted in the data dir, never exposed. */
+  mockWorker?: Keypair;
   getUserContext?: (ownerPubkey: string) => AppContext;
 };
 
@@ -35,6 +37,10 @@ export function createContext(config: AppConfig): AppContext {
     legacyKeystorePath: config.legacyKeystorePath,
     passphrase: config.AGENT_KEYSTORE_PASSPHRASE,
   });
+
+  // Per-deployment key so the demo worker cannot be derived from source.
+  const mockWorkerKey = loadOrCreateAgentKey(resolve(config.dataDir, 'mock-worker-keystore.json'), config.AGENT_KEYSTORE_PASSPHRASE);
+  const mockWorker = keypairFromSecret(mockWorkerKey.secretKey);
 
   const connection = createConnection(config.SOLANA_RPC_URL);
   const model = createModelPipeline(config);
@@ -89,6 +95,7 @@ export function createContext(config: AppConfig): AppContext {
       sessions,
       masterFunder: funder.keypair,
       masterFunderPubkey: funder.pubkey,
+      mockWorker,
       getUserContext,
     };
 

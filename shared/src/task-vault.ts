@@ -311,8 +311,6 @@ export function computeReceiptSigningMessage(
   return new TextEncoder().encode(canonical);
 }
 
-export const DEFAULT_MOCK_WORKER_PUBKEY = '7qrs9D4MrTyR1qN3EqkYuW8RBYVEuWzKqa5dYhphQe44';
-
 // ----------------------------------------------------------- hashing & vectors
 
 export interface TaskHashInput {

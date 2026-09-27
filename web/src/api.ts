@@ -19,6 +19,7 @@ export type AgentState = {
     pubkey: string;
     lamports: number | null;
   } | null;
+  mockWorker?: { pubkey: string } | null;
   agent: {
     agentId: string;
     pubkey: string;

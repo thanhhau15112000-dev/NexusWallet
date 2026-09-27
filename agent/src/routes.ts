@@ -19,8 +19,9 @@ import {
   TASK_VAULT_PROGRAM_PUBKEY,
   executeTaskPaymentInstruction,
   settleWithReceiptInstruction,
+  TASK_RECEIPT_ACCOUNT_SIZE,
 } from '@nexus/shared';
-import { Keypair, PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey, SystemProgram, type TransactionInstruction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { verifyMessageSignature } from './crypto.js';
@@ -37,8 +38,9 @@ import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
 
-function getMockWorkerKeypair(): Keypair {
-  return Keypair.fromSeed(computeCanonicalSeed('NEXUS_DEFAULT_MOCK_WORKER_V1'));
+function getMockWorkerKeypair(ctx: AppContext): Keypair {
+  if (!ctx.mockWorker) throw new Error('mock worker keystore is not loaded');
+  return ctx.mockWorker;
 }
 
 async function hasConfirmedSignature(ctx: AppContext, signature: string): Promise<boolean> {
@@ -375,6 +377,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
             lamports: masterFunderBalance,
           }
         : null,
+      mockWorker: userCtx.mockWorker ? { pubkey: userCtx.mockWorker.publicKey.toBase58() } : null,
       agent: {
         agentId: userCtx.config.AGENT_ID,
         pubkey: userCtx.agentPubkey,
@@ -716,7 +719,7 @@ const inFlightClaims = new Set<string>();
     const isSimulated = task.isSimulated !== false;
     let txSignature: string | undefined;
     if (!isSimulated) {
-      const mockWorker = getMockWorkerKeypair();
+      const mockWorker = getMockWorkerKeypair(userCtx);
       if (task.agentSigner !== userCtx.agentPubkey) {
         return reply.status(409).send({ error: 'agent_signer_mismatch' });
       }
@@ -837,7 +840,7 @@ const inFlightClaims = new Set<string>();
     const isSimulated = task.isSimulated !== false;
     let txSignature: string | undefined;
     if (!isSimulated) {
-      const workerKeypair = getMockWorkerKeypair();
+      const workerKeypair = getMockWorkerKeypair(userCtx);
       if (workerKeypair.publicKey.toBase58() !== payment.worker) {
         return reply.status(400).send({
           error: 'unsupported_onchain_worker',
@@ -845,18 +848,31 @@ const inFlightClaims = new Set<string>();
         });
       }
       try {
-        txSignature = await submitTaskVaultInstruction(
-          userCtx.connection,
-          settleWithReceiptInstruction({
-            taskCapability: taskPda,
-            escrow: new PublicKey(payment.escrowPda!),
-            paymentId,
-            worker: workerKeypair.publicKey,
-            agentSigner: new PublicKey(task.agentSigner),
-            resultHash: body.resultHash,
-          }),
-          workerKeypair,
-        );
+        // The demo worker holds no funds of its own: the agent pays the fee and tops the worker
+        // up so it can fund the receipt PDA and still stay rent-exempt afterwards.
+        const [receiptRent, systemAccountRent, workerLamports] = await Promise.all([
+          userCtx.connection.getMinimumBalanceForRentExemption(TASK_RECEIPT_ACCOUNT_SIZE),
+          userCtx.connection.getMinimumBalanceForRentExemption(0),
+          userCtx.connection.getBalance(workerKeypair.publicKey, 'confirmed'),
+        ]);
+        const instructions: TransactionInstruction[] = [];
+        const topUp = receiptRent + systemAccountRent - workerLamports;
+        if (topUp > 0) {
+          instructions.push(SystemProgram.transfer({
+            fromPubkey: userCtx.signer.publicKey,
+            toPubkey: workerKeypair.publicKey,
+            lamports: topUp,
+          }));
+        }
+        instructions.push(settleWithReceiptInstruction({
+          taskCapability: taskPda,
+          escrow: new PublicKey(payment.escrowPda!),
+          paymentId,
+          worker: workerKeypair.publicKey,
+          agentSigner: new PublicKey(task.agentSigner),
+          resultHash: body.resultHash,
+        }));
+        txSignature = await submitTaskVaultInstruction(userCtx.connection, instructions, userCtx.signer, [workerKeypair]);
       } catch (error) {
         req.log.error({ err: error, taskId, paymentId }, 'Task Vault settlement transaction failed');
         return reply.status(502).send({ error: 'onchain_settlement_failed' });
@@ -1026,7 +1042,7 @@ const inFlightClaims = new Set<string>();
 
   app.post('/api/tasks/mock-service/run', async (req) => {
     const body = MockServiceBody.parse(req.body);
-    const workerKeypair = getMockWorkerKeypair();
+    const workerKeypair = getMockWorkerKeypair(ctx);
     const workerPubkey = workerKeypair.publicKey.toBase58();
 
     const requestHash = computeReceiptHash({

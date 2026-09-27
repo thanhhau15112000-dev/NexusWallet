@@ -13,7 +13,6 @@ import {
   deriveVaultPda,
   refundAndCloseInstruction,
   revokeTaskInstruction,
-  computeCanonicalSeed,
 } from '@nexus/shared';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -53,17 +52,16 @@ describe('Task Vault Persistence and Browser Refresh Lifecycle', () => {
 
     const owner = Keypair.generate();
     const ownerPubkey = owner.publicKey.toBase58();
-    const worker = Keypair.fromSeed(computeCanonicalSeed('NEXUS_DEFAULT_MOCK_WORKER_V1'));
+    // The mock worker key is generated per data dir and must survive restarts.
+    const worker = createContext(config).mockWorker!;
 
     // Airdrop funds for on-chain testing
     const airdrop = async (pubkey: PublicKey, sol: number) => {
       const sig = await connection.requestAirdrop(pubkey, sol * LAMPORTS_PER_SOL);
       await connection.confirmTransaction(sig, 'confirmed');
     };
-    await Promise.all([
-      airdrop(owner.publicKey, 4),
-      airdrop(worker.publicKey, 1),
-    ]);
+    // The worker is deliberately left unfunded: settlement must be paid for by the agent.
+    await airdrop(owner.publicKey, 4);
 
     // Helper to spin up Fastify instance with persistence
     const startServer = async () => {

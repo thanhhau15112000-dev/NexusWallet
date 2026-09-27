@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import {
   LAMPORTS_PER_SOL,
-  DEFAULT_MOCK_WORKER_PUBKEY,
   type TaskCapabilityRecord,
   type TaskPaymentRecord,
   type TaskReceiptRecord,
@@ -34,6 +33,7 @@ import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 export function TaskVaultPanel(props: {
   owner: string | null;
   agentPubkey: string;
+  mockWorkerPubkey: string | null;
   rpcUrl: string;
   onToast: (toast: { tone: 'ok' | 'warn' | 'bad'; text: string }) => void;
 }) {
@@ -53,12 +53,12 @@ export function TaskVaultPanel(props: {
   const [newBudgetSol, setNewBudgetSol] = useState('0.5');
   const [newCapSol, setNewCapSol] = useState('0.2');
   const [newHours, setNewHours] = useState('24');
-  const [newAllowedWorker, setNewAllowedWorker] = useState('');
+  const [newAllowedWorker, setNewAllowedWorker] = useState(props.mockWorkerPubkey ?? '');
   const [newAllowedServiceId, setNewAllowedServiceId] = useState('');
   const [submitOnchain, setSubmitOnchain] = useState(true);
 
   // Payment form state
-  const [paymentWorker, setPaymentWorker] = useState(DEFAULT_MOCK_WORKER_PUBKEY);
+  const [paymentWorker, setPaymentWorker] = useState(props.mockWorkerPubkey ?? '');
   const [paymentService, setPaymentService] = useState('service-data-enrichment');
   const [paymentAmountSol, setPaymentAmountSol] = useState('0.1');
 
@@ -122,7 +122,7 @@ export function TaskVaultPanel(props: {
     }
     if (submitOnchain) {
       try {
-        if (new PublicKey(newAllowedWorker.trim()).toBase58() !== DEFAULT_MOCK_WORKER_PUBKEY) {
+        if (new PublicKey(newAllowedWorker.trim()).toBase58() !== props.mockWorkerPubkey) {
           props.onToast({ tone: 'warn', text: 'On-chain demo tasks currently use the configured mock worker' });
           return;
         }

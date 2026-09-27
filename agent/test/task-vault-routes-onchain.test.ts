@@ -18,7 +18,6 @@ import {
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { computeCanonicalSeed } from '@nexus/shared';
 import { createContext } from '../src/context.js';
 import { loadConfig } from '../src/config.js';
 import { registerRoutes } from '../src/routes.js';
@@ -66,11 +65,11 @@ describe('Task Vault API with the local Solana program', () => {
     };
 
     try {
-      const worker = Keypair.fromSeed(computeCanonicalSeed('NEXUS_DEFAULT_MOCK_WORKER_V1'));
+      // The worker is deliberately left unfunded: settlement must be paid for by the agent.
+      const worker = appContext.mockWorker!;
       await Promise.all([
         airdrop(owner.publicKey, 3),
         airdrop(userContext.signer.publicKey, 1),
-        airdrop(worker.publicKey, 1),
       ]);
 
       const challengeRes = await app.inject({
