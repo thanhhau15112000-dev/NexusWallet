@@ -56,72 +56,18 @@ export class ApiError extends Error {
   }
 }
 
-const API_OVERRIDE_KEY = 'nexus.apiBase';
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-
-function normaliseApiBase(value: string): string | null {
+/**
+ * The dashboard always calls the agent on its own origin: hosted mode serves both from one
+ * origin, and in development Vite proxies /api to the agent (vite.config.ts). A cross-origin
+ * API base would drop the session cookie, so every call after login would return 401.
+ */
+export function resolveApiBase(): string {
   try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    if (
-      !['http:', 'https:'].includes(url.protocol) ||
-      !LOOPBACK_HOSTS.has(host) ||
-      url.username ||
-      url.password ||
-      (url.pathname !== '' && url.pathname !== '/') ||
-      url.search ||
-      url.hash
-    ) {
-      return null;
-    }
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
-function readStoredApiBase(): string | null {
-  try {
-    const stored = window.localStorage.getItem(API_OVERRIDE_KEY);
-    if (!stored) return null;
-    const valid = normaliseApiBase(stored);
-    if (valid) return valid;
-    window.localStorage.removeItem(API_OVERRIDE_KEY);
+    // Older builds persisted a cross-origin API base override; it breaks sessions, so drop it.
+    window.localStorage.removeItem('nexus.apiBase');
   } catch {
     // Private browsing and restricted iframe contexts can deny storage access.
   }
-  return null;
-}
-
-function persistApiBase(value: string): void {
-  try {
-    window.localStorage.setItem(API_OVERRIDE_KEY, value);
-  } catch {
-    // A query override still works for this page even when storage is blocked.
-  }
-}
-
-/**
- * Local Vite and the agent use separate ports. Hosted mode serves both from one
- * origin; Codespaces forwards each port on its own hostname.
- */
-export function resolveApiBase(): string {
-  const fromQuery = new URLSearchParams(window.location.search).get('api');
-  if (fromQuery) {
-    const valid = normaliseApiBase(fromQuery);
-    if (valid) {
-      persistApiBase(valid);
-      return valid;
-    }
-  }
-  const stored = readStoredApiBase();
-  if (stored) return stored;
-
-  const { protocol, hostname } = window.location;
-  if (/-\d+\.(app\.github\.dev|githubpreview\.dev)$/i.test(hostname)) {
-    return `${protocol}//${hostname.replace(/-\d+\./, '-8787.')}`;
-  }
-  if (LOOPBACK_HOSTS.has(hostname.toLowerCase())) return `${protocol}//${hostname}:8787`;
   return window.location.origin;
 }
 
