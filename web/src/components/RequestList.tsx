@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from './icons.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest, type RequestStatus } from '@nexus/shared';
 import { Card, Empty, Mono, Pill, shorten } from './ui.js';
 import { useI18n } from '../i18n/context.js';

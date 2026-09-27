@@ -22,7 +22,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           solana: ['@solana/web3.js'],
-          icons: ['lucide-react'],
         },
       },
     },

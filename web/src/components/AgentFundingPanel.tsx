@@ -1,4 +1,4 @@
-import { ArrowDownToLine, CheckCircle2, ExternalLink, Wallet, Zap } from 'lucide-react';
+import { ArrowDownToLine, CheckCircle2, ExternalLink, Wallet, Zap } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card } from './ui.js';
 import { useI18n } from '../i18n/context.js';

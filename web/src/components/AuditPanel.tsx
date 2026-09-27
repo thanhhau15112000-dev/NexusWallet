@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList } from './icons.js';
 import type { AuditEntryView } from '@nexus/shared';
 import { Card, Empty, Mono } from './ui.js';
 import { useI18n } from '../i18n/context.js';

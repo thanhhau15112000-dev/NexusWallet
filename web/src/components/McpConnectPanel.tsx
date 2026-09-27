@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plug } from 'lucide-react';
+import { Plug } from './icons.js';
 import { api, ApiError, type McpClientConfig } from '../api.js';
 
 // The panel sits inside the dark agent card, so text inherits its light color and code

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { LAMPORTS_PER_SOL } from '@nexus/shared';
-import { Bot, Settings, ShieldCheck, Wallet } from 'lucide-react';
+import { Bot, Settings, ShieldCheck, Wallet } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { McpConnectPanel } from './McpConnectPanel.js';

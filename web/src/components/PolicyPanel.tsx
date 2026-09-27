@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card, Mono, shorten } from './ui.js';
 import { useI18n } from '../i18n/context.js';

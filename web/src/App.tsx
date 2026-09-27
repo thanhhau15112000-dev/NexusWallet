@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Wallet as WalletIcon,
   X,
-} from 'lucide-react';
+} from './components/icons.js';
 import { getWallets } from '@wallet-standard/app';
 import {
   buildApprovalMessage,

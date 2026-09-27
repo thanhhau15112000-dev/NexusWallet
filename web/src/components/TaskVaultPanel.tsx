@@ -12,7 +12,7 @@ import {
   RefreshCw,
   Shield,
   XCircle,
-} from 'lucide-react';
+} from './icons.js';
 import {
   LAMPORTS_PER_SOL,
   type TaskCapabilityRecord,

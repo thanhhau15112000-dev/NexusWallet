@@ -1,11 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Globe, LogOut, Settings, X } from 'lucide-react';
+import { Check, ChevronDown, Languages, LogOut, Settings, X } from './icons.js';
 import { useI18n } from '../i18n/context.js';
 import type { Locale } from '../i18n/types.js';
 
 type SettingsMenuProps = {
   onLogout?: () => void;
 };
+
+/** One-click EN/VI toggle for the topbar; shows the active language. */
+export function LanguageToggle() {
+  const { lang, setLanguage, dict } = useI18n();
+  return (
+    <button
+      type="button"
+      className="settings-icon-btn lang-toggle-btn"
+      onClick={() => setLanguage(lang === 'en' ? 'vi' : 'en')}
+      title={dict.topbar.switchLanguage}
+      aria-label={dict.topbar.switchLanguage}
+    >
+      <Languages size={17} />
+      <span>{lang.toUpperCase()}</span>
+    </button>
+  );
+}
 
 export function SettingsMenu({ onLogout }: SettingsMenuProps = {}) {
   const { lang, setLanguage, dict } = useI18n();
@@ -75,7 +92,7 @@ export function SettingsMenu({ onLogout }: SettingsMenuProps = {}) {
               aria-expanded={langDropdownOpen}
             >
               <span className="trigger-left">
-                <Globe size={14} className="trigger-icon" />
+                <Languages size={14} className="trigger-icon" />
                 <span>{dict.settings.selectLanguage}</span>
               </span>
               <ChevronDown

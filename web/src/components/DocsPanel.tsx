@@ -8,7 +8,7 @@ import {
   Info,
   Search,
   TriangleAlert,
-} from 'lucide-react';
+} from './icons.js';
 
 /** Dashboard tabs a docs page can link to. Kept in sync with FEATURE_TABS in App.tsx. */
 export type DocsLinkTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit';

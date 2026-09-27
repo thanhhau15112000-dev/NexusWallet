@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Copy } from 'lucide-react';
+import { Copy } from './icons.js';
 
 export function Card(props: {
   title: string;

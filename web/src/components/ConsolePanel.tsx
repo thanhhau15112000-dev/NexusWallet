@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Send } from 'lucide-react';
+import { Send } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card, Pill } from './ui.js';
 import { useI18n } from '../i18n/context.js';

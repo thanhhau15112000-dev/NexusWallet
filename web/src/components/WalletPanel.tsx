@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { LAMPORTS_PER_SOL } from '@nexus/shared';
 import type { AgentState } from '../api.js';
-import { Unplug } from 'lucide-react';
+import { Unplug } from './icons.js';
 import { CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { WalletSettingsPopover } from './WalletSettingsPopover.js';
 import { useI18n } from '../i18n/context.js';
