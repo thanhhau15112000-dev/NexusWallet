@@ -28,6 +28,8 @@ pub struct TaskCapability {
     pub bump: u8,
     pub vault_bump: u8,
     pub pending_escrows: u32,
+    pub allowed_worker: Pubkey,
+    pub allowed_service_id: [u8; 32],
 }
 
 impl TaskCapability {
@@ -42,7 +44,9 @@ impl TaskCapability {
         + 1  // status enum
         + 1  // bump
         + 1  // vault_bump
-        + 4; // pending_escrows
+        + 4  // pending_escrows
+        + 32 // allowed_worker
+        + 32; // allowed_service_id
 }
 
 #[account]

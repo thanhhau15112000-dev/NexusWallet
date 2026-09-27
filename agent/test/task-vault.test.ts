@@ -142,15 +142,72 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       expect(res.nextStatus).toBe('active');
     });
 
-    it('settles payment and transitions to completed if budget is fully spent', () => {
+    it('settles payment and transitions to completed if budget is fully spent and no pending remain', () => {
       const taskFullySpent = { ...baseTask, spentLamports: 1_000_000_000 };
       const res = validateTaskTransition(
         taskFullySpent,
-        { type: 'settle_payment', paymentId: 'pay-1' },
+        { type: 'settle_payment', paymentId: 'pay-1', remainingPendingEscrows: 0 },
         500,
       );
       expect(res.valid).toBe(true);
       expect(res.nextStatus).toBe('completed');
+    });
+
+    it('settles payment and stays active if budget is fully spent but pending escrows remain', () => {
+      const taskFullySpent = { ...baseTask, spentLamports: 1_000_000_000 };
+      const res = validateTaskTransition(
+        taskFullySpent,
+        { type: 'settle_payment', paymentId: 'pay-1', remainingPendingEscrows: 1 },
+        500,
+      );
+      expect(res.valid).toBe(true);
+      expect(res.nextStatus).toBe('active');
+    });
+
+    it('validates allowedWorker and allowedServiceId when specified', () => {
+      const scopedTask = {
+        ...baseTask,
+        allowedWorker: dummyWorker,
+        allowedServiceId: 'srv-specific',
+      };
+
+      const matchRes = validateTaskTransition(
+        scopedTask,
+        {
+          type: 'execute_payment',
+          amountLamports: 100_000_000,
+          worker: dummyWorker,
+          serviceId: 'srv-specific',
+        },
+        500,
+      );
+      expect(matchRes.valid).toBe(true);
+
+      const badWorkerRes = validateTaskTransition(
+        scopedTask,
+        {
+          type: 'execute_payment',
+          amountLamports: 100_000_000,
+          worker: dummyAgent,
+          serviceId: 'srv-specific',
+        },
+        500,
+      );
+      expect(badWorkerRes.valid).toBe(false);
+      expect(badWorkerRes.error).toMatch(/worker .* is not allowed/i);
+
+      const badServiceRes = validateTaskTransition(
+        scopedTask,
+        {
+          type: 'execute_payment',
+          amountLamports: 100_000_000,
+          worker: dummyWorker,
+          serviceId: 'srv-different',
+        },
+        500,
+      );
+      expect(badServiceRes.valid).toBe(false);
+      expect(badServiceRes.error).toMatch(/service .* is not allowed/i);
     });
 
     it('transitions to revoked on revoke action', () => {

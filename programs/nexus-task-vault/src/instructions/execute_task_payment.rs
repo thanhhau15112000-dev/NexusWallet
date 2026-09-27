@@ -68,6 +68,20 @@ pub fn handle_execute_task_payment(
         TaskVaultError::ExceedsPaymentCap
     );
 
+    if ctx.accounts.task_capability.allowed_worker != Pubkey::default() {
+        require!(
+            ctx.accounts.worker.key() == ctx.accounts.task_capability.allowed_worker,
+            TaskVaultError::UnauthorizedWorker
+        );
+    }
+
+    if ctx.accounts.task_capability.allowed_service_id != [0u8; 32] {
+        require!(
+            params.service_id == ctx.accounts.task_capability.allowed_service_id,
+            TaskVaultError::UnauthorizedService
+        );
+    }
+
     let new_spent = ctx
         .accounts
         .task_capability

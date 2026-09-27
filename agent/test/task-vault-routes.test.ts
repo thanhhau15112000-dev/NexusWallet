@@ -360,4 +360,181 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
       await app.close();
     }
   });
+
+  it('enforces worker and service allowlist on task payments (rejects 403 on mismatch)', async () => {
+    const { app, cookieHeader } = await setupApp();
+
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const taskId = 'task-demo-allowlist-001';
+      const allowedWorkerKey = nacl.sign.keyPair();
+      const allowedWorkerPubkey = bs58.encode(allowedWorkerKey.publicKey);
+      const allowedServiceId = 'allowed-service-nlp';
+
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/tasks',
+        headers: { cookie: cookieHeader },
+        payload: {
+          taskId,
+          budgetLamports: 500_000_000,
+          perPaymentCapLamports: 250_000_000,
+          expiry: now + 3600,
+          allowedWorker: allowedWorkerPubkey,
+          allowedServiceId,
+        },
+      });
+      expect(createRes.statusCode).toBe(200);
+
+      // 1. Attempt payment with unauthorized worker -> 403
+      const unauthorizedWorkerKey = nacl.sign.keyPair();
+      const unauthorizedWorkerPubkey = bs58.encode(unauthorizedWorkerKey.publicKey);
+      const unauthWorkerRes = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          paymentId: 'pay-unauth-worker',
+          worker: unauthorizedWorkerPubkey,
+          serviceId: allowedServiceId,
+          amountLamports: 100_000_000,
+          requestHash: 'hash-req-unauth-worker',
+        },
+      });
+      expect(unauthWorkerRes.statusCode).toBe(403);
+      expect(JSON.parse(unauthWorkerRes.body).error).toBe('unauthorized_worker');
+
+      // 2. Attempt payment with unauthorized serviceId -> 403
+      const unauthServiceRes = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          paymentId: 'pay-unauth-service',
+          worker: allowedWorkerPubkey,
+          serviceId: 'unauthorized-service-xyz',
+          amountLamports: 100_000_000,
+          requestHash: 'hash-req-unauth-service',
+        },
+      });
+      expect(unauthServiceRes.statusCode).toBe(403);
+      expect(JSON.parse(unauthServiceRes.body).error).toBe('unauthorized_service');
+
+      // 3. Authorized payment succeeds
+      const authPayRes = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          paymentId: 'pay-auth-valid',
+          worker: allowedWorkerPubkey,
+          serviceId: allowedServiceId,
+          amountLamports: 100_000_000,
+          requestHash: 'hash-req-auth-valid',
+        },
+      });
+      expect(authPayRes.statusCode).toBe(200);
+      expect(JSON.parse(authPayRes.body).payment.status).toBe('held');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('allows multi-payment settlement to fully spend budget without locking pending escrows prematurely', async () => {
+    const { app, cookieHeader } = await setupApp();
+
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const taskId = 'task-demo-multipay-001';
+      const workerKey = nacl.sign.keyPair();
+      const workerPubkey = bs58.encode(workerKey.publicKey);
+
+      // Budget 600m, Cap 300m
+      await app.inject({
+        method: 'POST',
+        url: '/api/tasks',
+        headers: { cookie: cookieHeader },
+        payload: {
+          taskId,
+          budgetLamports: 600_000_000,
+          perPaymentCapLamports: 300_000_000,
+          expiry: now + 3600,
+        },
+      });
+
+      // Payment 1: 300m (held)
+      await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          paymentId: 'pay-m1',
+          worker: workerPubkey,
+          serviceId: 'svc-m1',
+          amountLamports: 300_000_000,
+          requestHash: 'req-m1',
+        },
+      });
+
+      // Payment 2: 300m (held) -> Spent lamports now 600m = budget
+      await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          paymentId: 'pay-m2',
+          worker: workerPubkey,
+          serviceId: 'svc-m2',
+          amountLamports: 300_000_000,
+          requestHash: 'req-m2',
+        },
+      });
+
+      // Settle Payment 1: Task must STAY 'active' because pay-m2 is still held (pending)
+      const sig1 = bs58.encode(
+        nacl.sign.detached(new TextEncoder().encode(`NEXUS_RECEIPT_V1:${taskId}:pay-m1:res-m1`), workerKey.secretKey),
+      );
+      const settle1Res = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-m1/settle`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          resultHash: 'res-m1',
+          workerPubkey,
+          workerSignature: sig1,
+        },
+      });
+      expect(settle1Res.statusCode).toBe(200);
+      const getTask1 = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${taskId}`,
+        headers: { cookie: cookieHeader },
+      });
+      expect(JSON.parse(getTask1.body).task.status).toBe('active'); // NOT completed prematurely!
+
+      // Settle Payment 2: Now 0 pending escrows remaining and spent == budget -> transitions to completed
+      const sig2 = bs58.encode(
+        nacl.sign.detached(new TextEncoder().encode(`NEXUS_RECEIPT_V1:${taskId}:pay-m2:res-m2`), workerKey.secretKey),
+      );
+      const settle2Res = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-m2/settle`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          resultHash: 'res-m2',
+          workerPubkey,
+          workerSignature: sig2,
+        },
+      });
+      expect(settle2Res.statusCode).toBe(200);
+      const getTask2 = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${taskId}`,
+        headers: { cookie: cookieHeader },
+      });
+      expect(JSON.parse(getTask2.body).task.status).toBe('completed');
+    } finally {
+      await app.close();
+    }
+  });
 });

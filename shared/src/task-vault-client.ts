@@ -68,6 +68,7 @@ const DISCRIMINATORS = {
   revoke_task: new Uint8Array([188, 70, 249, 6, 56, 255, 109, 40]),
   refund_and_close: new Uint8Array([234, 86, 236, 241, 216, 155, 25, 84]),
   refund_expired_escrow: new Uint8Array([40, 9, 115, 148, 140, 7, 157, 160]),
+  close_receipt: new Uint8Array([126, 254, 244, 203, 124, 164, 134, 89]),
 };
 
 export interface CreateAndFundTaskArgs {
@@ -258,6 +259,31 @@ export function refundExpiredEscrowInstruction(args: RefundExpiredEscrowArgs): T
       { pubkey: args.escrow, isSigner: false, isWritable: true },
       { pubkey: args.owner, isSigner: false, isWritable: true },
       { pubkey: args.caller, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+export interface CloseReceiptArgs {
+  taskCapability: PublicKey;
+  receipt: PublicKey;
+  rentRecipient: PublicKey;
+  authority: PublicKey;
+  programId?: PublicKey;
+}
+
+export function closeReceiptInstruction(args: CloseReceiptArgs): TransactionInstruction {
+  const programId = args.programId ?? TASK_VAULT_PROGRAM_PUBKEY;
+  const data = new Uint8Array(8);
+  data.set(DISCRIMINATORS.close_receipt, 0);
+
+  return new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: args.taskCapability, isSigner: false, isWritable: true },
+      { pubkey: args.receipt, isSigner: false, isWritable: true },
+      { pubkey: args.rentRecipient, isSigner: false, isWritable: true },
+      { pubkey: args.authority, isSigner: true, isWritable: false },
     ],
     data: Buffer.from(data),
   });

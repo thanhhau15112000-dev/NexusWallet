@@ -69,13 +69,13 @@ pub fn handle_settle_with_receipt(
         TaskVaultError::InvalidResultHash
     );
 
-    // Decrement pending escrows on task capability
-    ctx.accounts.task_capability.pending_escrows = ctx
+    let remaining_pending = ctx
         .accounts
         .task_capability
         .pending_escrows
         .checked_sub(1)
         .ok_or(TaskVaultError::CalculationOverflow)?;
+    ctx.accounts.task_capability.pending_escrows = remaining_pending;
 
     // Initialize receipt record
     let receipt = &mut ctx.accounts.receipt;
@@ -107,8 +107,10 @@ pub fn handle_settle_with_receipt(
         *byte = 0;
     }
 
-    // If all budget spent, mark task completed
-    if ctx.accounts.task_capability.spent_lamports >= ctx.accounts.task_capability.budget_lamports {
+    // If all budget spent and no pending escrows remain, mark task completed
+    if ctx.accounts.task_capability.spent_lamports >= ctx.accounts.task_capability.budget_lamports
+        && remaining_pending == 0
+    {
         ctx.accounts.task_capability.status = TaskStatus::Completed;
     }
 

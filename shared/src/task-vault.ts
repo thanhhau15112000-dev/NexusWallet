@@ -25,8 +25,12 @@ export const TaskCapabilityRecordSchema = z.object({
   perPaymentCapLamports: z.number().int().positive(),
   expiry: z.number().int().positive(),
   status: TaskStatusSchema.default('active'),
+  allowedWorker: PubkeySchema.optional(),
+  allowedServiceId: z.string().trim().min(1).max(64).optional(),
   pda: PubkeySchema.optional(),
   vaultPda: PubkeySchema.optional(),
+  txSignature: z.string().optional(),
+  isSimulated: z.boolean().optional(),
 });
 
 export type TaskCapabilityRecord = z.infer<typeof TaskCapabilityRecordSchema>;
@@ -40,6 +44,8 @@ export const TaskPaymentRecordSchema = z.object({
   requestHash: z.string().trim().min(1),
   status: EscrowStatusSchema.default('held'),
   escrowPda: PubkeySchema.optional(),
+  txSignature: z.string().optional(),
+  isSimulated: z.boolean().optional(),
   createdAt: z.string().datetime().optional(),
 });
 
@@ -55,6 +61,8 @@ export const TaskReceiptRecordSchema = z.object({
   amountLamports: z.number().int().positive(),
   settledAt: z.number().int().positive(),
   receiptPda: PubkeySchema.optional(),
+  txSignature: z.string().optional(),
+  isSimulated: z.boolean().optional(),
 });
 
 export type TaskReceiptRecord = z.infer<typeof TaskReceiptRecordSchema>;
@@ -62,8 +70,8 @@ export type TaskReceiptRecord = z.infer<typeof TaskReceiptRecordSchema>;
 // ----------------------------------------------------------- state machine
 
 export type TaskTransition =
-  | { type: 'execute_payment'; amountLamports: number }
-  | { type: 'settle_payment'; paymentId: string }
+  | { type: 'execute_payment'; amountLamports: number; worker?: string; serviceId?: string }
+  | { type: 'settle_payment'; paymentId: string; remainingPendingEscrows?: number }
   | { type: 'revoke' }
   | { type: 'expire' }
   | { type: 'refund_and_close' };
@@ -74,8 +82,8 @@ export type TaskTransition =
  * Current State | Action               | Condition                            | Next State
  * --------------|----------------------|--------------------------------------|------------
  * active        | execute_payment      | spent + amount <= budget & cap ok    | active
- * active        | settle_payment       | valid receipt; if spent == budget    | completed
- * active        | settle_payment       | valid receipt; if spent < budget     | active
+ * active        | settle_payment       | valid receipt; if spent == budget & pending == 0 | completed
+ * active        | settle_payment       | valid receipt; if spent < budget or pending > 0   | active
  * active        | revoke               | owner signer                         | revoked
  * active        | expire               | now >= expiry                        | expired
  * active        | refund_and_close     | owner signer                         | closed
@@ -90,6 +98,9 @@ export function validateTaskTransition(
     budgetLamports: number;
     spentLamports: number;
     perPaymentCapLamports: number;
+    allowedWorker?: string;
+    allowedServiceId?: string;
+    pendingEscrows?: number;
   },
   transition: TaskTransition,
   nowSeconds: number,
@@ -115,6 +126,12 @@ export function validateTaskTransition(
       if (task.spentLamports + transition.amountLamports > task.budgetLamports) {
         return { valid: false, error: 'payment amount exceeds remaining budget' };
       }
+      if (task.allowedWorker && transition.worker && transition.worker !== task.allowedWorker) {
+        return { valid: false, error: `worker ${transition.worker} is not allowed by task capability` };
+      }
+      if (task.allowedServiceId && transition.serviceId && transition.serviceId !== task.allowedServiceId) {
+        return { valid: false, error: `service ${transition.serviceId} is not allowed by task capability` };
+      }
       return { valid: true, nextStatus: 'active' };
     }
 
@@ -122,8 +139,12 @@ export function validateTaskTransition(
       if (task.status !== 'active') {
         return { valid: false, error: `cannot settle payment in ${task.status} state` };
       }
+      const remainingPending =
+        transition.remainingPendingEscrows ??
+        (task.pendingEscrows !== undefined ? Math.max(0, task.pendingEscrows - 1) : 0);
       const isBudgetFullySpent = task.spentLamports >= task.budgetLamports;
-      return { valid: true, nextStatus: isBudgetFullySpent ? 'completed' : 'active' };
+      const isCompleted = isBudgetFullySpent && remainingPending === 0;
+      return { valid: true, nextStatus: isCompleted ? 'completed' : 'active' };
     }
 
     case 'revoke': {

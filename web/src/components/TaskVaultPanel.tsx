@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock,
   Coins,
+  ExternalLink,
   Layers,
   Play,
   Plus,
@@ -18,7 +19,13 @@ import {
   type TaskCapabilityRecord,
   type TaskPaymentRecord,
   type TaskReceiptRecord,
+  createAndFundTaskInstruction,
+  refundAndCloseInstruction,
+  revokeTaskInstruction,
+  deriveTaskCapabilityPda,
 } from '@nexus/shared';
+import { Connection, PublicKey, Transaction } from '@solana/web3.js';
+import { getPhantom } from '../phantom.js';
 import { api, ApiError } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 
@@ -44,6 +51,9 @@ export function TaskVaultPanel(props: {
   const [newBudgetSol, setNewBudgetSol] = useState('0.5');
   const [newCapSol, setNewCapSol] = useState('0.2');
   const [newHours, setNewHours] = useState('24');
+  const [newAllowedWorker, setNewAllowedWorker] = useState('');
+  const [newAllowedServiceId, setNewAllowedServiceId] = useState('');
+  const [submitOnchain, setSubmitOnchain] = useState(true);
 
   // Payment form state
   const [paymentWorker, setPaymentWorker] = useState(DEFAULT_MOCK_WORKER_PUBKEY);
@@ -109,19 +119,67 @@ export function TaskVaultPanel(props: {
     try {
       const now = Math.floor(Date.now() / 1000);
       const expiry = now + Math.round(hours * 3600);
+      let txSignature: string | undefined;
+
+      if (submitOnchain) {
+        const provider = getPhantom();
+        if (!provider) {
+          props.onToast({ tone: 'warn', text: 'Phantom wallet not detected for on-chain submission' });
+          setBusyAction(null);
+          return;
+        }
+        const connection = new Connection(props.rpcUrl, 'confirmed');
+        const ownerPubkey = new PublicKey(props.owner);
+        const agentPubkey = new PublicKey(props.agentPubkey);
+
+        const ix = createAndFundTaskInstruction({
+          owner: ownerPubkey,
+          agentSigner: agentPubkey,
+          taskId: newTaskId.trim(),
+          budgetLamports: Math.round(budgetSol * LAMPORTS_PER_SOL),
+          perPaymentCapLamports: Math.round(capSol * LAMPORTS_PER_SOL),
+          expiry,
+        });
+
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const tx = new Transaction().add(ix);
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = ownerPubkey;
+
+        const { signature } = await provider.signAndSendTransaction(tx as any);
+        txSignature = signature;
+        await connection.confirmTransaction(signature, 'confirmed');
+      }
+
       const res = await api.createTask({
         taskId: newTaskId.trim(),
         budgetLamports: Math.round(budgetSol * LAMPORTS_PER_SOL),
         perPaymentCapLamports: Math.round(capSol * LAMPORTS_PER_SOL),
         expiry,
+        allowedWorker: newAllowedWorker.trim() || undefined,
+        allowedServiceId: newAllowedServiceId.trim() || undefined,
+        txSignature,
+        isSimulated: !txSignature,
       });
-      props.onToast({ tone: 'ok', text: `Task Capability "${res.task.taskId}" created & funded` });
+
+      if (txSignature) {
+        props.onToast({
+          tone: 'ok',
+          text: `Task Capability funded on Solana Devnet: ${shorten(txSignature, 4)}`,
+        });
+      } else {
+        props.onToast({
+          tone: 'ok',
+          text: `Task Capability "${res.task.taskId}" created in simulation mode`,
+        });
+      }
+
       setNewTaskId(`task-${Date.now().toString(36)}`);
       await loadTasks(res.task.taskId);
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : 'Failed to create task vault',
+        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to create task vault',
       });
     } finally {
       setBusyAction(null);
@@ -137,6 +195,22 @@ export function TaskVaultPanel(props: {
       return;
     }
     const worker = paymentWorker.trim() || props.owner || props.agentPubkey;
+
+    if (detail.task.allowedWorker && worker !== detail.task.allowedWorker) {
+      props.onToast({
+        tone: 'warn',
+        text: `Worker ${shorten(worker, 4)} does not match allowed worker ${shorten(detail.task.allowedWorker, 4)}`,
+      });
+      return;
+    }
+
+    if (detail.task.allowedServiceId && paymentService.trim() !== detail.task.allowedServiceId) {
+      props.onToast({
+        tone: 'warn',
+        text: `Service "${paymentService}" does not match allowed service "${detail.task.allowedServiceId}"`,
+      });
+      return;
+    }
 
     setBusyAction('execute_payment');
     try {
@@ -193,6 +267,28 @@ export function TaskVaultPanel(props: {
   const handleRevoke = async (taskId: string) => {
     setBusyAction(`revoke-${taskId}`);
     try {
+      if (detail?.task.txSignature && props.owner) {
+        try {
+          const provider = getPhantom();
+          if (provider) {
+            const connection = new Connection(props.rpcUrl, 'confirmed');
+            const ownerPubkey = new PublicKey(props.owner);
+            const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
+            const ix = revokeTaskInstruction({
+              taskCapability: taskPda,
+              owner: ownerPubkey,
+            });
+            const { blockhash } = await connection.getLatestBlockhash('confirmed');
+            const tx = new Transaction().add(ix);
+            tx.recentBlockhash = blockhash;
+            tx.feePayer = ownerPubkey;
+            const { signature } = await provider.signAndSendTransaction(tx as any);
+            await connection.confirmTransaction(signature, 'confirmed');
+          }
+        } catch (onchainErr) {
+          console.warn('On-chain revoke transaction failed, continuing with state update:', onchainErr);
+        }
+      }
       await api.revokeTask(taskId);
       props.onToast({ tone: 'warn', text: `Task Capability "${taskId}" has been revoked` });
       await selectTask(taskId);
@@ -206,6 +302,29 @@ export function TaskVaultPanel(props: {
   const handleRefund = async (taskId: string) => {
     setBusyAction(`refund-${taskId}`);
     try {
+      if (detail?.task.txSignature && props.owner) {
+        try {
+          const provider = getPhantom();
+          if (provider) {
+            const connection = new Connection(props.rpcUrl, 'confirmed');
+            const ownerPubkey = new PublicKey(props.owner);
+            const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
+            const ix = refundAndCloseInstruction({
+              taskCapability: taskPda,
+              owner: ownerPubkey,
+              caller: ownerPubkey,
+            });
+            const { blockhash } = await connection.getLatestBlockhash('confirmed');
+            const tx = new Transaction().add(ix);
+            tx.recentBlockhash = blockhash;
+            tx.feePayer = ownerPubkey;
+            const { signature } = await provider.signAndSendTransaction(tx as any);
+            await connection.confirmTransaction(signature, 'confirmed');
+          }
+        } catch (onchainErr) {
+          console.warn('On-chain refund transaction failed, continuing with state update:', onchainErr);
+        }
+      }
       const res = await api.refundTask(taskId);
       props.onToast({
         tone: 'ok',
@@ -244,7 +363,20 @@ export function TaskVaultPanel(props: {
         <div className="notice-content">
           <div className="notice-title">
             <strong>Task Capability Vault — Programmable Agent Treasury</strong>
-            <Pill tone="ok">On-Chain Escrow (MVP)</Pill>
+            {detail?.task.txSignature ? (
+              <a
+                href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
+                target="_blank"
+                rel="noreferrer"
+                className="explorer-link-pill"
+              >
+                <Pill tone="ok">On-Chain Devnet: {shorten(detail.task.txSignature, 4)}</Pill>
+              </a>
+            ) : detail?.task ? (
+              <Pill tone="neutral">Off-Chain State (Simulated)</Pill>
+            ) : (
+              <Pill tone="neutral">Task Capability Engine</Pill>
+            )}
           </div>
           <p>
             The agent never holds or withdraws the owner's funds. Instead, the owner grants a bounded{' '}
@@ -305,6 +437,27 @@ export function TaskVaultPanel(props: {
                 </label>
               </div>
 
+              <div className="form-row">
+                <label>
+                  <span>Allowed Worker (optional)</span>
+                  <input
+                    type="text"
+                    value={newAllowedWorker}
+                    onChange={(e) => setNewAllowedWorker(e.target.value)}
+                    placeholder="Leave blank for any"
+                  />
+                </label>
+                <label>
+                  <span>Allowed Service (optional)</span>
+                  <input
+                    type="text"
+                    value={newAllowedServiceId}
+                    onChange={(e) => setNewAllowedServiceId(e.target.value)}
+                    placeholder="e.g. service-data-enrichment"
+                  />
+                </label>
+              </div>
+
               <label>
                 <span>Expiry Duration (hours)</span>
                 <input
@@ -315,6 +468,15 @@ export function TaskVaultPanel(props: {
                   onChange={(e) => setNewHours(e.target.value)}
                   required
                 />
+              </label>
+
+              <label className="checkbox-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: '8px 0' }}>
+                <input
+                  type="checkbox"
+                  checked={submitOnchain}
+                  onChange={(e) => setSubmitOnchain(e.target.checked)}
+                />
+                <span style={{ fontSize: '0.82rem' }}>Broadcast on-chain to Solana Devnet via Phantom</span>
               </label>
 
               <button
@@ -423,6 +585,22 @@ export function TaskVaultPanel(props: {
                     <Pill tone={statusTone(detail.task.status)}>{detail.task.status}</Pill>
                   </div>
                   <div className="summary-stat">
+                    <span className="stat-label">Execution Mode</span>
+                    {detail.task.txSignature ? (
+                      <a
+                        href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Pill tone="ok">Devnet Tx</Pill>
+                        <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      <Pill tone="neutral">Simulated</Pill>
+                    )}
+                  </div>
+                  <div className="summary-stat">
                     <span className="stat-label">Total Budget</span>
                     <strong>{(detail.task.budgetLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL</strong>
                   </div>
@@ -445,6 +623,14 @@ export function TaskVaultPanel(props: {
                     <span>{(detail.task.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL</span>
                   </div>
                   <div className="summary-stat">
+                    <span className="stat-label">Allowed Worker</span>
+                    <span>{detail.task.allowedWorker ? shorten(detail.task.allowedWorker, 4) : 'Any'}</span>
+                  </div>
+                  <div className="summary-stat">
+                    <span className="stat-label">Allowed Service</span>
+                    <span>{detail.task.allowedServiceId || 'Any'}</span>
+                  </div>
+                  <div className="summary-stat">
                     <span className="stat-label">Expires At</span>
                     <span>{new Date(detail.task.expiry * 1000).toLocaleString()}</span>
                   </div>
@@ -465,6 +651,20 @@ export function TaskVaultPanel(props: {
                       <CopyAddressButton value={detail.task.vaultPda} label="Copy vault PDA" />
                     ) : null}
                   </div>
+                  {detail.task.txSignature ? (
+                    <div className="pda-item">
+                      <span className="pda-label">Devnet Tx:</span>
+                      <a
+                        href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--c-accent)' }}
+                      >
+                        <Mono>{shorten(detail.task.txSignature, 8)}</Mono>
+                        <ExternalLink size={12} />
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
               </Card>
 

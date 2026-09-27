@@ -514,6 +514,10 @@ const inFlightClaims = new Set<string>();
     budgetLamports: z.number().int().positive(),
     perPaymentCapLamports: z.number().int().positive(),
     expiry: z.number().int().positive(),
+    allowedWorker: PubkeySchema.optional(),
+    allowedServiceId: z.string().trim().min(1).max(64).optional(),
+    txSignature: z.string().trim().optional(),
+    isSimulated: z.boolean().optional(),
   });
 
   app.post('/api/tasks', async (req, reply) => {
@@ -549,8 +553,12 @@ const inFlightClaims = new Set<string>();
       perPaymentCapLamports: body.perPaymentCapLamports,
       expiry: body.expiry,
       status: 'active' as const,
+      allowedWorker: body.allowedWorker,
+      allowedServiceId: body.allowedServiceId,
       pda: pda.toBase58(),
       vaultPda: vaultPda.toBase58(),
+      txSignature: body.txSignature,
+      isSimulated: body.isSimulated ?? !body.txSignature,
     };
 
     userCtx.store.setTask(record, { allowOverwrite: false });
@@ -561,6 +569,8 @@ const inFlightClaims = new Set<string>();
       expiry: record.expiry,
       pda: record.pda,
       vaultPda: record.vaultPda,
+      txSignature: record.txSignature,
+      isSimulated: record.isSimulated,
     });
 
     return { task: record };
@@ -572,6 +582,8 @@ const inFlightClaims = new Set<string>();
     serviceId: z.string().trim().min(1).max(64),
     amountLamports: z.number().int().positive(),
     requestHash: z.string().trim().min(1),
+    txSignature: z.string().trim().optional(),
+    isSimulated: z.boolean().optional(),
   });
 
   app.post('/api/tasks/:taskId/payments', async (req, reply) => {
@@ -586,10 +598,29 @@ const inFlightClaims = new Set<string>();
       return reply.status(409).send({ error: 'payment_exists', message: `Payment ${body.paymentId} already exists` });
     }
 
+    if (task.allowedWorker && body.worker !== task.allowedWorker) {
+      return reply.status(403).send({
+        error: 'unauthorized_worker',
+        message: `worker ${body.worker} is not allowed for this task (expected ${task.allowedWorker})`,
+      });
+    }
+
+    if (task.allowedServiceId && body.serviceId !== task.allowedServiceId) {
+      return reply.status(403).send({
+        error: 'unauthorized_service',
+        message: `service ${body.serviceId} is not allowed for this task (expected ${task.allowedServiceId})`,
+      });
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const check = validateTaskTransition(
       task,
-      { type: 'execute_payment', amountLamports: body.amountLamports },
+      {
+        type: 'execute_payment',
+        amountLamports: body.amountLamports,
+        worker: body.worker,
+        serviceId: body.serviceId,
+      },
       now,
     );
     if (!check.valid) {
@@ -614,6 +645,8 @@ const inFlightClaims = new Set<string>();
       requestHash: body.requestHash,
       status: 'held' as const,
       escrowPda: escrowPda.toBase58(),
+      txSignature: body.txSignature,
+      isSimulated: body.isSimulated ?? !body.txSignature,
       createdAt: new Date().toISOString(),
     };
     userCtx.store.setPayment(paymentRecord, { allowOverwrite: false });
@@ -624,6 +657,8 @@ const inFlightClaims = new Set<string>();
       worker: body.worker,
       amountLamports: body.amountLamports,
       escrowPda: paymentRecord.escrowPda,
+      txSignature: paymentRecord.txSignature,
+      isSimulated: paymentRecord.isSimulated,
     });
 
     return { task: updatedTask, payment: paymentRecord };
@@ -633,6 +668,8 @@ const inFlightClaims = new Set<string>();
     resultHash: z.string().trim().min(1),
     workerPubkey: PubkeySchema,
     workerSignature: z.string().trim().min(1),
+    txSignature: z.string().trim().optional(),
+    isSimulated: z.boolean().optional(),
   });
 
   app.post('/api/tasks/:taskId/payments/:paymentId/settle', async (req, reply) => {
@@ -668,7 +705,13 @@ const inFlightClaims = new Set<string>();
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const check = validateTaskTransition(task, { type: 'settle_payment', paymentId }, now);
+    const heldPayments = userCtx.store.getPayments(taskId).filter((p) => p.status === 'held');
+    const remainingPending = Math.max(0, heldPayments.length - 1);
+    const check = validateTaskTransition(
+      task,
+      { type: 'settle_payment', paymentId, remainingPendingEscrows: remainingPending },
+      now,
+    );
     if (!check.valid) {
       return reply.status(400).send({ error: 'settle_rejected', message: check.error });
     }
@@ -676,7 +719,7 @@ const inFlightClaims = new Set<string>();
     const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
     const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
 
-    userCtx.store.setPayment({ ...payment, status: 'settled' }, { allowOverwrite: true });
+    userCtx.store.setPayment({ ...payment, status: 'settled', txSignature: body.txSignature }, { allowOverwrite: true });
 
     const receiptRecord = {
       taskId,
@@ -688,6 +731,8 @@ const inFlightClaims = new Set<string>();
       amountLamports: payment.amountLamports,
       settledAt: now,
       receiptPda: receiptPda.toBase58(),
+      txSignature: body.txSignature,
+      isSimulated: body.isSimulated ?? !body.txSignature,
     };
     userCtx.store.setReceipt(receiptRecord, { allowOverwrite: false });
 
@@ -702,9 +747,11 @@ const inFlightClaims = new Set<string>();
       amountLamports: payment.amountLamports,
       resultHash: body.resultHash,
       receiptPda: receiptRecord.receiptPda,
+      txSignature: receiptRecord.txSignature,
+      isSimulated: receiptRecord.isSimulated,
     });
 
-    return { payment: { ...payment, status: 'settled' }, receipt: receiptRecord };
+    return { payment: { ...payment, status: 'settled', txSignature: body.txSignature }, receipt: receiptRecord };
   });
 
   app.post('/api/tasks/:taskId/revoke', async (req, reply) => {

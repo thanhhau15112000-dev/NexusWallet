@@ -10,6 +10,8 @@ pub struct CreateAndFundTaskParams {
     pub per_payment_cap_lamports: u64,
     pub expiry: i64,
     pub agent_signer: Pubkey,
+    pub allowed_worker: Pubkey,
+    pub allowed_service_id: [u8; 32],
 }
 
 #[derive(Accounts)]
@@ -64,6 +66,8 @@ pub fn handle_create_and_fund_task(
     task.bump = ctx.bumps.task_capability;
     task.vault_bump = ctx.bumps.vault;
     task.pending_escrows = 0;
+    task.allowed_worker = params.allowed_worker;
+    task.allowed_service_id = params.allowed_service_id;
 
     let vault = &mut ctx.accounts.vault;
     vault.task_capability = task.key();

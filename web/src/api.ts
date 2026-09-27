@@ -232,6 +232,10 @@ export const api = {
     budgetLamports: number;
     perPaymentCapLamports: number;
     expiry: number;
+    allowedWorker?: string;
+    allowedServiceId?: string;
+    txSignature?: string;
+    isSimulated?: boolean;
   }) =>
     request<{ task: TaskCapabilityRecord }>('/api/tasks', {
       method: 'POST',
@@ -245,6 +249,8 @@ export const api = {
       serviceId: string;
       amountLamports: number;
       requestHash: string;
+      txSignature?: string;
+      isSimulated?: boolean;
     },
   ) =>
     request<{ task: TaskCapabilityRecord; payment: TaskPaymentRecord }>(
@@ -254,7 +260,13 @@ export const api = {
   settleTaskPayment: (
     taskId: string,
     paymentId: string,
-    input: { resultHash: string; workerPubkey: string; workerSignature: string },
+    input: {
+      resultHash: string;
+      workerPubkey: string;
+      workerSignature: string;
+      txSignature?: string;
+      isSimulated?: boolean;
+    },
   ) =>
     request<{ payment: TaskPaymentRecord; receipt: TaskReceiptRecord }>(
       `/api/tasks/${taskId}/payments/${paymentId}/settle`,

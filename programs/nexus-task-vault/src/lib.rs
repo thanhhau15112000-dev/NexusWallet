@@ -44,4 +44,8 @@ pub mod nexus_task_vault {
     pub fn refund_expired_escrow(ctx: Context<RefundExpiredEscrow>) -> Result<()> {
         instructions::handle_refund_expired_escrow(ctx)
     }
+
+    pub fn close_receipt(ctx: Context<CloseReceipt>) -> Result<()> {
+        instructions::handle_close_receipt(ctx)
+    }
 }

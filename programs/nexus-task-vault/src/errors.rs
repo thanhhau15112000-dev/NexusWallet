@@ -24,6 +24,8 @@ pub enum TaskVaultError {
     UnauthorizedSigner,
     #[msg("Unauthorized worker for this escrow")]
     UnauthorizedWorker,
+    #[msg("Unauthorized service for this task capability")]
+    UnauthorizedService,
     #[msg("Escrow is not in held status")]
     EscrowNotHeld,
     #[msg("Escrow payment already settled")]
