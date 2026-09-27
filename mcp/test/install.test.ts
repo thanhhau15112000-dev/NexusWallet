@@ -2,13 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  getClientConfigPath,
-  installClient,
-  mergeJsonConfig,
-  mergeTomlConfig,
-  runCli,
-} from '../scripts/install.mjs';
+// @ts-expect-error install.mjs is plain JavaScript without type declarations
+import { getClientConfigPath, installClient, mergeJsonConfig, mergeTomlConfig, runCli } from '../scripts/install.mjs';
 
 describe('mcp install script', () => {
   const dummyBundle = 'G:/test-repo/dist/mcp/nexuspay-mcp.mjs';
