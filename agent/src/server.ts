@@ -47,7 +47,9 @@ async function main(): Promise<void> {
   const ctx = createContext(config);
 
   app.addHook('preHandler', async (req, reply) => {
-    if (!config.authRequired || !req.url.startsWith('/api/')) return;
+    // Sessions are required in every deployment mode: owner identity must come from a
+    // signed wallet login, never from a client-supplied header or the bound owner.
+    if (!req.url.startsWith('/api/')) return;
     const pathname = req.url.split('?', 1)[0] ?? req.url;
     const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     const isPublicAction = pathname.startsWith(PUBLIC_ACTION_PATH_PREFIX);

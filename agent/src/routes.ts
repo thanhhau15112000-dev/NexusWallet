@@ -142,10 +142,6 @@ function resolveUserContext(ctx: AppContext, req: FastifyRequest): AppContext {
   if (session?.owner && ctx.getUserContext) {
     return ctx.getUserContext(session.owner);
   }
-  const headerOwner = req.headers['x-owner-pubkey'] as string | undefined;
-  if (headerOwner && PubkeySchema.safeParse(headerOwner).success && ctx.getUserContext) {
-    return ctx.getUserContext(headerOwner);
-  }
   const boundOwner = ctx.store.getOwner();
   if (boundOwner && ctx.getUserContext) {
     return ctx.getUserContext(boundOwner);
