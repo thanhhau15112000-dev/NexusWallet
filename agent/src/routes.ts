@@ -351,6 +351,9 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     }
     const session = ctx.sessions.verifyChallenge({ challengeId, pubkey, signature });
     if (!session) return reply.status(401).send({ error: 'invalid_login_signature' });
+    if (!ctx.config.authRequired) {
+      loadOrCreateMcpToken(ctx.config.usersDir, pubkey);
+    }
     reply.setCookie(SESSION_COOKIE_NAME, session.token, {
       signed: true,
       httpOnly: true,

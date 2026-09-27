@@ -4,7 +4,7 @@ import cookie from '@fastify/cookie';
 import { Keypair } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerAuthHook } from '../src/auth-hook.js';
@@ -119,6 +119,41 @@ describe('MCP token authentication', () => {
       const res = await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } });
       expect(res.statusCode).toBe(409);
       expect(JSON.parse(res.body).error).toBe('mcp_local_only');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('creates an MCP token file on login in local mode and keeps it across logins', async () => {
+    const { app, ctx } = await startApp({ authRequired: false });
+    try {
+      const owner = Keypair.generate();
+      const ownerPubkey = owner.publicKey.toBase58();
+      const tokenPath = join(ctx.config.usersDir, ownerPubkey, 'mcp-token');
+      expect(existsSync(tokenPath)).toBe(false);
+
+      await login(app, owner);
+      expect(existsSync(tokenPath)).toBe(true);
+      const token1 = readFileSync(tokenPath, 'utf8').trim();
+      expect(token1).toMatch(new RegExp(`^nxp_${ownerPubkey}_[A-Za-z0-9_-]{43}$`));
+
+      await login(app, owner);
+      const token2 = readFileSync(tokenPath, 'utf8').trim();
+      expect(token2).toBe(token1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not create an MCP token file on login in hosted mode', async () => {
+    const { app, ctx } = await startApp({ authRequired: true });
+    try {
+      const owner = Keypair.generate();
+      const ownerPubkey = owner.publicKey.toBase58();
+      const tokenPath = join(ctx.config.usersDir, ownerPubkey, 'mcp-token');
+
+      await login(app, owner);
+      expect(existsSync(tokenPath)).toBe(false);
     } finally {
       await app.close();
     }
