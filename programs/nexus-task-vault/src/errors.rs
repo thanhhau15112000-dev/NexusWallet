@@ -36,4 +36,8 @@ pub enum TaskVaultError {
     InvalidResultHash,
     #[msg("Calculation overflow")]
     CalculationOverflow,
+    #[msg("Payment id already has a settlement receipt")]
+    PaymentIdAlreadyUsed,
+    #[msg("Receipt cannot be closed while the task can still accept payments")]
+    ReceiptLockedWhileTaskActive,
 }

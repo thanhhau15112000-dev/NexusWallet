@@ -412,6 +412,11 @@ export function TaskVaultPanel(props: {
     }
   };
 
+  // Mirrors close_receipt: the capability must still exist and no longer accept payments.
+  const receiptsClosable = Boolean(detail)
+    && !detail!.task.isClosed
+    && (detail!.task.status !== 'active' || Math.floor(Date.now() / 1000) >= detail!.task.expiry);
+
   return (
     <div className="task-vault-container">
       {/* Non-Custodial Architecture Notice Banner */}
@@ -832,7 +837,11 @@ export function TaskVaultPanel(props: {
                                         <Pill tone="ok">On-Chain Devnet</Pill>
                                       </a>
                                     ) : <Pill tone="neutral">Simulated</Pill>}
-                                    {receipt.isSimulated === false && !receipt.isClosed ? (
+                                    {receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
+                                      <span title="On-chain receipts block payment-id replay until the task is revoked, completed or expired">
+                                        Rent locked until task ends
+                                      </span>
+                                    ) : receipt.isSimulated === false && !receipt.isClosed ? (
                                       <button
                                         type="button"
                                         className="link primary-link"

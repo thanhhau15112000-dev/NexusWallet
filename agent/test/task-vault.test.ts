@@ -365,10 +365,13 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
         requestHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       });
 
+      const [receiptPda] = deriveReceiptPda(capPda, paymentId);
       expect(ix.programId.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
-      expect(ix.keys).toHaveLength(6);
-      expect(ix.keys[4]!.pubkey.toBase58()).toBe(agent.toBase58());
-      expect(ix.keys[4]!.isSigner).toBe(true);
+      expect(ix.keys).toHaveLength(7);
+      expect(ix.keys[3]!.pubkey.toBase58()).toBe(receiptPda.toBase58());
+      expect(ix.keys[3]!.isWritable).toBe(false);
+      expect(ix.keys[5]!.pubkey.toBase58()).toBe(agent.toBase58());
+      expect(ix.keys[5]!.isSigner).toBe(true);
       expect(ix.data.length).toBe(8 + 32 + 8 + 32 + 32);
     });
 

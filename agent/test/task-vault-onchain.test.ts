@@ -18,6 +18,7 @@ import {
   settleWithReceiptInstruction,
   closeReceiptInstruction,
   refundAndCloseInstruction,
+  revokeTaskInstruction,
   toHex,
 } from '@nexus/shared';
 import { createHash } from 'node:crypto';
@@ -194,6 +195,37 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     const receiptAccount = await connection.getAccountInfo(receiptPda);
     expect(receiptAccount).not.toBeNull();
     expect(receiptAccount!.owner.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
+
+    // Replay of a settled payment id is rejected before a new escrow is funded.
+    await expect(
+      sendAndConfirmTransaction(connection, new Transaction().add(payIx), [agent], {
+        commitment: 'confirmed',
+      }),
+    ).rejects.toThrow(/0x1781/);
+    const closedEscrowBeforeReplay = await connection.getAccountInfo(escrowPda);
+    expect(closedEscrowBeforeReplay === null || closedEscrowBeforeReplay.lamports === 0).toBe(true);
+
+    // The receipt stays locked while the task can still accept payments.
+    const earlyCloseReceiptIx = closeReceiptInstruction({
+      taskCapability: taskCapPda,
+      receipt: receiptPda,
+      authority: worker.publicKey,
+      rentRecipient: worker.publicKey,
+    });
+    await expect(
+      sendAndConfirmTransaction(connection, new Transaction().add(earlyCloseReceiptIx), [worker], {
+        commitment: 'confirmed',
+      }),
+    ).rejects.toThrow(/0x1782/);
+    expect(await connection.getAccountInfo(receiptPda)).not.toBeNull();
+
+    const revokeSig = await sendAndConfirmTransaction(
+      connection,
+      new Transaction().add(revokeTaskInstruction({ taskCapability: taskCapPda, owner: owner.publicKey })),
+      [owner],
+      { commitment: 'confirmed' },
+    );
+    expect(revokeSig).toBeDefined();
 
     const workerBalanceBeforeClose = await connection.getBalance(worker.publicKey);
     const redirectedRentIx = closeReceiptInstruction({

@@ -41,5 +41,14 @@ pub fn handle_close_receipt(ctx: Context<CloseReceipt>) -> Result<()> {
         TaskVaultError::UnauthorizedSigner
     );
 
+    // Receipts are the on-chain replay guard for payment ids, so they stay open
+    // while execute_task_payment can still succeed for this task.
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        ctx.accounts.task_capability.status != TaskStatus::Active
+            || now >= ctx.accounts.task_capability.expiry,
+        TaskVaultError::ReceiptLockedWhileTaskActive
+    );
+
     Ok(())
 }

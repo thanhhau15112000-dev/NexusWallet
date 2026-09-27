@@ -36,6 +36,13 @@ pub struct ExecuteTaskPayment<'info> {
     )]
     pub escrow: Account<'info, Escrow>,
 
+    /// CHECK: Receipt PDA for this payment id; only its ownership is inspected to reject reuse.
+    #[account(
+        seeds = [b"receipt", task_capability.key().as_ref(), params.payment_id.as_ref()],
+        bump
+    )]
+    pub receipt: UncheckedAccount<'info>,
+
     /// CHECK: Recipient worker for this escrow
     pub worker: AccountInfo<'info>,
 
@@ -61,6 +68,11 @@ pub fn handle_execute_task_payment(
     require!(
         ctx.accounts.agent_signer.key() == ctx.accounts.task_capability.agent_signer,
         TaskVaultError::UnauthorizedSigner
+    );
+    // A settled payment id keeps its receipt until the task stops accepting payments.
+    require!(
+        ctx.accounts.receipt.owner != ctx.program_id,
+        TaskVaultError::PaymentIdAlreadyUsed
     );
     require!(params.amount_lamports > 0, TaskVaultError::InvalidPaymentCap);
     require!(

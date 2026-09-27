@@ -188,6 +188,21 @@ describe('Task Vault API with the local Solana program', () => {
       expect(settle2.statusCode).toBe(200);
       expect(JSON.parse(settle2.body).receipt.txSignature).toBeTruthy();
 
+      // Receipts are replay guards, so they can only be closed after the task stops accepting payments.
+      const taskRevokeSignature = await sendAndConfirmTransaction(
+        connection,
+        new Transaction().add(revokeTaskInstruction({ taskCapability: taskPda, owner: owner.publicKey })),
+        [owner],
+        { commitment: 'confirmed' },
+      );
+      const taskRevokeResponse = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/revoke`,
+        headers: { cookie: cookieHeader },
+        payload: { txSignature: taskRevokeSignature },
+      });
+      expect(taskRevokeResponse.statusCode).toBe(200);
+
       const [receiptPda] = deriveReceiptPda(taskPda, 'pay-local-1');
       const closeReceiptIx = closeReceiptInstruction({
         taskCapability: taskPda,

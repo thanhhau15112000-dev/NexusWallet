@@ -137,6 +137,7 @@ export function executeTaskPaymentInstruction(args: ExecuteTaskPaymentArgs): Tra
   const requestHashBytes = to32ByteArray(args.requestHash);
   const [vault] = deriveVaultPda(args.taskCapability, programId);
   const [escrow] = deriveEscrowPda(args.taskCapability, paymentIdBytes, programId);
+  const [receipt] = deriveReceiptPda(args.taskCapability, paymentIdBytes, programId);
 
   // Layout: discriminator(8) + payment_id(32) + amount_lamports(8) + service_id(32) + request_hash(32)
   const data = new Uint8Array(8 + 32 + 8 + 32 + 32);
@@ -154,6 +155,7 @@ export function executeTaskPaymentInstruction(args: ExecuteTaskPaymentArgs): Tra
       { pubkey: args.taskCapability, isSigner: false, isWritable: true },
       { pubkey: vault, isSigner: false, isWritable: true },
       { pubkey: escrow, isSigner: false, isWritable: true },
+      { pubkey: receipt, isSigner: false, isWritable: false },
       { pubkey: args.worker, isSigner: false, isWritable: false },
       { pubkey: args.agentSigner, isSigner: true, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
