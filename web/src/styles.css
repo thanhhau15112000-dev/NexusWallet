@@ -384,12 +384,266 @@ input::placeholder {
   line-height: 1;
 }
 
-.service-state {
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Settings dropdown & language selector */
+.settings-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.settings-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.settings-icon-btn:hover {
+  border-color: var(--line-strong);
+  background: #f7f8f9;
+  color: var(--text);
+}
+
+.settings-icon-btn.is-active {
+  border-color: var(--accent);
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(23 123 101 / 15%);
+}
+
+.settings-gear {
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.settings-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 210px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px -4px rgba(0, 0, 0, 0.14), 0 3px 8px -2px rgba(0, 0, 0, 0.06);
+  padding: 12px;
+  z-index: 1001;
+  animation: settings-popover-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes settings-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.settings-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-popover-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.settings-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.settings-close-btn:hover {
+  background: #eceef0;
+  color: var(--text);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-submenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.settings-submenu-trigger:hover {
+  background: #f7f8f9;
+  border-color: var(--line);
+}
+
+.settings-submenu-trigger.is-open {
+  background: #f1f3f5;
+  border-color: var(--line);
+}
+
+.settings-submenu-trigger .trigger-left {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.settings-submenu-trigger .trigger-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.settings-submenu-trigger .trigger-chevron {
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-submenu-trigger .trigger-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.settings-lang-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 5px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+  margin-left: 14px;
+  animation: settings-dropdown-down 0.14s ease-out;
+}
+
+@keyframes settings-dropdown-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settings-lang-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.settings-lang-option:hover {
+  background: #f7f8f9;
+  border-color: var(--line);
+}
+
+.settings-lang-option.is-selected {
+  background: rgb(23 123 101 / 8%);
+  border-color: rgb(23 123 101 / 22%);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-lang-option .check-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.settings-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bad);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.settings-logout-btn:hover {
+  background: #fdf2f2;
+  border-color: #fbd5d5;
+}
+
+.settings-logout-btn .logout-icon {
+  color: var(--bad);
+  flex-shrink: 0;
+}
+
+.service-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 86px;
+  gap: 8px;
   color: var(--muted);
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .service-state.is-offline {
@@ -976,8 +1230,18 @@ input::placeholder {
   color: #ffe8e8;
 }
 
+.wallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .wallet-fund {
   align-self: flex-start;
+  min-width: 120px;
+  justify-content: center;
+  text-align: center;
   border-color: #c7f2e2;
   background: #c7f2e2;
   color: #124c3d;
@@ -1251,6 +1515,27 @@ input::placeholder {
   text-align: left;
 }
 
+.preset .pill {
+  min-width: 76px;
+  justify-content: center;
+  text-align: center;
+}
+
+.panel-command .button-with-icon {
+  min-width: 90px;
+  justify-content: center;
+}
+
+.panel-policy .row > .primary {
+  min-width: 80px;
+  justify-content: center;
+}
+
+.approval-bar .primary {
+  min-width: 110px;
+  justify-content: center;
+}
+
 .request {
   display: flex;
   flex-direction: column;
@@ -1266,6 +1551,12 @@ input::placeholder {
   gap: 9px;
   min-width: 0;
   flex-wrap: wrap;
+}
+
+.request-head .pill {
+  min-width: 76px;
+  justify-content: center;
+  text-align: center;
 }
 
 .prompt {

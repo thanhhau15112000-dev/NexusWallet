@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Send } from 'lucide-react';
 import type { AgentState } from '../api.js';
 import { Card, Pill } from './ui.js';
+import { useI18n } from '../i18n/context.js';
 
 /** A valid devnet address that is deliberately never allowlisted, for the deny demo. */
 export const OFF_ALLOWLIST_ADDRESS = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
@@ -11,6 +12,7 @@ export function ConsolePanel(props: {
   busy: boolean;
   onRun: (prompt: string) => Promise<void>;
 }) {
+  const { dict, interpolate } = useI18n();
   const [prompt, setPrompt] = useState('');
   const limit = props.state.policy.maxSolPerTx;
   const label = props.state.policy.allowedRecipients[0]?.label;
@@ -20,12 +22,20 @@ export function ConsolePanel(props: {
 
   const presets = label
     ? [
-        { text: `Send ${under} SOL to ${label}`, hint: 'Auto', tone: 'ok' },
-        { text: `Send ${over} SOL to ${label}`, hint: 'Approval', tone: 'warn' },
+        {
+          text: `Send ${under} SOL to ${label}`,
+          hint: dict.console.autoHint,
+          tone: 'ok' as const,
+        },
+        {
+          text: `Send ${over} SOL to ${label}`,
+          hint: dict.console.approvalHint,
+          tone: 'warn' as const,
+        },
         {
           text: `Send ${under} SOL to ${OFF_ALLOWLIST_ADDRESS}`,
-          hint: 'Denied',
-          tone: 'bad',
+          hint: dict.console.deniedHint,
+          tone: 'bad' as const,
         },
       ]
     : [];
@@ -38,7 +48,7 @@ export function ConsolePanel(props: {
   };
 
   return (
-    <Card title="Command" className="panel-command">
+    <Card title={dict.console.title} className="panel-command">
       <form
         className="row"
         onSubmit={(e) => {
@@ -48,9 +58,11 @@ export function ConsolePanel(props: {
       >
         <input
           className="grow"
-          aria-label="Command"
+          aria-label={dict.console.title}
           placeholder={
-            label ? `Send ${under} SOL to ${label}` : 'Add a recipient first'
+            label
+              ? interpolate(dict.console.placeholderExample, { amount: under, label })
+              : dict.console.placeholderDefault
           }
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
@@ -60,7 +72,7 @@ export function ConsolePanel(props: {
           className="primary button-with-icon"
           disabled={props.busy || !prompt.trim()}
         >
-          {props.busy ? 'Running' : 'Run'}
+          {props.busy ? dict.console.running : dict.console.run}
           <Send size={15} aria-hidden="true" />
         </button>
       </form>
@@ -81,7 +93,7 @@ export function ConsolePanel(props: {
           ))}
         </div>
       ) : (
-        <p className="empty">Add a recipient to use presets</p>
+        <p className="empty">{dict.console.noPresets}</p>
       )}
     </Card>
   );

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { LAMPORTS_PER_SOL, type PaymentRequest, type RequestStatus } from '@nexus/shared';
 import { Card, Empty, Mono, Pill, shorten } from './ui.js';
+import { useI18n } from '../i18n/context.js';
 
 const TONE: Record<RequestStatus, string> = {
   planned: 'neutral',
@@ -12,17 +13,6 @@ const TONE: Record<RequestStatus, string> = {
   failed: 'bad',
   denied: 'bad',
   expired: 'bad',
-};
-
-const LABEL: Record<RequestStatus, string> = {
-  planned: 'Queued',
-  auto_approved: 'Auto',
-  pending_approval: 'Approval',
-  approved: 'Approved',
-  confirmed: 'Confirmed',
-  failed: 'Failed',
-  denied: 'Denied',
-  expired: 'Expired',
 };
 
 function verdictTone(verdict: string): string {
@@ -58,13 +48,14 @@ function RequestRow(props: {
   busy: boolean;
   onApprove: (request: PaymentRequest) => void;
 }) {
+  const { dict } = useI18n();
   const { request } = props;
   const decision = request.decision;
 
   return (
     <li className="request">
       <div className="request-head">
-        <Pill tone={TONE[request.status]}>{LABEL[request.status]}</Pill>
+        <Pill tone={TONE[request.status]}>{dict.requests.statuses[request.status]}</Pill>
         <span className="prompt">{request.prompt}</span>
         <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
       </div>
@@ -73,7 +64,7 @@ function RequestRow(props: {
         <Mono>{describeAction(request)}</Mono>
         {request.execution ? (
           <a href={request.execution.explorerUrl} target="_blank" rel="noreferrer" className="link">
-            Explorer ↗
+            {dict.requests.explorer}
           </a>
         ) : null}
       </div>
@@ -89,16 +80,16 @@ function RequestRow(props: {
               disabled={!props.canApprove || props.busy}
               onClick={() => props.onApprove(request)}
             >
-              {props.busy ? 'Waiting for wallet' : 'Approve'}
+              {props.busy ? dict.requests.waitingForWallet : dict.requests.approve}
               <ShieldCheck size={15} aria-hidden="true" />
             </button>
             <span className="hint">
-              Expires {new Date(request.approval.payload.expiresAt).toLocaleTimeString()}
+              {dict.requests.expires} {new Date(request.approval.payload.expiresAt).toLocaleTimeString()}
             </span>
           </div>
-          {!props.canApprove ? <p className="hint warn">Connect owner wallet</p> : null}
+          {!props.canApprove ? <p className="hint warn">{dict.requests.connectOwnerWallet}</p> : null}
           <details className="request-details">
-            <summary>Message</summary>
+            <summary>{dict.requests.message}</summary>
             <pre>{request.approval.message}</pre>
           </details>
         </div>
@@ -106,34 +97,34 @@ function RequestRow(props: {
 
       {request.approval?.signature ? (
         <p className="hint">
-          Approved <Mono>{shorten(request.approval.signerPubkey ?? '', 6)}</Mono>{' '}
+          {dict.requests.approvedBy} <Mono>{shorten(request.approval.signerPubkey ?? '', 6)}</Mono>{' '}
           {new Date(request.approval.signedAt ?? '').toLocaleTimeString()}
         </p>
       ) : null}
 
       <details className="request-details">
-        <summary>Details</summary>
+        <summary>{dict.requests.details}</summary>
         <div className="detail-grid">
           {decision ? (
             <div>
-              <span className="tag">Policy v{decision.policyVersion}</span>
+              <span className="tag">{dict.requests.policyTag} v{decision.policyVersion}</span>
               <Pill tone={verdictTone(decision.verdict)}>{decision.verdict}</Pill>
               <span className="reasons">{decision.reasons.join('; ')}</span>
             </div>
           ) : null}
           <div>
-            <span className="tag">Models</span>
+            <span className="tag">{dict.requests.modelsTag}</span>
             <Mono>{formatTrace(request)}</Mono>
           </div>
           {request.balanceLamports !== null ? (
             <div>
-              <span className="tag">Balance</span>
+              <span className="tag">{dict.requests.balanceTag}</span>
               <Mono>{(request.balanceLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL</Mono>
             </div>
           ) : null}
           {request.execution ? (
             <div>
-              <span className="tag">Signature</span>
+              <span className="tag">{dict.requests.signatureTag}</span>
               <a href={request.execution.explorerUrl} target="_blank" rel="noreferrer" className="mono">
                 {shorten(request.execution.signature, 10)}
               </a>
@@ -152,6 +143,7 @@ export function RequestList(props: {
   busyId: string | null;
   onApprove: (request: PaymentRequest) => void;
 }) {
+  const { dict, interpolate } = useI18n();
   const [showAll, setShowAll] = useState(false);
   const canApprove = Boolean(props.wallet && props.wallet === props.owner);
   const recentRequests = props.requests.slice(0, 6);
@@ -168,12 +160,12 @@ export function RequestList(props: {
 
   return (
     <Card
-      title="Requests"
+      title={dict.requests.title}
       className="panel-requests"
       actions={<span className="version">{props.requests.length}</span>}
     >
       {props.requests.length === 0 ? (
-        <Empty>No requests</Empty>
+        <Empty>{dict.requests.noRequests}</Empty>
       ) : (
         <ul className="request-list">
           {visibleRequests.map((request) => (
@@ -189,7 +181,9 @@ export function RequestList(props: {
       )}
       {props.requests.length > 6 ? (
         <button type="button" className="link list-toggle" onClick={() => setShowAll(!showAll)}>
-          {showAll ? 'Show recent' : `Show all ${props.requests.length}`}
+          {showAll
+            ? dict.requests.showRecent
+            : interpolate(dict.requests.showAll, { count: props.requests.length })}
         </button>
       ) : null}
     </Card>

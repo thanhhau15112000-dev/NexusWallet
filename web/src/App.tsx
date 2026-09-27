@@ -37,6 +37,8 @@ import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { WalletPanel } from './components/WalletPanel.js';
+import { SettingsMenu } from './components/SettingsMenu.js';
+import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
@@ -58,21 +60,6 @@ const FEATURE_TABS: Array<{
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function summarise(request: PaymentRequest): Toast {
-  switch (request.status) {
-    case 'confirmed':
-      return { tone: 'ok', text: 'Confirmed on devnet' };
-    case 'pending_approval':
-      return { tone: 'warn', text: 'Approval required' };
-    case 'denied':
-      return { tone: 'bad', text: 'Denied by policy' };
-    case 'failed':
-      return { tone: 'bad', text: 'Execution failed' };
-    default:
-      return { tone: 'warn', text: request.status.replace('_', ' ') };
-  }
 }
 
 function WalletOptions(props: {
@@ -106,8 +93,8 @@ function WalletOptions(props: {
     </div>
   );
 }
-
 export function App() {
+  const { dict, interpolate } = useI18n();
   const [state, setState] = useState<AgentState | null>(null);
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [audit, setAudit] = useState<AuditEntryView[]>([]);
@@ -294,12 +281,30 @@ export function App() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const summarise = useCallback(
+    (request: PaymentRequest): Toast => {
+      switch (request.status) {
+        case 'confirmed':
+          return { tone: 'ok', text: dict.toasts.confirmed };
+        case 'pending_approval':
+          return { tone: 'warn', text: dict.toasts.approvalRequired };
+        case 'denied':
+          return { tone: 'bad', text: dict.toasts.denied };
+        case 'failed':
+          return { tone: 'bad', text: dict.toasts.executionFailed };
+        default:
+          return { tone: 'warn', text: request.status.replace('_', ' ') };
+      }
+    },
+    [dict.toasts],
+  );
+
   const claimSeed = async () => {
     setFlag('seed', true);
     try {
       await api.claimSeed();
       await refresh();
-      setToast({ tone: 'ok', text: '0.1 SOL demo seed claimed!' });
+      setToast({ tone: 'ok', text: dict.toasts.seedClaimed });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
@@ -318,7 +323,13 @@ export function App() {
         toPubkey: state.agent.pubkey,
         amountSol,
       });
-      setToast({ tone: 'ok', text: `Deposit of ${amountSol} SOL sent! Tx: ${signature.slice(0, 8)}…` });
+      setToast({
+        tone: 'ok',
+        text: interpolate(dict.toasts.depositSent, {
+          amount: amountSol,
+          tx: `${signature.slice(0, 8)}…`,
+        }),
+      });
       await refresh();
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
@@ -367,7 +378,7 @@ export function App() {
     try {
       await api.savePolicy(input);
       await refresh();
-      setToast({ tone: 'ok', text: 'Policy saved' });
+      setToast({ tone: 'ok', text: dict.toasts.policySaved });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
       throw err;
@@ -381,7 +392,7 @@ export function App() {
     try {
       await api.airdrop(1);
       await refresh();
-      setToast({ tone: 'ok', text: 'Airdrop requested' });
+      setToast({ tone: 'ok', text: dict.toasts.airdropRequested });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
@@ -455,7 +466,7 @@ export function App() {
       <main className="boot-page">
         <section className="boot" aria-labelledby="login-title">
           <h1 id="login-title">nexusPay</h1>
-          <p className="boot-status">{needsSignIn ? 'Sign in required' : offline ? 'Service unavailable' : 'Loading'}</p>
+          <p className="boot-status">{needsSignIn ? dict.boot.signInRequired : offline ? dict.boot.serviceUnavailable : dict.boot.loading}</p>
           {offline ? <p className="bad-text boot-error">{offline}</p> : null}
           {signInError ? <p className="bad-text boot-error">{signInError}</p> : null}
           {authReady && authRequired && !authenticated ? (
@@ -468,7 +479,7 @@ export function App() {
                 disabled={!walletChoices.length || Boolean(busy.connect)}
                 onClick={() => setWalletPickerOpen((open) => !open)}
               >
-                {busy.connect ? 'Connecting…' : 'Sign in with wallet'}
+                {busy.connect ? dict.boot.connecting : dict.boot.signInBtn}
               </button>
               {walletPickerOpen ? (
                 <div id="login-wallet-options" className="boot-wallet-picker">
@@ -481,7 +492,7 @@ export function App() {
               ) : null}
               {!walletChoices.length ? (
                 <p className="wallet-picker-empty boot-wallet-empty">
-                  No compatible Solana wallet found. Install a wallet that supports message signing, then reload.
+                  {dict.boot.installPhantom}
                 </p>
               ) : null}
             </>
@@ -500,9 +511,12 @@ export function App() {
           </div>
           <span className="brand-network-tag">{state.cluster}</span>
         </div>
-        <div className={`service-state ${offline ? 'is-offline' : ''}`}>
-          <Activity size={15} aria-hidden="true" />
-          {offline ? 'Offline' : 'Ready'}
+        <div className="topbar-right">
+          <div className={`service-state ${offline ? 'is-offline' : ''}`}>
+            <Activity size={15} aria-hidden="true" />
+            {offline ? dict.topbar.offline : dict.topbar.ready}
+          </div>
+          <SettingsMenu onLogout={() => void disconnect()} />
         </div>
       </header>
 
@@ -527,7 +541,7 @@ export function App() {
               onKeyDown={(event) => selectTabWithKeyboard(event, index)}
             >
               <Icon size={15} aria-hidden="true" />
-              <span>{tab.label}</span>
+              <span>{dict.tabs[tab.id] ?? tab.label}</span>
               {count !== null ? <span className="feature-tab-count">{count}</span> : null}
             </button>
           );
