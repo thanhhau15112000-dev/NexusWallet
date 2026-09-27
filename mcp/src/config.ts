@@ -1,13 +1,15 @@
 /**
  * Settings come from the MCP client's `env` block. Phase 1 talks to a local
- * agent service only: the local API has no session, so the tenant is picked by
- * `x-owner-pubkey`. Hosted access needs a scoped agent token and is not wired yet.
+ * agent service only. The tenant is authenticated by the per-tenant MCP token the
+ * dashboard hands out (`nxp_<ownerPubkey>_<secret>`), sent as a bearer token.
  */
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
-const BASE58_PUBKEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const AGENT_TOKEN = /^nxp_([1-9A-HJ-NP-Za-km-z]{32,44})_[A-Za-z0-9_-]{43}$/;
 
 export type McpConfig = {
   apiUrl: string;
+  agentToken: string;
+  /** Owner wallet the token belongs to; for messages only, never sent as a credential. */
   ownerPubkey: string;
   dashboardUrl: string;
   timeoutMs: number;
@@ -43,10 +45,14 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env): McpConfig {
     env.NEXUS_DASHBOARD_URL?.trim() || 'http://localhost:5173',
   );
 
-  const ownerPubkey = env.NEXUS_OWNER_PUBKEY?.trim() ?? '';
-  if (!BASE58_PUBKEY.test(ownerPubkey)) {
-    throw new Error('NEXUS_OWNER_PUBKEY must be the owner wallet address bound in the dashboard');
+  const agentToken = env.NEXUS_AGENT_TOKEN?.trim() ?? '';
+  const tokenMatch = AGENT_TOKEN.exec(agentToken);
+  if (!tokenMatch) {
+    throw new Error(
+      'NEXUS_AGENT_TOKEN is missing or malformed; copy the MCP entry from the nexusPay dashboard (agent card > Connect an AI agent) or run pnpm mcp:config',
+    );
   }
+  const ownerPubkey = tokenMatch[1]!;
 
   const rawTimeout = env.NEXUS_TIMEOUT_MS?.trim();
   // Below the 60 s tool timeout some clients (Codex) apply by default, so a slow transfer
@@ -56,5 +62,5 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env): McpConfig {
     throw new Error('NEXUS_TIMEOUT_MS must be an integer between 1000 and 300000');
   }
 
-  return { apiUrl, ownerPubkey, dashboardUrl, timeoutMs };
+  return { apiUrl, agentToken, ownerPubkey, dashboardUrl, timeoutMs };
 }

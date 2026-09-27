@@ -10,8 +10,10 @@ import { loadMcpConfig, type McpConfig } from '../src/config.js';
 import { createServer } from '../src/tools.js';
 
 const OWNER = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+const TOKEN = `nxp_${OWNER}_${'a'.repeat(43)}`;
 const config: McpConfig = {
   apiUrl: 'http://127.0.0.1:8787',
+  agentToken: TOKEN,
   ownerPubkey: OWNER,
   dashboardUrl: 'http://localhost:5173',
   timeoutMs: 5_000,
@@ -64,9 +66,10 @@ function parse(result: Awaited<ReturnType<Client['callTool']>>) {
 }
 
 describe('loadMcpConfig', () => {
-  it('accepts a loopback agent and a valid owner', () => {
-    expect(loadMcpConfig({ NEXUS_OWNER_PUBKEY: OWNER })).toMatchObject({
+  it('accepts a loopback agent and a valid token, and reads the owner from it', () => {
+    expect(loadMcpConfig({ NEXUS_AGENT_TOKEN: TOKEN })).toMatchObject({
       apiUrl: 'http://127.0.0.1:8787',
+      agentToken: TOKEN,
       ownerPubkey: OWNER,
     });
   });
@@ -77,12 +80,14 @@ describe('loadMcpConfig', () => {
     ['http://user:pw@127.0.0.1:8787', 'credentials'],
     ['http://0.0.0.0:8787', 'wildcard'],
   ])('rejects %s (%s)', (url) => {
-    expect(() => loadMcpConfig({ NEXUS_API_URL: url, NEXUS_OWNER_PUBKEY: OWNER })).toThrow(/loopback/);
+    expect(() => loadMcpConfig({ NEXUS_API_URL: url, NEXUS_AGENT_TOKEN: TOKEN })).toThrow(/loopback/);
   });
 
-  it('requires an owner address', () => {
-    expect(() => loadMcpConfig({})).toThrow(/NEXUS_OWNER_PUBKEY/);
-    expect(() => loadMcpConfig({ NEXUS_OWNER_PUBKEY: 'not-an-address' })).toThrow(/NEXUS_OWNER_PUBKEY/);
+  it('requires a well-formed agent token and ignores the old owner variable', () => {
+    expect(() => loadMcpConfig({})).toThrow(/NEXUS_AGENT_TOKEN/);
+    expect(() => loadMcpConfig({ NEXUS_OWNER_PUBKEY: OWNER })).toThrow(/NEXUS_AGENT_TOKEN/);
+    expect(() => loadMcpConfig({ NEXUS_AGENT_TOKEN: OWNER })).toThrow(/NEXUS_AGENT_TOKEN/);
+    expect(() => loadMcpConfig({ NEXUS_AGENT_TOKEN: `${TOKEN}x` })).toThrow(/NEXUS_AGENT_TOKEN/);
   });
 });
 
@@ -117,7 +122,7 @@ describe('nexusPay MCP tools', () => {
     expect(transfer.inputSchema.properties?.amountSol).toMatchObject({ type: 'number', minimum: 1e-9 });
   });
 
-  it('submits a structured transfer with the owner header and a fixed idempotency key', async () => {
+  it('submits a structured transfer with the bearer token and a fixed idempotency key', async () => {
     const fetchImpl = vi.fn(async () => json(200, { request: request() }));
     const client = await connect(fetchImpl as unknown as Fetch);
 
@@ -129,7 +134,8 @@ describe('nexusPay MCP tools', () => {
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(url).toBe('http://127.0.0.1:8787/api/agent/intents');
-    expect((init.headers as Record<string, string>)['x-owner-pubkey']).toBe(OWNER);
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
+    expect((init.headers as Record<string, string>)['x-owner-pubkey']).toBeUndefined();
     expect(body.action).toEqual({ type: 'transfer_sol', recipient: 'treasury', amountSol: 0.5 });
     expect(body.idempotencyKey).toMatch(/^mcp:[0-9a-f-]{36}$/);
 
@@ -230,6 +236,17 @@ describe('nexusPay MCP tools', () => {
 
     expect(result.isError).toBe(true);
     expect(parse(result).error).toBe('agent_unreachable');
+    expect(parse(result).message).toMatch(/pnpm dev/);
+  });
+
+  it('tells the agent how to repair a rejected token', async () => {
+    const client = await connect(vi.fn(async () => json(401, { error: 'authentication_required' })) as unknown as Fetch);
+
+    const result = await client.callTool({ name: 'nexuspay_get_status', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect(parse(result).error).toBe('mcp_token_rejected');
+    expect(parse(result).message).toMatch(/Connect an AI agent|pnpm mcp:config/);
   });
 
   it('returns wallet status without admin or RPC details', async () => {
@@ -293,7 +310,7 @@ describe('nexusPay MCP tools', () => {
 describe('stdio entry point', () => {
   it('writes only JSON-RPC to stdout', async () => {
     const child = spawn(process.execPath, ['--import', 'tsx', resolve(__dirname, '../src/index.ts')], {
-      env: { ...process.env, NEXUS_OWNER_PUBKEY: OWNER },
+      env: { ...process.env, NEXUS_AGENT_TOKEN: TOKEN },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';

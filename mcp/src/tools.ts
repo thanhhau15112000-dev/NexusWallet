@@ -44,9 +44,23 @@ function fail(code: string, message: string, extra: Record<string, unknown> = {}
   };
 }
 
+// Error messages name the fix, so an agent on another machine can repair its setup without the repo history.
 function failFromError(err: unknown, extra: Record<string, unknown> = {}): CallToolResult {
+  if (err instanceof ApiError && err.status === 401) {
+    return fail(
+      'mcp_token_rejected',
+      'The nexusPay agent rejected NEXUS_AGENT_TOKEN (rotated, from another checkout, or copied wrong). Copy the MCP entry again from the dashboard (agent card > Connect an AI agent) or run pnpm mcp:config, then restart the MCP client.',
+      extra,
+    );
+  }
   if (err instanceof ApiError) return fail(err.code, err.message, extra);
-  if (err instanceof ApiUnreachableError) return fail('agent_unreachable', err.message, extra);
+  if (err instanceof ApiUnreachableError) {
+    return fail(
+      'agent_unreachable',
+      err.timedOut ? err.message : `${err.message}. Start the agent service from the repository root with pnpm dev, then retry.`,
+      extra,
+    );
+  }
   throw err;
 }
 

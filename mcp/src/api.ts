@@ -47,7 +47,7 @@ export class NexusApi {
         method,
         headers: {
           accept: 'application/json',
-          'x-owner-pubkey': this.config.ownerPubkey,
+          authorization: `Bearer ${this.config.agentToken}`,
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
