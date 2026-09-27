@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
+  BookOpen,
   CheckCircle2,
   ClipboardList,
   Command,
@@ -31,6 +32,7 @@ import { AgentFundingPanel } from './components/AgentFundingPanel.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
+import { DocsPanel } from './components/DocsPanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
@@ -38,7 +40,7 @@ import { WalletPanel } from './components/WalletPanel.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
-type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit';
+type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit' | 'docs';
 
 const FEATURE_TABS: Array<{
   id: FeatureTab;
@@ -51,6 +53,7 @@ const FEATURE_TABS: Array<{
   { id: 'policy', label: 'Policy', icon: ShieldCheck },
   { id: 'approvals', label: 'Approvals', icon: CheckCircle2 },
   { id: 'audit', label: 'Audit', icon: ClipboardList },
+  { id: 'docs', label: 'Docs', icon: BookOpen },
 ];
 
 function errorText(err: unknown): string {
@@ -631,6 +634,16 @@ export function App() {
         hidden={activeTab !== 'audit'}
       >
         <AuditPanel entries={audit} />
+      </section>
+
+      <section
+        id="feature-panel-docs"
+        role="tabpanel"
+        aria-labelledby="feature-tab-docs"
+        className="tab-panel"
+        hidden={activeTab !== 'docs'}
+      >
+        <DocsPanel onOpenTab={setActiveTab} />
       </section>
 
       {walletPickerOpen ? (
