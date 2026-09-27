@@ -153,4 +153,19 @@ export type TranslationDictionary = {
     ciphertext: string;
     noEntries: string;
   };
+  mascot: {
+    wallet: string;
+    tasks: string;
+    commands: string;
+    policy: string;
+    approvals: string;
+    audit: string;
+    docs: string;
+    working: string;
+    success: string;
+    failed: string;
+    offline: string;
+    signIn: string;
+    loading: string;
+  };
 };

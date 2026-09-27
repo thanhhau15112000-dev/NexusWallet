@@ -37,7 +37,8 @@ import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { WalletPanel } from './components/WalletPanel.js';
-import { SettingsMenu } from './components/SettingsMenu.js';
+import { LanguageToggle, SettingsMenu } from './components/SettingsMenu.js';
+import { Mascot, type MascotPose } from './components/Mascot.js';
 import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
@@ -57,6 +58,16 @@ const FEATURE_TABS: Array<{
   { id: 'audit', label: 'Audit', icon: ClipboardList },
   { id: 'docs', label: 'Docs', icon: BookOpen },
 ];
+
+const TAB_POSE: Record<FeatureTab, MascotPose> = {
+  wallet: 'wallet',
+  tasks: 'tasks',
+  commands: 'command',
+  policy: 'policy',
+  approvals: 'approved',
+  audit: 'audit',
+  docs: 'docs',
+};
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -465,6 +476,11 @@ export function App() {
     return (
       <main className="boot-page">
         <section className="boot" aria-labelledby="login-title">
+          <Mascot
+            className="boot-mascot"
+            pose={offline ? 'sleep' : needsSignIn ? 'wave' : 'think'}
+            caption={offline ? dict.mascot.offline : needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
+          />
           <h1 id="login-title">nexusPay</h1>
           <p className="boot-status">{needsSignIn ? dict.boot.signInRequired : offline ? dict.boot.serviceUnavailable : dict.boot.loading}</p>
           {offline ? <p className="bad-text boot-error">{offline}</p> : null}
@@ -502,10 +518,23 @@ export function App() {
     );
   }
 
+  // Mascot mirrors what is happening: service and action outcomes win over the open tab.
+  const working = Object.values(busy).some(Boolean) || approvingId !== null;
+  const [mascotPose, mascotCaption]: [MascotPose, string] = offline
+    ? ['sleep', dict.mascot.offline]
+    : toast?.tone === 'bad'
+      ? ['denied', dict.mascot.failed]
+      : toast?.tone === 'ok'
+        ? ['cheer', dict.mascot.success]
+        : working
+          ? ['think', dict.mascot.working]
+          : [TAB_POSE[activeTab], dict.mascot[activeTab]];
+
   return (
     <main className="app">
       <header className="topbar">
         <div className="brand">
+          <img className="brand-logo" src="/brand/logo.svg" alt="" width={44} height={44} />
           <div>
             <h1>nexusPay</h1>
           </div>
@@ -516,6 +545,7 @@ export function App() {
             <Activity size={15} aria-hidden="true" />
             {offline ? dict.topbar.offline : dict.topbar.ready}
           </div>
+          <LanguageToggle />
           <SettingsMenu onLogout={() => void disconnect()} />
         </div>
       </header>
@@ -691,6 +721,8 @@ export function App() {
           </section>
         </div>
       ) : null}
+
+      <Mascot className="app-mascot" pose={mascotPose} caption={mascotCaption} />
 
       {toast ? <div className={`toast ${toast.tone}`}>{toast.text}</div> : null}
     </main>

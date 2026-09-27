@@ -384,6 +384,13 @@ input::placeholder {
   line-height: 1;
 }
 
+.brand-logo {
+  display: block;
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+
 .topbar-right {
   display: flex;
   align-items: center;
@@ -424,6 +431,24 @@ input::placeholder {
   background: var(--panel);
   color: var(--accent);
   box-shadow: 0 0 0 2px rgb(23 123 101 / 15%);
+}
+
+.lang-toggle-btn {
+  width: auto;
+  gap: 5px;
+  padding: 0 9px;
+  border-color: #c9e1d8;
+  background: #f1fff9;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.lang-toggle-btn:hover {
+  border-color: var(--accent);
+  background: #e3fff4;
+  color: var(--wallet-ink);
 }
 
 .settings-gear {
@@ -2658,5 +2683,120 @@ pre {
   .docs-table {
     display: block;
     overflow-x: auto;
+  }
+}
+
+/* Mascot: the card-agent reacts to the open tab and to action outcomes. */
+.mascot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.mascot-figure {
+  display: block;
+  width: 112px;
+  height: 112px;
+  animation: mascot-pop 0.35s ease-out, mascot-bob 3.2s ease-in-out 0.35s infinite;
+}
+
+.mascot-bubble {
+  margin: 0;
+  max-width: 220px;
+  border: 1px solid #c9e1d8;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 6px 18px rgba(16, 63, 55, 0.12);
+  padding: 6px 11px;
+  color: var(--wallet-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.app {
+  padding-bottom: 168px;
+}
+
+.app-mascot {
+  position: fixed;
+  left: 18px;
+  bottom: 12px;
+  z-index: 2;
+  align-items: flex-start;
+}
+
+.app-mascot .mascot-bubble {
+  margin-left: 58px;
+  border-bottom-left-radius: 4px;
+}
+
+.boot-mascot {
+  margin-bottom: 8px;
+  transform: translateY(-64px);
+}
+
+@keyframes mascot-pop {
+  from {
+    opacity: 0.4;
+    transform: translateY(6px) scale(0.94);
+  }
+}
+
+@keyframes mascot-bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@media (max-width: 760px) {
+  .app {
+    padding-bottom: 96px;
+  }
+
+  .app-mascot {
+    left: 8px;
+    bottom: 6px;
+  }
+
+  .app-mascot .mascot-figure {
+    width: 72px;
+    height: 72px;
+  }
+
+  .app-mascot .mascot-bubble {
+    display: none;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .brand-logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .lang-toggle-btn {
+    width: 34px;
+    padding: 0;
+  }
+
+  .lang-toggle-btn span {
+    display: none;
+  }
+
+  .boot-mascot {
+    transform: translateY(-42px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-figure {
+    animation: none;
   }
 }
