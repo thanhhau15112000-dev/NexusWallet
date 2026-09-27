@@ -242,6 +242,8 @@ export type AuditEntry = {
   event: string;
   /** AES-256-GCM ciphertext of the event detail. */
   sealed: { iv: string; tag: string; ciphertext: string };
+  prevHash?: string;
+  hash?: string;
 };
 
 export type AuditEntryView = AuditEntry & { detail: unknown };

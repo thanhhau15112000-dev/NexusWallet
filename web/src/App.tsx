@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
+  CheckCircle2,
   ClipboardList,
   Command,
+  Layers,
   WalletCards,
   ShieldCheck,
   Wallet as WalletIcon,
@@ -31,11 +33,12 @@ import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
+import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { WalletPanel } from './components/WalletPanel.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
-type FeatureTab = 'wallet' | 'commands' | 'policy' | 'approvals' | 'audit';
+type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit';
 
 const FEATURE_TABS: Array<{
   id: FeatureTab;
@@ -43,9 +46,10 @@ const FEATURE_TABS: Array<{
   icon: typeof WalletCards;
 }> = [
   { id: 'wallet', label: 'Wallet', icon: WalletCards },
+  { id: 'tasks', label: 'Task Vault', icon: Layers },
   { id: 'commands', label: 'Commands', icon: Command },
   { id: 'policy', label: 'Policy', icon: ShieldCheck },
-  { id: 'approvals', label: 'Approvals', icon: ShieldCheck },
+  { id: 'approvals', label: 'Approvals', icon: CheckCircle2 },
   { id: 'audit', label: 'Audit', icon: ClipboardList },
 ];
 
@@ -560,6 +564,21 @@ export function App() {
             onDeposit={(amount) => void deposit(amount)}
           />
         </div>
+      </section>
+
+      <section
+        id="feature-panel-tasks"
+        role="tabpanel"
+        aria-labelledby="feature-tab-tasks"
+        className="tab-panel"
+        hidden={activeTab !== 'tasks'}
+      >
+        <TaskVaultPanel
+          owner={state.owner}
+          agentPubkey={state.agent.pubkey}
+          rpcUrl={state.rpcUrl}
+          onToast={setToast}
+        />
       </section>
 
       <section

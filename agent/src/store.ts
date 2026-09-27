@@ -1,6 +1,17 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { defaultPolicy, PolicySchema, type PaymentRequest, type Policy } from '@nexus/shared';
+import {
+  defaultPolicy,
+  PolicySchema,
+  TaskCapabilityRecordSchema,
+  TaskPaymentRecordSchema,
+  TaskReceiptRecordSchema,
+  type PaymentRequest,
+  type Policy,
+  type TaskCapabilityRecord,
+  type TaskPaymentRecord,
+  type TaskReceiptRecord,
+} from '@nexus/shared';
 import { z } from 'zod';
 
 const PendingInitialFundingSchema = z.object({
@@ -22,6 +33,9 @@ export type StoreData = {
   idempotency: Record<string, string>;
   claimedInitialFunding?: boolean;
   pendingInitialFunding?: PendingInitialFunding;
+  tasks?: Record<string, TaskCapabilityRecord>;
+  payments?: Record<string, TaskPaymentRecord>;
+  receipts?: Record<string, TaskReceiptRecord>;
 };
 
 /**
@@ -54,6 +68,9 @@ export class Store {
         pendingInitialFunding: claimedInitialFunding || raw.pendingInitialFunding === undefined
           ? undefined
           : PendingInitialFundingSchema.parse(raw.pendingInitialFunding),
+        tasks: raw.tasks ?? {},
+        payments: raw.payments ?? {},
+        receipts: raw.receipts ?? {},
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -71,6 +88,9 @@ export class Store {
         requests: [],
         idempotency: {},
         claimedInitialFunding: false,
+        tasks: {},
+        payments: {},
+        receipts: {},
       };
     }
   }
@@ -166,5 +186,58 @@ export class Store {
     }
     this.flush();
     return next;
+  }
+
+  getTasks(): TaskCapabilityRecord[] {
+    return Object.values(this.data.tasks ?? {});
+  }
+
+  getTask(taskId: string): TaskCapabilityRecord | undefined {
+    return this.data.tasks?.[taskId];
+  }
+
+  setTask(task: TaskCapabilityRecord, options?: { allowOverwrite?: boolean }): void {
+    if (!this.data.tasks) this.data.tasks = {};
+    if (this.data.tasks[task.taskId] && !options?.allowOverwrite) {
+      throw new Error(`Task with id '${task.taskId}' already exists`);
+    }
+    this.data.tasks[task.taskId] = TaskCapabilityRecordSchema.parse(task);
+    this.flush();
+  }
+
+  getPayments(taskId?: string): TaskPaymentRecord[] {
+    const all = Object.values(this.data.payments ?? {});
+    return taskId ? all.filter((p) => p.taskId === taskId) : all;
+  }
+
+  getPayment(paymentId: string): TaskPaymentRecord | undefined {
+    return this.data.payments?.[paymentId];
+  }
+
+  setPayment(payment: TaskPaymentRecord, options?: { allowOverwrite?: boolean }): void {
+    if (!this.data.payments) this.data.payments = {};
+    if (this.data.payments[payment.paymentId] && !options?.allowOverwrite) {
+      throw new Error(`Payment with id '${payment.paymentId}' already exists`);
+    }
+    this.data.payments[payment.paymentId] = TaskPaymentRecordSchema.parse(payment);
+    this.flush();
+  }
+
+  getReceipts(taskId?: string): TaskReceiptRecord[] {
+    const all = Object.values(this.data.receipts ?? {});
+    return taskId ? all.filter((r) => r.taskId === taskId) : all;
+  }
+
+  getReceipt(paymentId: string): TaskReceiptRecord | undefined {
+    return this.data.receipts?.[paymentId];
+  }
+
+  setReceipt(receipt: TaskReceiptRecord, options?: { allowOverwrite?: boolean }): void {
+    if (!this.data.receipts) this.data.receipts = {};
+    if (this.data.receipts[receipt.paymentId] && !options?.allowOverwrite) {
+      throw new Error(`Receipt for payment '${receipt.paymentId}' already exists`);
+    }
+    this.data.receipts[receipt.paymentId] = TaskReceiptRecordSchema.parse(receipt);
+    this.flush();
   }
 }

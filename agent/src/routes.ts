@@ -2,7 +2,25 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { AllowlistEntrySchema, PubkeySchema, solToLamports, type Policy } from '@nexus/shared';
+import {
+  AllowlistEntrySchema,
+  PubkeySchema,
+  solToLamports,
+  type Policy,
+  validateTaskTransition,
+  computeTaskHash,
+  computeReceiptHash,
+  deriveTaskCapabilityPda,
+  deriveVaultPda,
+  deriveEscrowPda,
+  deriveReceiptPda,
+  computeCanonicalSeed,
+  computeReceiptSigningMessage,
+} from '@nexus/shared';
+import { Keypair, PublicKey } from '@solana/web3.js';
+import bs58 from 'bs58';
+import nacl from 'tweetnacl';
+import { verifyMessageSignature } from './crypto.js';
 import { explorerAddressUrl, getLamportBalance, isValidAddress, requestAirdrop } from './chain.js';
 import { ApprovalError, approveRequest } from './approvals.js';
 import type { AppContext } from './context.js';
@@ -472,5 +490,324 @@ const inFlightClaims = new Set<string>();
     const raw = Number((req.query as { limit?: string }).limit ?? 100);
     const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 500) : 100;
     return { entries: userCtx.audit.list(limit) };
+  });
+
+  // ------------------------------------------------ Task Capability Vault
+
+  app.get('/api/tasks', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
+    return { tasks: userCtx.store.getTasks() };
+  });
+
+  app.get('/api/tasks/:taskId', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId } = req.params as { taskId: string };
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    const payments = userCtx.store.getPayments(taskId);
+    const receipts = userCtx.store.getReceipts(taskId);
+    return { task, payments, receipts };
+  });
+
+  const CreateTaskBody = z.object({
+    taskId: z.string().trim().min(1).max(64),
+    budgetLamports: z.number().int().positive(),
+    perPaymentCapLamports: z.number().int().positive(),
+    expiry: z.number().int().positive(),
+  });
+
+  app.post('/api/tasks', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const body = CreateTaskBody.parse(req.body);
+    const owner = userCtx.store.getOwner();
+    if (!owner) {
+      return reply.status(401).send({ error: 'unauthorized', message: 'owner wallet not connected' });
+    }
+
+    if (userCtx.store.getTask(body.taskId)) {
+      return reply.status(409).send({ error: 'task_exists', message: `Task ${body.taskId} already exists` });
+    }
+
+    const ownerPubkey = new PublicKey(owner);
+    const [pda] = deriveTaskCapabilityPda(ownerPubkey, body.taskId);
+    const [vaultPda] = deriveVaultPda(pda);
+
+    const now = Math.floor(Date.now() / 1000);
+    if (body.expiry <= now) {
+      return reply.status(400).send({ error: 'invalid_expiry', message: 'expiry must be in the future' });
+    }
+    if (body.perPaymentCapLamports > body.budgetLamports) {
+      return reply.status(400).send({ error: 'invalid_cap', message: 'per-payment cap cannot exceed budget' });
+    }
+
+    const record = {
+      owner,
+      agentSigner: userCtx.agentPubkey,
+      taskId: body.taskId,
+      budgetLamports: body.budgetLamports,
+      spentLamports: 0,
+      perPaymentCapLamports: body.perPaymentCapLamports,
+      expiry: body.expiry,
+      status: 'active' as const,
+      pda: pda.toBase58(),
+      vaultPda: vaultPda.toBase58(),
+    };
+
+    userCtx.store.setTask(record, { allowOverwrite: false });
+    userCtx.audit.record('task_capability_created', null, {
+      taskId: record.taskId,
+      budgetLamports: record.budgetLamports,
+      perPaymentCapLamports: record.perPaymentCapLamports,
+      expiry: record.expiry,
+      pda: record.pda,
+      vaultPda: record.vaultPda,
+    });
+
+    return { task: record };
+  });
+
+  const ExecutePaymentBody = z.object({
+    paymentId: z.string().trim().min(1).max(64),
+    worker: PubkeySchema,
+    serviceId: z.string().trim().min(1).max(64),
+    amountLamports: z.number().int().positive(),
+    requestHash: z.string().trim().min(1),
+  });
+
+  app.post('/api/tasks/:taskId/payments', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId } = req.params as { taskId: string };
+    const body = ExecutePaymentBody.parse(req.body);
+
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+
+    if (userCtx.store.getPayment(body.paymentId)) {
+      return reply.status(409).send({ error: 'payment_exists', message: `Payment ${body.paymentId} already exists` });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const check = validateTaskTransition(
+      task,
+      { type: 'execute_payment', amountLamports: body.amountLamports },
+      now,
+    );
+    if (!check.valid) {
+      return reply.status(400).send({ error: 'payment_rejected', message: check.error });
+    }
+
+    const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+    const [escrowPda] = deriveEscrowPda(taskPda, body.paymentId);
+
+    const updatedTask = {
+      ...task,
+      spentLamports: task.spentLamports + body.amountLamports,
+    };
+    userCtx.store.setTask(updatedTask, { allowOverwrite: true });
+
+    const paymentRecord = {
+      taskId,
+      paymentId: body.paymentId,
+      worker: body.worker,
+      serviceId: body.serviceId,
+      amountLamports: body.amountLamports,
+      requestHash: body.requestHash,
+      status: 'held' as const,
+      escrowPda: escrowPda.toBase58(),
+      createdAt: new Date().toISOString(),
+    };
+    userCtx.store.setPayment(paymentRecord, { allowOverwrite: false });
+
+    userCtx.audit.record('task_payment_executed', null, {
+      taskId,
+      paymentId: body.paymentId,
+      worker: body.worker,
+      amountLamports: body.amountLamports,
+      escrowPda: paymentRecord.escrowPda,
+    });
+
+    return { task: updatedTask, payment: paymentRecord };
+  });
+
+  const SettlePaymentBody = z.object({
+    resultHash: z.string().trim().min(1),
+    workerPubkey: PubkeySchema,
+    workerSignature: z.string().trim().min(1),
+  });
+
+  app.post('/api/tasks/:taskId/payments/:paymentId/settle', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
+    const body = SettlePaymentBody.parse(req.body);
+
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+
+    const payment = userCtx.store.getPayment(paymentId);
+    if (!payment || payment.taskId !== taskId) {
+      return reply.status(404).send({ error: 'payment_not_found' });
+    }
+    if (payment.status !== 'held') {
+      return reply.status(400).send({ error: 'already_settled', message: `payment is ${payment.status}` });
+    }
+
+    // Verify worker authenticity: recipient must match escrow worker
+    if (body.workerPubkey !== payment.worker) {
+      return reply.status(403).send({ error: 'unauthorized_worker', message: 'worker does not match escrow recipient' });
+    }
+
+    // Verify worker cryptographic ed25519 receipt signature
+    const canonicalReceiptMessage = `NEXUS_RECEIPT_V1:${taskId}:${paymentId}:${body.resultHash}`;
+    const validWorkerSig = verifyMessageSignature({
+      message: canonicalReceiptMessage,
+      signatureBase58: body.workerSignature,
+      pubkeyBase58: body.workerPubkey,
+    });
+    if (!validWorkerSig) {
+      return reply.status(401).send({ error: 'invalid_worker_signature', message: 'worker signature verification failed' });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const check = validateTaskTransition(task, { type: 'settle_payment', paymentId }, now);
+    if (!check.valid) {
+      return reply.status(400).send({ error: 'settle_rejected', message: check.error });
+    }
+
+    const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+    const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
+
+    userCtx.store.setPayment({ ...payment, status: 'settled' }, { allowOverwrite: true });
+
+    const receiptRecord = {
+      taskId,
+      paymentId,
+      worker: payment.worker,
+      serviceId: payment.serviceId,
+      requestHash: payment.requestHash,
+      resultHash: body.resultHash,
+      amountLamports: payment.amountLamports,
+      settledAt: now,
+      receiptPda: receiptPda.toBase58(),
+    };
+    userCtx.store.setReceipt(receiptRecord, { allowOverwrite: false });
+
+    if (check.nextStatus && check.nextStatus !== 'closed' && check.nextStatus !== task.status) {
+      userCtx.store.setTask({ ...task, status: check.nextStatus }, { allowOverwrite: true });
+    }
+
+    userCtx.audit.record('task_payment_settled', null, {
+      taskId,
+      paymentId,
+      worker: payment.worker,
+      amountLamports: payment.amountLamports,
+      resultHash: body.resultHash,
+      receiptPda: receiptRecord.receiptPda,
+    });
+
+    return { payment: { ...payment, status: 'settled' }, receipt: receiptRecord };
+  });
+
+  app.post('/api/tasks/:taskId/revoke', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId } = req.params as { taskId: string };
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+
+    const now = Math.floor(Date.now() / 1000);
+    const check = validateTaskTransition(task, { type: 'revoke' }, now);
+    if (!check.valid) {
+      return reply.status(400).send({ error: 'revoke_rejected', message: check.error });
+    }
+
+    const updated = { ...task, status: 'revoked' as const };
+    userCtx.store.setTask(updated, { allowOverwrite: true });
+
+    userCtx.audit.record('task_revoked', null, { taskId });
+    return { task: updated };
+  });
+
+  app.post('/api/tasks/:taskId/refund', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId } = req.params as { taskId: string };
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+
+    // Invariant: Reject refund and close if pending escrows exist
+    const pending = userCtx.store.getPayments(taskId).filter((p) => p.status === 'held');
+    if (pending.length > 0) {
+      return reply.status(409).send({
+        error: 'pending_escrows_exist',
+        message: `cannot refund and close task while ${pending.length} escrow(s) are still held`,
+      });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const check = validateTaskTransition(task, { type: 'refund_and_close' }, now);
+    if (!check.valid) {
+      return reply.status(400).send({ error: 'refund_rejected', message: check.error });
+    }
+
+    const remainingLamports = Math.max(0, task.budgetLamports - task.spentLamports);
+    const updated = { ...task, status: 'completed' as const };
+    userCtx.store.setTask(updated, { allowOverwrite: true });
+
+    userCtx.audit.record('task_refunded_and_closed', null, {
+      taskId,
+      refundedLamports: remainingLamports,
+    });
+
+    return { task: updated, refundedLamports: remainingLamports };
+  });
+
+  const MockServiceBody = z.object({
+    taskId: z.string().trim().min(1).max(64),
+    paymentId: z.string().trim().min(1).max(64).default('payment-0'),
+    serviceId: z.string().trim().min(1).max(64),
+    payload: z.record(z.unknown()).default({}),
+  });
+
+  app.post('/api/tasks/mock-service/run', async (req) => {
+    const body = MockServiceBody.parse(req.body);
+    const workerKeypair = Keypair.fromSeed(computeCanonicalSeed('NEXUS_DEFAULT_MOCK_WORKER_V1'));
+    const workerPubkey = workerKeypair.publicKey.toBase58();
+
+    const requestHash = computeReceiptHash({
+      taskId: body.taskId,
+      paymentId: body.paymentId,
+      worker: workerPubkey,
+      serviceId: body.serviceId,
+      requestHash: JSON.stringify(body.payload),
+      resultHash: 'evaluating',
+      amountLamports: 0,
+    });
+    const resultPayload = {
+      status: 'completed',
+      serviceId: body.serviceId,
+      evaluatedAt: new Date().toISOString(),
+      outputSummary: `Service ${body.serviceId} executed computation successfully`,
+    };
+    const resultHash = computeTaskHash({
+      owner: workerPubkey,
+      taskId: body.taskId,
+      budgetLamports: 100,
+      perPaymentCapLamports: 100,
+      expiry: 9999999999,
+    });
+
+    const canonicalReceiptMessage = `NEXUS_RECEIPT_V1:${body.taskId}:${body.paymentId}:${resultHash}`;
+    const signatureBytes = nacl.sign.detached(
+      new TextEncoder().encode(canonicalReceiptMessage),
+      workerKeypair.secretKey,
+    );
+    const workerSignature = bs58.encode(signatureBytes);
+
+    return {
+      serviceId: body.serviceId,
+      workerPubkey,
+      workerSignature,
+      requestHash,
+      resultHash,
+      resultPayload,
+    };
   });
 }

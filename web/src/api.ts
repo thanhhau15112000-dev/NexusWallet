@@ -1,4 +1,11 @@
-import type { AuditEntryView, PaymentRequest, Policy } from '@nexus/shared';
+import type {
+  AuditEntryView,
+  PaymentRequest,
+  Policy,
+  TaskCapabilityRecord,
+  TaskPaymentRecord,
+  TaskReceiptRecord,
+} from '@nexus/shared';
 
 export type AgentState = {
   cluster: string;
@@ -213,4 +220,66 @@ export const api = {
     }),
 
   audit: (limit = 60) => request<{ entries: AuditEntryView[] }>(`/api/audit?limit=${limit}`),
+  tasks: () => request<{ tasks: TaskCapabilityRecord[] }>('/api/tasks'),
+  taskDetail: (taskId: string) =>
+    request<{
+      task: TaskCapabilityRecord;
+      payments: TaskPaymentRecord[];
+      receipts: TaskReceiptRecord[];
+    }>(`/api/tasks/${taskId}`),
+  createTask: (input: {
+    taskId: string;
+    budgetLamports: number;
+    perPaymentCapLamports: number;
+    expiry: number;
+  }) =>
+    request<{ task: TaskCapabilityRecord }>('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  executeTaskPayment: (
+    taskId: string,
+    input: {
+      paymentId: string;
+      worker: string;
+      serviceId: string;
+      amountLamports: number;
+      requestHash: string;
+    },
+  ) =>
+    request<{ task: TaskCapabilityRecord; payment: TaskPaymentRecord }>(
+      `/api/tasks/${taskId}/payments`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  settleTaskPayment: (
+    taskId: string,
+    paymentId: string,
+    input: { resultHash: string; workerPubkey: string; workerSignature: string },
+  ) =>
+    request<{ payment: TaskPaymentRecord; receipt: TaskReceiptRecord }>(
+      `/api/tasks/${taskId}/payments/${paymentId}/settle`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  revokeTask: (taskId: string) =>
+    request<{ task: TaskCapabilityRecord }>(`/api/tasks/${taskId}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  refundTask: (taskId: string) =>
+    request<{ task: TaskCapabilityRecord; refundedLamports: number }>(
+      `/api/tasks/${taskId}/refund`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+  runMockService: (input: { taskId: string; paymentId?: string; serviceId: string; payload?: Record<string, unknown> }) =>
+    request<{
+      serviceId: string;
+      workerPubkey: string;
+      workerSignature: string;
+      requestHash: string;
+      resultHash: string;
+      resultPayload: unknown;
+    }>('/api/tasks/mock-service/run', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };
