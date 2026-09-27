@@ -152,39 +152,13 @@ function discoverTokenFromDisk(
   };
 }
 
-export function loadMcpConfig(
-  env: NodeJS.ProcessEnv = process.env,
-  options: LoadMcpConfigOptions = {},
-): McpConfig {
+/** Settings that must be valid for the server to start at all. */
+export function loadBaseConfig(env: NodeJS.ProcessEnv = process.env): Omit<McpConfig, 'agentToken' | 'ownerPubkey' | 'tokenSource'> {
   const apiUrl = loopbackOrigin('NEXUS_API_URL', env.NEXUS_API_URL?.trim() || 'http://127.0.0.1:8787');
   const dashboardUrl = loopbackOrigin(
     'NEXUS_DASHBOARD_URL',
     env.NEXUS_DASHBOARD_URL?.trim() || 'http://localhost:5173',
   );
-
-  let agentToken = '';
-  let ownerPubkey = '';
-  let tokenSource: 'env' | string = 'env';
-
-  const rawToken = env.NEXUS_AGENT_TOKEN?.trim();
-  if (rawToken) {
-    const tokenMatch = AGENT_TOKEN.exec(rawToken);
-    if (!tokenMatch) {
-      throw new Error(
-        'NEXUS_AGENT_TOKEN is malformed; copy the MCP entry from the nexusPay dashboard (agent card > Connect an AI agent) or run pnpm mcp:config',
-      );
-    }
-    agentToken = rawToken;
-    ownerPubkey = tokenMatch[1]!;
-    tokenSource = 'env';
-  } else {
-    const defaultRepoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-    const repoRoot = options.repoRoot ?? defaultRepoRoot;
-    const discovered = discoverTokenFromDisk(env, repoRoot);
-    agentToken = discovered.agentToken;
-    ownerPubkey = discovered.ownerPubkey;
-    tokenSource = discovered.tokenSource;
-  }
 
   const rawTimeout = env.NEXUS_TIMEOUT_MS?.trim();
   // Below the 60 s tool timeout some clients (Codex) apply by default, so a slow transfer
@@ -194,5 +168,33 @@ export function loadMcpConfig(
     throw new Error('NEXUS_TIMEOUT_MS must be an integer between 1000 and 300000');
   }
 
-  return { apiUrl, agentToken, ownerPubkey, tokenSource, dashboardUrl, timeoutMs };
+  return { apiUrl, dashboardUrl, timeoutMs };
+}
+
+export type ResolvedToken = Pick<McpConfig, 'agentToken' | 'ownerPubkey' | 'tokenSource'>;
+
+/** The agent token from NEXUS_AGENT_TOKEN or the agent data directory; throws with the fix when unresolved. */
+export function resolveAgentToken(
+  env: NodeJS.ProcessEnv = process.env,
+  options: LoadMcpConfigOptions = {},
+): ResolvedToken {
+  const rawToken = env.NEXUS_AGENT_TOKEN?.trim();
+  if (rawToken) {
+    const tokenMatch = AGENT_TOKEN.exec(rawToken);
+    if (!tokenMatch) {
+      throw new Error(
+        'NEXUS_AGENT_TOKEN is malformed; copy the MCP entry from the nexusPay dashboard (agent card > Connect an AI agent) or run pnpm mcp:config',
+      );
+    }
+    return { agentToken: rawToken, ownerPubkey: tokenMatch[1]!, tokenSource: 'env' };
+  }
+  const defaultRepoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  return discoverTokenFromDisk(env, options.repoRoot ?? defaultRepoRoot);
+}
+
+export function loadMcpConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  options: LoadMcpConfigOptions = {},
+): McpConfig {
+  return { ...loadBaseConfig(env), ...resolveAgentToken(env, options) };
 }

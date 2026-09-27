@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -131,6 +131,30 @@ args = ["--flag"]
       const result = installClient('claude-desktop', { dryRun: true, env: testEnv, bundle: dummyBundle });
       expect(result.action).toBe('dry-run');
       expect(existsSync(tempHome)).toBe(false);
+    });
+
+    it('never overwrites an existing backup file', () => {
+      const tempHome = mkdtempSync(resolve(tmpdir(), 'nexus-install-backup-'));
+      const testEnv = { NEXUS_MCP_INSTALL_HOME: tempHome, APPDATA: resolve(tempHome, 'AppData/Roaming') };
+      try {
+        const configPath = getClientConfigPath('codex', testEnv);
+        mkdirSync(dirname(configPath), { recursive: true });
+        writeFileSync(configPath, 'model = "a"');
+        writeFileSync(`${configPath}.bak`, 'users own backup');
+
+        installClient('codex', { env: testEnv, bundle: dummyBundle });
+        writeFileSync(configPath, 'model = "b"');
+        installClient('codex', { env: testEnv, bundle: dummyBundle });
+
+        expect(readFileSync(`${configPath}.bak`, 'utf8')).toBe('users own backup');
+        const backups = readdirSync(dirname(configPath)).filter((name) => name.startsWith('config.toml.bak-'));
+        expect(backups).toHaveLength(2);
+        const contents = backups.map((name) => readFileSync(resolve(dirname(configPath), name), 'utf8'));
+        expect(contents).toContain('model = "a"');
+        expect(contents).toContain('model = "b"');
+      } finally {
+        rmSync(tempHome, { recursive: true, force: true });
+      }
     });
 
     it('dry-run prints only the nexuspay entry, never other servers or their secrets', () => {

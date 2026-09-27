@@ -1,5 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
-import type { McpConfig } from './config.js';
+import type { McpConfig, ResolvedToken } from './config.js';
+
+/** No usable agent token yet (owner not signed in, several owners, wrong data dir). The message names the fix. */
+export class McpSetupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'McpSetupError';
+  }
+}
 
 /** The agent answered with an error status. `code` is the API's `error` field. */
 export class ApiError extends Error {
@@ -30,6 +38,8 @@ export class NexusApi {
   constructor(
     private readonly config: McpConfig,
     private readonly fetchImpl: Fetch = fetch,
+    /** Re-runs token discovery while the server has none, so signing in later needs no client restart. */
+    private readonly resolveToken?: () => ResolvedToken,
   ) {}
 
   get<T>(path: string): Promise<T> {
@@ -74,6 +84,14 @@ export class NexusApi {
   }
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    if (!this.config.agentToken) {
+      if (!this.resolveToken) throw new McpSetupError('nexusPay MCP server has no agent token');
+      try {
+        Object.assign(this.config, this.resolveToken());
+      } catch (err) {
+        throw new McpSetupError(err instanceof Error ? err.message : String(err));
+      }
+    }
     let { response, text } = await this.execute(this.config.agentToken, method, path, body);
 
     // Self-healing on 401 when token was discovered from a file: re-read file once and retry.

@@ -86,6 +86,17 @@ export function mergeTomlConfig(existingText, bundle) {
   return merged;
 }
 
+// Never overwrite an existing backup (it may be the user's own): use <file>.bak, or a
+// timestamped name when that is taken.
+export function backupPathFor(configPath, now = new Date()) {
+  const plain = `${configPath}.bak`;
+  if (!existsSync(plain)) return plain;
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  let candidate = `${configPath}.bak-${stamp}`;
+  for (let i = 2; existsSync(candidate); i++) candidate = `${configPath}.bak-${stamp}-${i}`;
+  return candidate;
+}
+
 export function installClient(client, options = {}) {
   const { dryRun = false, env = process.env, bundle = bundlePath } = options;
   const configPath = getClientConfigPath(client, env);
@@ -118,8 +129,7 @@ export function installClient(client, options = {}) {
   mkdirSync(dirname(configPath), { recursive: true });
 
   if (exists) {
-    const backupPath = `${configPath}.bak`;
-    copyFileSync(configPath, backupPath);
+    copyFileSync(configPath, backupPathFor(configPath));
   }
 
   writeFileSync(configPath, merged, 'utf8');

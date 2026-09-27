@@ -451,6 +451,39 @@ describe('nexusPay MCP tools', () => {
     }
   });
 
+  it('reports mcp_setup_required without a token and recovers once one appears, without a restart', async () => {
+    const fetchImpl = vi.fn(async () =>
+      json(200, {
+        cluster: 'devnet',
+        agent: { agentId: 'a', pubkey: OWNER, lamports: 0, rpcError: null, explorerUrl: 'x' },
+        policy: { version: 1, maxSolLamportsPerTx: 1, maxSolPerTx: 0, allowedRecipients: [], allowedMints: [], maxTokenAmountByMint: {} },
+      }),
+    );
+    let signedIn = false;
+    const resolveToken = () => {
+      if (!signedIn) throw new Error('multiple owners with MCP tokens found (a, b); set NEXUS_OWNER_PUBKEY to specify which one to use');
+      return { agentToken: TOKEN, ownerPubkey: OWNER, tokenSource: '/data/users/owner/mcp-token' };
+    };
+    const noTokenConfig: McpConfig = { ...config, agentToken: '', ownerPubkey: '', tokenSource: 'none' };
+    const server = createServer(new NexusApi(noTokenConfig, fetchImpl as unknown as Fetch, resolveToken), noTokenConfig);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await client.connect(clientTransport);
+
+    const before = await client.callTool({ name: 'nexuspay_get_status', arguments: {} });
+    expect(before.isError).toBe(true);
+    expect(parse(before).error).toBe('mcp_setup_required');
+    expect(parse(before).message).toMatch(/NEXUS_OWNER_PUBKEY/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    signedIn = true;
+    const after = await client.callTool({ name: 'nexuspay_get_status', arguments: {} });
+    expect(after.isError).toBeFalsy();
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
   it('returns wallet status without admin or RPC details', async () => {
     const client = await connect(
       vi.fn(async () =>

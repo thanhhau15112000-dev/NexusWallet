@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { PaymentRequest, Policy, RequestStatus } from '@nexus/shared';
-import { ApiError, ApiUnreachableError, type NexusApi } from './api.js';
+import { ApiError, ApiUnreachableError, McpSetupError, type NexusApi } from './api.js';
 import type { McpConfig } from './config.js';
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
@@ -46,6 +46,7 @@ function fail(code: string, message: string, extra: Record<string, unknown> = {}
 
 // Error messages name the fix, so an agent on another machine can repair its setup without the repo history.
 function failFromError(err: unknown, config: McpConfig, extra: Record<string, unknown> = {}): CallToolResult {
+  if (err instanceof McpSetupError) return fail('mcp_setup_required', err.message, extra);
   if (err instanceof ApiError && err.status === 401) {
     const message =
       config.tokenSource === 'env'
