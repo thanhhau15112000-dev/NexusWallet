@@ -36,7 +36,7 @@ or access RPC methods directly.
 
 ## Where things live
 
-Three workspace packages, one file per job. `shared` exists because the dashboard
+Four workspace packages, one file per job. `shared` exists because the dashboard
 has to rebuild the approval message and render policy verdicts itself.
 
 ```
@@ -46,7 +46,7 @@ shared/src/policy.ts     evaluatePolicy - the one function that authorises a sig
 agent/src/server.ts      entry point: Fastify, CORS, signed cookies, hosted dashboard
 agent/src/routes.ts      API endpoints and Phantom login challenge
 agent/src/sessions.ts    one-time login challenges and expiring server-side sessions
-agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny
+agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny (or a structured action -> policy)
 agent/src/approvals.ts   owner signature verification
 agent/src/chain.ts       every Solana RPC call, including the signer
 agent/src/crypto.ts      keystore, AES-256-GCM sealing, ed25519 verification
@@ -58,6 +58,9 @@ web/src/App.tsx          all dashboard state and actions
 web/src/api.ts           typed client, resolves the agent host
 web/src/phantom.ts       provider detection and signMessage
 web/src/components/      one file per panel
+
+mcp/src/tools.ts         MCP tools for personal agents; they call the agent API, never the chain
+mcp/scripts/build.mjs    bundles the MCP server into dist/mcp/nexuspay-mcp.mjs
 
 extension/               Manifest V3 popup, host settings, and Devnet health check
 scripts/build-extension.mjs  creates the unpacked Chrome build under dist/
@@ -169,12 +172,84 @@ over a tampered message, a replayed approval, and an approval issued under a sta
 It binds its own throwaway key as the owner, so reconnect Phantom afterwards.
 
 ```bash
-pnpm test        # policy, approval and fallback-pipeline unit tests
+pnpm test        # policy, approval, pipeline and MCP tool tests
 pnpm build       # web bundle + workspace typecheck
 ```
 
 One `tsconfig.json`, one lockfile, one `.env` at the root. There is no build step for the
 agent: `tsx` runs the TypeScript directly, and `pnpm build` is what proves it compiles.
+
+## Use it from a personal agent (MCP)
+
+`mcp/` is a stdio MCP server that lets Claude Desktop, Claude Code, Cursor or any MCP client use
+the agent wallet. The client is the planner: it sends a structured action to
+`POST /api/agent/intents`, which skips the two model stages and goes straight to `evaluatePolicy`.
+Nothing else changes. Inside the policy the agent signs, above the limit the request waits for the
+owner's Phantom approval in the dashboard, and off-allowlist recipients are denied.
+
+| Tool | What it does |
+| --- | --- |
+| `nexuspay_get_status` | wallet address, SOL balance, per-transaction limit, allowlist labels |
+| `nexuspay_list_requests` / `nexuspay_get_request` | request status, verdict, Explorer link |
+| `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | propose a transfer; the policy decides |
+
+There is no tool to change the policy, bind an owner or approve a request.
+
+This build is **local only**: it accepts a loopback `NEXUS_API_URL` and authenticates with
+`NEXUS_AGENT_TOKEN`, a per-owner token the agent service issues (`nxp_<owner>_<secret>`, stored in
+`agent/data/users/<owner>/mcp-token`). The MCP server sends it as `Authorization: Bearer`. The token
+only reaches four routes (status, request list, request detail, intents); policy, approvals, owner
+binding and funding still need the owner's wallet session. Hosted access is not implemented.
+
+**Security note on token storage:** The token is stored in plaintext on disk under
+`agent/data/users/<owner>/mcp-token`, sharing the same trust boundary as the agent's encrypted keystore.
+While POSIX permissions (`0600`) are applied on Unix systems, mode `0600` has no effect on Windows,
+where file access relies on Windows ACLs.
+
+### Connect an agent (Zero-Config)
+
+1. Start the stack: `pnpm dev` (this automatically runs `pnpm mcp:build`).
+2. Sign in to the dashboard (`http://localhost:5173`) with your Phantom wallet once to create the owner tenant and MCP token.
+3. Connect your AI agent:
+   - **Claude Code, Cursor, or Codex:** Open this repository root. Approve `.mcp.json` / trust the project in Codex — the server is configured out of the box with zero secret copying.
+   - **Claude Desktop or Antigravity:** Run `pnpm mcp:install` (or `pnpm mcp:install -- --client antigravity` / `claude-desktop`) to register the server into global configuration.
+   - **Fallback:** Copy the entry manually from the dashboard (agent card > **Connect an AI agent (MCP)**) or run `pnpm mcp:config`.
+
+Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to be on the client's PATH.
+
+| Client | Where the entry goes | Configuration method |
+| --- | --- | --- |
+| Claude Code | `.mcp.json` in project root | Pre-configured in repo (approve on launch) |
+| Cursor | `.cursor/mcp.json` in project root | Pre-configured in repo |
+| Codex (CLI, app, extension) | `.codex/config.toml` in project root | Pre-configured in repo (trust project) |
+| Claude Desktop | `claude_desktop_config.json` | Run `pnpm mcp:install -- --client claude-desktop` |
+| Antigravity (app, IDE, CLI) | `~/.gemini/config/mcp_config.json` | Run `pnpm mcp:install -- --client antigravity` |
+
+On Windows, paths in config files use forward slashes (`G:/nexus/dist/...`); node accepts them and they need
+no escaping in JSON or TOML. Tool input schemas avoid `exclusiveMinimum` and similar keywords, because
+Gemini function calling (Antigravity) rejects them.
+
+Optional: `NEXUS_DASHBOARD_URL` (default `http://localhost:5173`, shown in approval hints) and
+`NEXUS_TIMEOUT_MS` (default 45000, kept below Codex's default 60 s tool timeout). Each transfer carries an idempotency key. If a call times out or the agent
+answers with a server error, the tool returns `outcome_unknown` with that key, and retrying with the same key cannot pay twice.
+Reusing a key for a different transfer returns `idempotency_conflict`. Two separate calls with
+different keys are two transfers, and only the policy limits those.
+
+### Troubleshooting (for the agent setting this up)
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Stderr says `no MCP token found in <dataDir>` | Owner has not signed in to the dashboard on this machine | Sign in to the dashboard with your wallet once to create the token |
+| Stderr says `multiple owners with MCP tokens found` | More than one owner wallet has a token in the data directory | Set `NEXUS_OWNER_PUBKEY=<your_wallet_address>` in client env |
+| Tool error `mcp_token_rejected` | Agent service is using a different data directory or token was rotated | Verify `NEXUS_AGENT_DATA_DIR` or sign in to the dashboard to refresh |
+| Server fails to start from `.mcp.json` / relative path | Client was started from a directory other than repo root | Open client from the repository root, or run `pnpm mcp:install` |
+| Client cannot start the server: `Cannot find module .../nexuspay-mcp.mjs` | Bundle not built, or path points at another checkout | `pnpm mcp:build`; verify bundle in `dist/mcp/nexuspay-mcp.mjs` |
+| `node` not found | Node.js missing from the client's PATH | Install Node.js 22+, or put the absolute path of `node` in `command` |
+| Tool error `agent_unreachable` | Agent service not running or on another port | `pnpm dev` from the repository root; check `NEXUS_API_URL` |
+| Transfer returns `pending_approval` | Amount above the per-transaction limit | The owner approves in the dashboard; poll `nexuspay_get_request` |
+| Transfer returns `outcome_unknown` | Timeout or server error after submission | Retry with the same `idempotencyKey`; never change the amount |
+| Codex cuts the call at 60 s | Missing `tool_timeout_sec` | Keep `tool_timeout_sec = 90` in the TOML entry |
+| Antigravity rejects the tool schema | Old bundle | `pnpm mcp:build` and restart Antigravity |
 
 ## Scope
 
