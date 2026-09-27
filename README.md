@@ -211,7 +211,7 @@ where file access relies on Windows ACLs.
 1. Start the stack: `pnpm dev` (this automatically runs `pnpm mcp:build`).
 2. Sign in to the dashboard (`http://localhost:5173`) with your Phantom wallet once to create the owner tenant and MCP token.
 3. Connect your AI agent:
-   - **Claude Code or Cursor:** Open the client **in the repository root** (not a subfolder: the committed entry uses the relative path `dist/mcp/nexuspay-mcp.mjs`) and approve the project's `.mcp.json` / `.cursor/mcp.json`. No secrets or paths to copy. If you open it elsewhere, use `pnpm mcp:install` instead.
+   - **Claude Code or Cursor:** Open the client **in the repository root** (not a subfolder: the committed entry uses the relative path `dist/mcp/nexuspay-mcp.mjs`) and approve the project's `.mcp.json` / `.cursor/mcp.json`. No secrets or paths to copy. If you open it elsewhere, register the server with an absolute path instead: Claude Code `claude mcp add -s local nexuspay -- node <absolute path to dist/mcp/nexuspay-mcp.mjs>`, Cursor: paste the JSON from `pnpm mcp:config` into `~/.cursor/mcp.json`. (`pnpm mcp:install` covers Codex, Claude Desktop and Antigravity only.)
    - **Codex, Claude Desktop or Antigravity:** Run `pnpm mcp:install -- --client codex` (or `claude-desktop`, `antigravity`, or omit `--client` for all three) to register the server in the client's global configuration. `.codex/config.toml` is also committed, but Codex only reads project config for trusted projects and this has not been verified on every Codex build, so prefer the installer.
    - **Fallback:** Copy the entry manually from the dashboard (agent card > **Connect an AI agent (MCP)**) or run `pnpm mcp:config`.
 
@@ -242,7 +242,7 @@ different keys are two transfers, and only the policy limits those.
 | Tool error `mcp_setup_required` with `no MCP token found` | Owner has not signed in to the dashboard on this machine | Sign in to the dashboard with your wallet once; the next tool call picks the token up, no client restart |
 | Tool error `mcp_setup_required` with `multiple owners with MCP tokens found` | More than one owner wallet has a token in the data directory | Set `NEXUS_OWNER_PUBKEY=<your_wallet_address>` in the client env |
 | Tool error `mcp_token_rejected` | Agent service is using a different data directory or token was rotated | Verify `NEXUS_AGENT_DATA_DIR` or sign in to the dashboard to refresh |
-| Server fails to start from `.mcp.json` (`Cannot find module`, "Connection closed", tool not available) | Client was started in a subfolder, so the relative bundle path does not resolve | Open the client in the repository root, or run `pnpm mcp:install` (absolute path) |
+| Server fails to start from `.mcp.json` (`Cannot find module`, "Connection closed", tool not available) | Client was started in a subfolder, so the relative bundle path does not resolve | Open the client in the repository root, or register an absolute path: `claude mcp add -s local nexuspay -- node <path from pnpm mcp:config>` (Claude Code) or the `pnpm mcp:config` JSON in `~/.cursor/mcp.json` (Cursor) |
 | Client cannot start the server: `Cannot find module .../nexuspay-mcp.mjs` | Bundle not built, or path points at another checkout | `pnpm mcp:build`; verify bundle in `dist/mcp/nexuspay-mcp.mjs` |
 | `node` not found | Node.js missing from the client's PATH | Install Node.js 22+, or put the absolute path of `node` in `command` |
 | Tool error `agent_unreachable` | Agent service not running or on another port | `pnpm dev` from the repository root; check `NEXUS_API_URL` |
