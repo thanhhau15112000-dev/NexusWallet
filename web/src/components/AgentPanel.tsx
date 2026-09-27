@@ -4,6 +4,7 @@ import { LAMPORTS_PER_SOL } from '@nexus/shared';
 import { Bot, Settings, ShieldCheck, Wallet } from 'lucide-react';
 import type { AgentState } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
+import { McpConnectPanel } from './McpConnectPanel.js';
 import { WalletSettingsPopover } from './WalletSettingsPopover.js';
 
 export function AgentPanel(props: {
@@ -138,6 +139,7 @@ export function AgentPanel(props: {
         </div>
         <div className="wallet-hero-owner">{props.ownerWallet}</div>
       </div>
+      <McpConnectPanel />
     </Card>
   );
 }

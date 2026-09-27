@@ -152,8 +152,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export type McpClientConfig = {
+  owner: string;
+  bundlePath: string;
+  bundleBuilt: boolean;
+  buildCommand: string;
+  env: { NEXUS_API_URL: string; NEXUS_AGENT_TOKEN: string };
+  mcpServersJson: string;
+  codexToml: string;
+};
+
 export const api = {
   health: () => request<AgentHealth>('/api/health'),
+
+  mcpConfig: () => request<McpClientConfig>('/api/mcp/config'),
+
+  rotateMcpToken: () =>
+    request<McpClientConfig>('/api/mcp/token/rotate', { method: 'POST', body: JSON.stringify({}) }),
 
   authSession: () => request<AuthSession>('/api/auth/session'),
 
