@@ -103,8 +103,11 @@ export function installClient(client, options = {}) {
     : mergeJsonConfig(existingText, bundle);
 
   if (dryRun) {
-    console.log(`[DRY-RUN] Target: ${configPath}`);
-    console.log(merged);
+    // Print only the nexuspay entry: the rest of a client config can hold other servers' secrets.
+    const entry = isToml
+      ? mergeTomlConfig('', bundle).trimEnd()
+      : JSON.stringify({ mcpServers: { nexuspay: { command: 'node', args: [bundle] } } }, null, 2);
+    console.log(`[DRY-RUN] ${client}: would ${exists ? 'update' : 'create'} ${configPath} with:\n${entry}`);
     return { client, path: configPath, action: 'dry-run', content: merged };
   }
 

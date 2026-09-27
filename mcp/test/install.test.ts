@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { dirname, resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error install.mjs is plain JavaScript without type declarations
 import { getClientConfigPath, installClient, mergeJsonConfig, mergeTomlConfig, runCli } from '../scripts/install.mjs';
 
@@ -131,6 +131,26 @@ args = ["--flag"]
       const result = installClient('claude-desktop', { dryRun: true, env: testEnv, bundle: dummyBundle });
       expect(result.action).toBe('dry-run');
       expect(existsSync(tempHome)).toBe(false);
+    });
+
+    it('dry-run prints only the nexuspay entry, never other servers or their secrets', () => {
+      const tempHome = mkdtempSync(resolve(tmpdir(), 'nexus-install-secret-'));
+      const testEnv = { NEXUS_MCP_INSTALL_HOME: tempHome, APPDATA: resolve(tempHome, 'AppData/Roaming') };
+      const configPath = getClientConfigPath('antigravity', testEnv);
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, JSON.stringify({ mcpServers: { jira: { env: { JIRA_API_KEY: 'secret-jira-key' } } } }));
+      const printed: string[] = [];
+      const spy = vi.spyOn(console, 'log').mockImplementation((...args) => { printed.push(args.join(' ')); });
+      try {
+        installClient('antigravity', { dryRun: true, env: testEnv, bundle: dummyBundle });
+      } finally {
+        spy.mockRestore();
+        rmSync(tempHome, { recursive: true, force: true });
+      }
+      const output = printed.join('\n');
+      expect(output).toContain('nexuspay');
+      expect(output).not.toContain('secret-jira-key');
+      expect(output).not.toContain('jira');
     });
 
     it('runCli executes all clients in dry-run mode safely', () => {
