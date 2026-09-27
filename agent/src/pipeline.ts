@@ -12,8 +12,11 @@ import {
   solToLamports,
   type ApprovalPayload,
   type ExecutionRecord,
+  type ModelAction,
   type ModelContext,
   type PaymentRequest,
+  type Policy,
+  type PolicyDecision,
   type ResolvedAction,
 } from '@nexus/shared';
 import {
@@ -111,7 +114,85 @@ function planMatchesIntent(
   );
 }
 
-const inFlightCommands = new WeakMap<AppContext, Map<string, Promise<PaymentRequest>>>();
+type InFlight = { fingerprint: string | null; promise: Promise<PaymentRequest> };
+
+const inFlightCommands = new WeakMap<AppContext, Map<string, InFlight>>();
+
+/** A structured action from an external agent. `request_manual_approval` is not executable. */
+export type AgentAction = Exclude<ModelAction, { type: 'request_manual_approval' }>;
+
+export class IdempotencyConflictError extends Error {
+  constructor(key: string) {
+    super(`idempotency key ${key} was already used for a different request`);
+    this.name = 'IdempotencyConflictError';
+  }
+}
+
+/**
+ * Persist the verdict, then deny, hold for the owner, or execute. Shared by the
+ * model path and the structured-action path so both reach the signer the same way.
+ */
+function dispatchDecision(
+  ctx: AppContext,
+  request: PaymentRequest,
+  decision: PolicyDecision,
+  currentPolicy: Policy,
+): Promise<PaymentRequest> | PaymentRequest {
+  request = ctx.store.putRequest({ ...request, decision });
+  ctx.audit.record('policy.decided', request.id, {
+    verdict: decision.verdict,
+    reasons: decision.reasons,
+    policyVersion: decision.policyVersion,
+  });
+
+  if (decision.verdict === 'deny' || !decision.resolved) {
+    return ctx.store.putRequest({
+      ...request,
+      status: 'denied',
+      error: { code: 'policy_denied', message: decision.reasons.join('; ') },
+    });
+  }
+
+  if (decision.verdict === 'require_approval') {
+    const resolved = decision.resolved;
+    if (resolved.type === 'get_balance') {
+      return ctx.store.putRequest({
+        ...request,
+        status: 'denied',
+        error: { code: 'policy_denied', message: 'action is not approvable' },
+      });
+    }
+
+    const payload: ApprovalPayload = {
+      requestId: request.id,
+      agentId: currentPolicy.agentId,
+      policyVersion: currentPolicy.version,
+      actionType: resolved.type,
+      recipient: resolved.recipient,
+      amount: resolved.type === 'transfer_sol' ? resolved.lamports : resolved.amount,
+      mint: resolved.type === 'transfer_sol' ? 'native' : resolved.mint,
+      nonce: randomNonce(),
+      expiresAt: new Date(Date.now() + ctx.config.APPROVAL_TTL_SECONDS * 1000).toISOString(),
+    };
+
+    request = ctx.store.putRequest({
+      ...request,
+      status: 'pending_approval',
+      approval: {
+        payload,
+        message: buildApprovalMessage(payload),
+        signature: null,
+        signerPubkey: null,
+        signedAt: null,
+        consumedAt: null,
+      },
+    });
+    ctx.audit.record('approval.requested', request.id, { payload });
+    return request;
+  }
+
+  return execute(ctx, ctx.store.putRequest({ ...request, status: 'auto_approved' }));
+}
 
 async function processCommand(
   ctx: AppContext,
@@ -172,89 +253,115 @@ async function processCommand(
           reasons: [...baseDecision.reasons, 'model requested human approval'],
         }
       : baseDecision;
-  request = ctx.store.putRequest({ ...request, decision });
-  ctx.audit.record('policy.decided', request.id, {
-    verdict: decision.verdict,
-    reasons: decision.reasons,
-    policyVersion: decision.policyVersion,
+  return dispatchDecision(ctx, request, decision, currentPolicy);
+}
+
+function describeAction(action: AgentAction): string {
+  switch (action.type) {
+    case 'get_balance':
+      return '[agent] get_balance';
+    case 'transfer_sol':
+      return `[agent] transfer_sol ${action.amountSol} SOL -> ${action.recipient}`;
+    case 'transfer_spl':
+      return `[agent] transfer_spl ${action.amount} ${action.mint} -> ${action.recipient}`;
+  }
+}
+
+/**
+ * The structured path skips both model stages: the caller is itself the planner.
+ * Its action still goes through `evaluatePolicy` like a model plan does.
+ */
+async function processAction(
+  ctx: AppContext,
+  action: AgentAction,
+  idempotencyKey: string | null,
+): Promise<PaymentRequest> {
+  const policy = ctx.store.getPolicy();
+  const request = ctx.store.putRequest({
+    ...newRequest(policy.agentId, describeAction(action), idempotencyKey),
+    plan: { action, rationale: 'structured action submitted by an external agent', confidence: 1 },
   });
+  ctx.audit.record('request.created', request.id, { source: 'agent_action', action });
 
-  if (decision.verdict === 'deny' || !decision.resolved) {
-    return ctx.store.putRequest({
-      ...request,
-      status: 'denied',
-      error: { code: 'policy_denied', message: decision.reasons.join('; ') },
-    });
-  }
+  return dispatchDecision(ctx, request, evaluatePolicy(policy, action), policy);
+}
 
-  if (decision.verdict === 'require_approval') {
-    const resolved = decision.resolved;
-    if (resolved.type === 'get_balance') {
-      return ctx.store.putRequest({
-        ...request,
-        status: 'denied',
-        error: { code: 'policy_denied', message: 'action is not approvable' },
-      });
-    }
-
-    const payload: ApprovalPayload = {
-      requestId: request.id,
-      agentId: currentPolicy.agentId,
-      policyVersion: currentPolicy.version,
-      actionType: resolved.type,
-      recipient: resolved.recipient,
-      amount: resolved.type === 'transfer_sol' ? resolved.lamports : resolved.amount,
-      mint: resolved.type === 'transfer_sol' ? 'native' : resolved.mint,
-      nonce: randomNonce(),
-      expiresAt: new Date(Date.now() + ctx.config.APPROVAL_TTL_SECONDS * 1000).toISOString(),
-    };
-
-    request = ctx.store.putRequest({
-      ...request,
-      status: 'pending_approval',
-      approval: {
-        payload,
-        message: buildApprovalMessage(payload),
-        signature: null,
-        signerPubkey: null,
-        signedAt: null,
-        consumedAt: null,
-      },
-    });
-    ctx.audit.record('approval.requested', request.id, { payload });
-    return request;
-  }
-
-  return execute(ctx, ctx.store.putRequest({ ...request, status: 'auto_approved' }));
+function actionFingerprint(action: AgentAction): string {
+  return JSON.stringify(action);
 }
 
 /**
  * Return the same in-flight result for concurrent retries carrying one key.
  * The persisted store handles retries after completion; this map closes the
  * async gap between the initial lookup and the first state write.
+ *
+ * `fingerprint` is null for prompt commands, which keep their original
+ * behaviour. For structured actions a reused key must carry the same action.
  */
+function dedupe(
+  ctx: AppContext,
+  idempotencyKey: string,
+  fingerprint: string | null,
+  matchesExisting: (existing: PaymentRequest) => boolean,
+  run: () => Promise<PaymentRequest>,
+): Promise<PaymentRequest> {
+  const pending = inFlightCommands.get(ctx);
+  const current = pending?.get(idempotencyKey);
+  if (current) {
+    if (fingerprint !== null && current.fingerprint !== fingerprint) {
+      return Promise.reject(new IdempotencyConflictError(idempotencyKey));
+    }
+    return current.promise;
+  }
+
+  const existing = ctx.store.findByIdempotencyKey(idempotencyKey);
+  if (existing) {
+    if (fingerprint !== null && !matchesExisting(existing)) {
+      return Promise.reject(new IdempotencyConflictError(idempotencyKey));
+    }
+    return Promise.resolve(existing);
+  }
+
+  const commands = pending ?? new Map<string, InFlight>();
+  if (!pending) inFlightCommands.set(ctx, commands);
+
+  const promise = run().finally(() => {
+    commands.delete(idempotencyKey);
+  });
+  commands.set(idempotencyKey, { fingerprint, promise });
+  return promise;
+}
+
 export function runCommand(
   ctx: AppContext,
   input: { prompt: string; idempotencyKey?: string | null },
 ): Promise<PaymentRequest> {
   const idempotencyKey = input.idempotencyKey?.trim() || null;
   if (!idempotencyKey) return processCommand(ctx, input, null);
+  return dedupe(ctx, idempotencyKey, null, () => true, () =>
+    processCommand(ctx, { ...input, idempotencyKey }, idempotencyKey),
+  );
+}
 
-  const pending = inFlightCommands.get(ctx);
-  const current = pending?.get(idempotencyKey);
-  if (current) return current;
-
-  const existing = ctx.store.findByIdempotencyKey(idempotencyKey);
-  if (existing) return Promise.resolve(existing);
-
-  const commands = pending ?? new Map<string, Promise<PaymentRequest>>();
-  if (!pending) inFlightCommands.set(ctx, commands);
-
-  const promise = processCommand(ctx, { ...input, idempotencyKey }, idempotencyKey).finally(() => {
-    commands.delete(idempotencyKey);
-  });
-  commands.set(idempotencyKey, promise);
-  return promise;
+export function runAction(
+  ctx: AppContext,
+  input: { action: AgentAction; idempotencyKey?: string | null },
+): Promise<PaymentRequest> {
+  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  if (!idempotencyKey) return processAction(ctx, input.action, null);
+  const fingerprint = actionFingerprint(input.action);
+  return dedupe(
+    ctx,
+    idempotencyKey,
+    fingerprint,
+    // A prompt command has an intent; only a structured request with the same action matches.
+    (existing) =>
+      existing.intent === null &&
+      existing.plan !== null &&
+      existing.plan.action.type !== 'request_manual_approval' &&
+      actionFingerprint(existing.plan.action) === fingerprint,
+    () => processAction(ctx, input.action, idempotencyKey),
+  );
 }
 
 /**

@@ -36,7 +36,7 @@ or access RPC methods directly.
 
 ## Where things live
 
-Three workspace packages, one file per job. `shared` exists because the dashboard
+Four workspace packages, one file per job. `shared` exists because the dashboard
 has to rebuild the approval message and render policy verdicts itself.
 
 ```
@@ -46,7 +46,7 @@ shared/src/policy.ts     evaluatePolicy - the one function that authorises a sig
 agent/src/server.ts      entry point: Fastify, CORS, signed cookies, hosted dashboard
 agent/src/routes.ts      API endpoints and Phantom login challenge
 agent/src/sessions.ts    one-time login challenges and expiring server-side sessions
-agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny
+agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny (or a structured action -> policy)
 agent/src/approvals.ts   owner signature verification
 agent/src/chain.ts       every Solana RPC call, including the signer
 agent/src/crypto.ts      keystore, AES-256-GCM sealing, ed25519 verification
@@ -58,6 +58,9 @@ web/src/App.tsx          all dashboard state and actions
 web/src/api.ts           typed client, resolves the agent host
 web/src/phantom.ts       provider detection and signMessage
 web/src/components/      one file per panel
+
+mcp/src/tools.ts         MCP tools for personal agents; they call the agent API, never the chain
+mcp/scripts/build.mjs    bundles the MCP server into dist/mcp/nexuspay-mcp.mjs
 
 extension/               Manifest V3 popup, host settings, and Devnet health check
 scripts/build-extension.mjs  creates the unpacked Chrome build under dist/
@@ -169,12 +172,61 @@ over a tampered message, a replayed approval, and an approval issued under a sta
 It binds its own throwaway key as the owner, so reconnect Phantom afterwards.
 
 ```bash
-pnpm test        # policy, approval and fallback-pipeline unit tests
+pnpm test        # policy, approval, pipeline and MCP tool tests
 pnpm build       # web bundle + workspace typecheck
 ```
 
 One `tsconfig.json`, one lockfile, one `.env` at the root. There is no build step for the
 agent: `tsx` runs the TypeScript directly, and `pnpm build` is what proves it compiles.
+
+## Use it from a personal agent (MCP)
+
+`mcp/` is a stdio MCP server that lets Claude Desktop, Claude Code, Cursor or any MCP client use
+the agent wallet. The client is the planner: it sends a structured action to
+`POST /api/agent/intents`, which skips the two model stages and goes straight to `evaluatePolicy`.
+Nothing else changes. Inside the policy the agent signs, above the limit the request waits for the
+owner's Phantom approval in the dashboard, and off-allowlist recipients are denied.
+
+| Tool | What it does |
+| --- | --- |
+| `nexuspay_get_status` | wallet address, SOL balance, per-transaction limit, allowlist labels |
+| `nexuspay_list_requests` / `nexuspay_get_request` | request status, verdict, Explorer link |
+| `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | propose a transfer; the policy decides |
+
+There is no tool to change the policy, bind an owner or approve a request.
+
+This build is **local only**: it accepts a loopback `NEXUS_API_URL` and selects the tenant with
+`NEXUS_OWNER_PUBKEY`, the owner wallet bound in the dashboard. Hosted access needs a scoped agent
+token and is not implemented yet. On loopback the scope is advisory: any local process can call the
+API directly, so the hard limits are the policy, the owner signature and the wallet balance.
+
+```bash
+pnpm mcp:build   # writes dist/mcp/nexuspay-mcp.mjs
+```
+
+Client configuration (Claude Desktop `claude_desktop_config.json`, Cursor `.cursor/mcp.json`, or a
+project `.mcp.json` for Claude Code). Use the absolute path of your checkout:
+
+```json
+{
+  "mcpServers": {
+    "nexuspay": {
+      "command": "node",
+      "args": ["/absolute/path/to/nexus/dist/mcp/nexuspay-mcp.mjs"],
+      "env": {
+        "NEXUS_API_URL": "http://127.0.0.1:8787",
+        "NEXUS_OWNER_PUBKEY": "<owner wallet address>"
+      }
+    }
+  }
+}
+```
+
+Optional: `NEXUS_DASHBOARD_URL` (default `http://localhost:5173`, shown in approval hints) and
+`NEXUS_TIMEOUT_MS` (default 60000). Each transfer carries an idempotency key. If a call times out or the agent
+answers with a server error, the tool returns `outcome_unknown` with that key, and retrying with the same key cannot pay twice.
+Reusing a key for a different transfer returns `idempotency_conflict`. Two separate calls with
+different keys are two transfers, and only the policy limits those.
 
 ## Scope
 

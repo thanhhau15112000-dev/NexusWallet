@@ -2,7 +2,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { AllowlistEntrySchema, PubkeySchema, solToLamports, type Policy } from '@nexus/shared';
+import {
+  AllowlistEntrySchema,
+  ModelActionSchema,
+  PubkeySchema,
+  solToLamports,
+  type Policy,
+} from '@nexus/shared';
 import { explorerAddressUrl, getLamportBalance, isValidAddress, requestAirdrop } from './chain.js';
 import { ApprovalError, approveRequest } from './approvals.js';
 import type { AppContext } from './context.js';
@@ -11,12 +17,21 @@ import {
   SeedTransferFailedError,
   SeedTransferOutcomeUnknownError,
 } from './funder.js';
-import { runCommand } from './pipeline.js';
+import { IdempotencyConflictError, runAction, runCommand, type AgentAction } from './pipeline.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 
 const CommandBody = z.object({
   prompt: z.string().trim().min(1).max(600),
+  idempotencyKey: z.string().trim().max(120).optional(),
+});
+
+/** Structured actions from an external agent (MCP). Same action set as the planner, minus the non-executable one. */
+const AgentActionBody = z.object({
+  action: ModelActionSchema.refine(
+    (action): action is AgentAction => action.type !== 'request_manual_approval',
+    { message: 'request_manual_approval is not an executable action' },
+  ),
   idempotencyKey: z.string().trim().max(120).optional(),
 });
 
@@ -432,6 +447,24 @@ const inFlightClaims = new Set<string>();
       idempotencyKey: body.idempotencyKey ?? null,
     });
     return { request };
+  });
+
+  // Not under /api/actions/: that prefix is public for Blinks and skips session auth.
+  app.post('/api/agent/intents', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const body = AgentActionBody.parse(req.body);
+    try {
+      const request = await runAction(userCtx, {
+        action: body.action as AgentAction,
+        idempotencyKey: body.idempotencyKey ?? null,
+      });
+      return { request };
+    } catch (err) {
+      if (err instanceof IdempotencyConflictError) {
+        return reply.status(409).send({ error: 'idempotency_conflict', message: err.message });
+      }
+      throw err;
+    }
   });
 
   app.get('/api/requests', async (req) => {

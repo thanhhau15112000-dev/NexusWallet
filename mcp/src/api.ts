@@ -1,0 +1,83 @@
+import type { McpConfig } from './config.js';
+
+/** The agent answered with an error status. `code` is the API's `error` field. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** No HTTP answer: the agent is down, or the call timed out after it may have run. */
+export class ApiUnreachableError extends Error {
+  constructor(
+    message: string,
+    readonly timedOut: boolean,
+  ) {
+    super(message);
+    this.name = 'ApiUnreachableError';
+  }
+}
+
+export type Fetch = typeof fetch;
+
+export class NexusApi {
+  constructor(
+    private readonly config: McpConfig,
+    private readonly fetchImpl: Fetch = fetch,
+  ) {}
+
+  get<T>(path: string): Promise<T> {
+    return this.call<T>('GET', path);
+  }
+
+  post<T>(path: string, body: unknown): Promise<T> {
+    return this.call<T>('POST', path, body);
+  }
+
+  private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    let response: Response;
+    let text: string;
+    try {
+      response = await this.fetchImpl(`${this.config.apiUrl}${path}`, {
+        method,
+        headers: {
+          accept: 'application/json',
+          'x-owner-pubkey': this.config.ownerPubkey,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
+      // The timeout also covers the body, so read it inside the same guard.
+      text = await response.text();
+    } catch (err) {
+      const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+      throw new ApiUnreachableError(
+        timedOut
+          ? `nexusPay agent did not answer within ${this.config.timeoutMs} ms`
+          : `nexusPay agent is not reachable at ${this.config.apiUrl}`,
+        timedOut,
+      );
+    }
+
+    let payload: unknown = null;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      // Non-JSON error pages are reported by status only.
+    }
+
+    if (!response.ok) {
+      const fields = (payload ?? {}) as { error?: unknown; message?: unknown };
+      const code = typeof fields.error === 'string' ? fields.error : `http_${response.status}`;
+      const message = typeof fields.message === 'string' ? fields.message : code;
+      throw new ApiError(response.status, code, message);
+    }
+    return payload as T;
+  }
+}
