@@ -44,7 +44,13 @@ export function createContext(config: AppConfig): AppContext {
 
   const connection = createConnection(config.SOLANA_RPC_URL);
   const model = createModelPipeline(config);
-  const sessions = new SessionManager(config.allowedOwners, config.AUTH_SESSION_TTL_SECONDS, config.adminPubkey);
+  // Persisted so an agent restart (including tsx watch reloads) does not log every owner out.
+  const sessions = new SessionManager(
+    config.allowedOwners,
+    config.AUTH_SESSION_TTL_SECONDS,
+    config.adminPubkey,
+    resolve(config.dataDir, 'sessions.json'),
+  );
 
   const userContexts = new Map<string, AppContext>();
 
