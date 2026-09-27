@@ -1,0 +1,4 @@
+[mcp_servers.nexuspay]
+command = "node"
+args = ["dist/mcp/nexuspay-mcp.mjs"]
+tool_timeout_sec = 90
