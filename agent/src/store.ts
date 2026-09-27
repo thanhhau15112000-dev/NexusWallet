@@ -69,8 +69,9 @@ export class Store {
           ? undefined
           : PendingInitialFundingSchema.parse(raw.pendingInitialFunding),
         tasks: raw.tasks ?? {},
-        payments: raw.payments ?? {},
-        receipts: raw.receipts ?? {},
+        // Older state files keyed these by paymentId alone; re-key per task on load.
+        payments: rekeyByTask(raw.payments ?? {}),
+        receipts: rekeyByTask(raw.receipts ?? {}),
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -210,16 +211,17 @@ export class Store {
     return taskId ? all.filter((p) => p.taskId === taskId) : all;
   }
 
-  getPayment(paymentId: string): TaskPaymentRecord | undefined {
-    return this.data.payments?.[paymentId];
+  getPayment(taskId: string, paymentId: string): TaskPaymentRecord | undefined {
+    return this.data.payments?.[taskRecordKey(taskId, paymentId)];
   }
 
   setPayment(payment: TaskPaymentRecord, options?: { allowOverwrite?: boolean }): void {
     if (!this.data.payments) this.data.payments = {};
-    if (this.data.payments[payment.paymentId] && !options?.allowOverwrite) {
+    const key = taskRecordKey(payment.taskId, payment.paymentId);
+    if (this.data.payments[key] && !options?.allowOverwrite) {
       throw new Error(`Payment with id '${payment.paymentId}' already exists`);
     }
-    this.data.payments[payment.paymentId] = TaskPaymentRecordSchema.parse(payment);
+    this.data.payments[key] = TaskPaymentRecordSchema.parse(payment);
     this.flush();
   }
 
@@ -228,16 +230,26 @@ export class Store {
     return taskId ? all.filter((r) => r.taskId === taskId) : all;
   }
 
-  getReceipt(paymentId: string): TaskReceiptRecord | undefined {
-    return this.data.receipts?.[paymentId];
+  getReceipt(taskId: string, paymentId: string): TaskReceiptRecord | undefined {
+    return this.data.receipts?.[taskRecordKey(taskId, paymentId)];
   }
 
   setReceipt(receipt: TaskReceiptRecord, options?: { allowOverwrite?: boolean }): void {
     if (!this.data.receipts) this.data.receipts = {};
-    if (this.data.receipts[receipt.paymentId] && !options?.allowOverwrite) {
+    const key = taskRecordKey(receipt.taskId, receipt.paymentId);
+    if (this.data.receipts[key] && !options?.allowOverwrite) {
       throw new Error(`Receipt for payment '${receipt.paymentId}' already exists`);
     }
-    this.data.receipts[receipt.paymentId] = TaskReceiptRecordSchema.parse(receipt);
+    this.data.receipts[key] = TaskReceiptRecordSchema.parse(receipt);
     this.flush();
   }
+}
+
+// Payment ids are scoped per task on-chain (escrow/receipt PDA seeds), so records are too.
+function taskRecordKey(taskId: string, paymentId: string): string {
+  return JSON.stringify([taskId, paymentId]);
+}
+
+function rekeyByTask<T extends { taskId: string; paymentId: string }>(records: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.values(records).map((record) => [taskRecordKey(record.taskId, record.paymentId), record]));
 }

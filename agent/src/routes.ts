@@ -677,7 +677,7 @@ const inFlightClaims = new Set<string>();
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
 
-    if (userCtx.store.getPayment(body.paymentId)) {
+    if (userCtx.store.getPayment(taskId, body.paymentId)) {
       return reply.status(409).send({ error: 'payment_exists', message: `Payment ${body.paymentId} already exists` });
     }
 
@@ -745,9 +745,11 @@ const inFlightClaims = new Set<string>();
       }
     }
 
+    // Re-read after the on-chain await so concurrent payments do not overwrite each other.
+    const latestTask = userCtx.store.getTask(taskId)!;
     const updatedTask = {
-      ...task,
-      spentLamports: task.spentLamports + body.amountLamports,
+      ...latestTask,
+      spentLamports: latestTask.spentLamports + body.amountLamports,
     };
     userCtx.store.setTask(updatedTask, { allowOverwrite: true });
 
@@ -795,8 +797,8 @@ const inFlightClaims = new Set<string>();
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
 
-    const payment = userCtx.store.getPayment(paymentId);
-    if (!payment || payment.taskId !== taskId) {
+    const payment = userCtx.store.getPayment(taskId, paymentId);
+    if (!payment) {
       return reply.status(404).send({ error: 'payment_not_found' });
     }
     if (payment.status !== 'held') {
@@ -892,8 +894,16 @@ const inFlightClaims = new Set<string>();
     };
     userCtx.store.setReceipt(receiptRecord, { allowOverwrite: false });
 
-    if (check.nextStatus && check.nextStatus !== 'closed' && check.nextStatus !== task.status) {
-      userCtx.store.setTask({ ...task, status: check.nextStatus }, { allowOverwrite: true });
+    // Recompute the status from state re-read after the on-chain await.
+    const latestTask = userCtx.store.getTask(taskId)!;
+    const heldAfterSettle = userCtx.store.getPayments(taskId).filter((p) => p.status === 'held').length;
+    const next = validateTaskTransition(
+      latestTask,
+      { type: 'settle_payment', paymentId, remainingPendingEscrows: heldAfterSettle },
+      now,
+    );
+    if (next.nextStatus && next.nextStatus !== 'closed' && next.nextStatus !== latestTask.status) {
+      userCtx.store.setTask({ ...latestTask, status: next.nextStatus }, { allowOverwrite: true });
     }
 
     userCtx.audit.record('task_payment_settled', null, {
@@ -940,7 +950,7 @@ const inFlightClaims = new Set<string>();
       return reply.status(400).send({ error: 'revoke_rejected', message: check.error });
     }
 
-    const updated = { ...task, status: 'revoked' as const };
+    const updated = { ...userCtx.store.getTask(taskId)!, status: 'revoked' as const };
     userCtx.store.setTask(updated, { allowOverwrite: true });
 
     userCtx.audit.record('task_revoked', null, { taskId });
@@ -955,8 +965,8 @@ const inFlightClaims = new Set<string>();
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
     if (task.isSimulated !== false) return reply.status(409).send({ error: 'task_is_simulated' });
 
-    const receipt = userCtx.store.getReceipt(paymentId);
-    if (!receipt || receipt.taskId !== taskId) return reply.status(404).send({ error: 'receipt_not_found' });
+    const receipt = userCtx.store.getReceipt(taskId, paymentId);
+    if (!receipt) return reply.status(404).send({ error: 'receipt_not_found' });
     if (receipt.isClosed) return { receipt };
     if (!await hasConfirmedSignature(userCtx, body.txSignature)) {
       return reply.status(409).send({ error: 'receipt_close_not_confirmed' });
@@ -1017,8 +1027,9 @@ const inFlightClaims = new Set<string>();
       }
     }
 
-    const remainingLamports = Math.max(0, task.budgetLamports - task.spentLamports);
-    const updated = { ...task, status: 'completed' as const, isClosed: true };
+    const latestTask = userCtx.store.getTask(taskId)!;
+    const remainingLamports = Math.max(0, latestTask.budgetLamports - latestTask.spentLamports);
+    const updated = { ...latestTask, status: 'completed' as const, isClosed: true };
     userCtx.store.setTask(updated, { allowOverwrite: true });
 
     userCtx.audit.record('task_refunded_and_closed', null, {

@@ -240,6 +240,27 @@ describe('Task Vault API with the local Solana program', () => {
       expect(JSON.parse(refundResponse.body).refundedLamports).toBe(100_000_000);
       expect(JSON.parse(refundResponse.body).task.isClosed).toBe(true);
 
+      // Concurrent payments must not lose updates to the recorded spend.
+      const raceTaskId = `onchain-race-${Date.now().toString(36)}`;
+      await createTask(raceTaskId, 100_000_000, 30_000_000);
+      const racePayment = (paymentId: string) => app.inject({
+        method: 'POST',
+        url: `/api/tasks/${raceTaskId}/payments`,
+        headers: { cookie: cookieHeader },
+        payload: { paymentId, worker: worker.publicKey.toBase58(), serviceId: SERVICE_ID, amountLamports: 20_000_000, requestHash: `request-${paymentId}` },
+      });
+      const raceResults = await Promise.all(['race-1', 'race-2', 'race-3'].map(racePayment));
+      expect(raceResults.map((r) => r.statusCode)).toEqual([200, 200, 200]);
+      const raceDetail = await app.inject({ method: 'GET', url: `/api/tasks/${raceTaskId}`, headers: { cookie: cookieHeader } });
+      const [racePda] = deriveTaskCapabilityPda(owner.publicKey, raceTaskId);
+      const onchainSpent = Number((await connection.getAccountInfo(racePda))!.data.readBigUInt64LE(112));
+      expect(onchainSpent).toBe(60_000_000);
+      expect(JSON.parse(raceDetail.body).task.spentLamports).toBe(onchainSpent);
+
+      // Payment ids are scoped per task, matching the on-chain escrow seeds.
+      const reusedId = await racePayment('pay-local-1');
+      expect(reusedId.statusCode).toBe(200);
+
       const revokeTaskId = `onchain-revoke-${Date.now().toString(36)}`;
       await createTask(revokeTaskId, 100_000_000, 100_000_000);
       const [revokePda] = deriveTaskCapabilityPda(owner.publicKey, revokeTaskId);
