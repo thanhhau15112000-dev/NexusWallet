@@ -10,4 +10,14 @@ export default defineConfig({
     strictPort: true,
   },
   preview: { host: true, port: 5173 },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          solana: ['@solana/web3.js'],
+          icons: ['lucide-react'],
+        },
+      },
+    },
+  },
 });

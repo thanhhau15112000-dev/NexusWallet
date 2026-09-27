@@ -156,14 +156,20 @@ export function TaskVaultPanel(props: {
           expiry,
         });
 
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction().add(ix);
         tx.recentBlockhash = blockhash;
         tx.feePayer = ownerPubkey;
 
         const { signature } = await provider.signAndSendTransaction(tx as any);
         txSignature = signature;
-        await connection.confirmTransaction(signature, 'confirmed');
+        const confirmation = await connection.confirmTransaction(
+          { signature, blockhash, lastValidBlockHeight },
+          'confirmed',
+        );
+        if (confirmation.value.err) {
+          throw new Error('On-chain task creation transaction failed');
+        }
       }
 
       const res = await api.createTask({
