@@ -201,49 +201,33 @@ This build is **local only**: it accepts a loopback `NEXUS_API_URL` and authenti
 only reaches four routes (status, request list, request detail, intents); policy, approvals, owner
 binding and funding still need the owner's wallet session. Hosted access is not implemented.
 
-### Connect an agent (two steps, no manual editing)
+**Security note on token storage:** The token is stored in plaintext on disk under
+`agent/data/users/<owner>/mcp-token`, sharing the same trust boundary as the agent's encrypted keystore.
+While POSIX permissions (`0600`) are applied on Unix systems, mode `0600` has no effect on Windows,
+where file access relies on Windows ACLs.
 
-1. Start the stack and build the bundle once: `pnpm dev`, then `pnpm mcp:build`
-   (writes `dist/mcp/nexuspay-mcp.mjs`). Sign in to the dashboard with the owner wallet.
-2. Copy the entry for your client from the dashboard (agent card > **Connect an AI agent (MCP)**),
-   or print it: `pnpm mcp:config -- <owner wallet address>`. Paste it into the client's config and
-   restart the client. **Rotate token** in the same panel revokes the old one.
+### Connect an agent (Zero-Config)
+
+1. Start the stack: `pnpm dev` (this automatically runs `pnpm mcp:build`).
+2. Sign in to the dashboard (`http://localhost:5173`) with your Phantom wallet once to create the owner tenant and MCP token.
+3. Connect your AI agent:
+   - **Claude Code, Cursor, or Codex:** Open this repository root. Approve `.mcp.json` / trust the project in Codex — the server is configured out of the box with zero secret copying.
+   - **Claude Desktop or Antigravity:** Run `pnpm mcp:install` (or `pnpm mcp:install -- --client antigravity` / `claude-desktop`) to register the server into global configuration.
+   - **Fallback:** Copy the entry manually from the dashboard (agent card > **Connect an AI agent (MCP)**) or run `pnpm mcp:config`.
 
 Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to be on the client's PATH.
 
-| Client | Where the entry goes | Format |
+| Client | Where the entry goes | Configuration method |
 | --- | --- | --- |
-| Claude Desktop | `claude_desktop_config.json` (Settings > Developer > Edit Config), then restart the app | `mcpServers` JSON |
-| Claude Code | `.mcp.json` in the project root (approve it on the next `claude` start), or `claude mcp add` | `mcpServers` JSON |
-| Codex (CLI, app, IDE extension) | `~/.codex/config.toml` | `[mcp_servers.nexuspay]` TOML |
-| Antigravity (app, IDE, `agy` CLI) | `~/.gemini/config/mcp_config.json`, shared by every Antigravity surface | `mcpServers` JSON |
+| Claude Code | `.mcp.json` in project root | Pre-configured in repo (approve on launch) |
+| Cursor | `.cursor/mcp.json` in project root | Pre-configured in repo |
+| Codex (CLI, app, extension) | `.codex/config.toml` in project root | Pre-configured in repo (trust project) |
+| Claude Desktop | `claude_desktop_config.json` | Run `pnpm mcp:install -- --client claude-desktop` |
+| Antigravity (app, IDE, CLI) | `~/.gemini/config/mcp_config.json` | Run `pnpm mcp:install -- --client antigravity` |
 
-```json
-{
-  "mcpServers": {
-    "nexuspay": {
-      "command": "node",
-      "args": ["/absolute/path/to/nexus/dist/mcp/nexuspay-mcp.mjs"],
-      "env": {
-        "NEXUS_API_URL": "http://127.0.0.1:8787",
-        "NEXUS_AGENT_TOKEN": "nxp_<owner>_<secret>"
-      }
-    }
-  }
-}
-```
-
-```toml
-[mcp_servers.nexuspay]
-command = "node"
-args = ["/absolute/path/to/nexus/dist/mcp/nexuspay-mcp.mjs"]
-env = { NEXUS_API_URL = "http://127.0.0.1:8787", NEXUS_AGENT_TOKEN = "nxp_<owner>_<secret>" }
-tool_timeout_sec = 90
-```
-
-On Windows, write paths with forward slashes (`G:/nexus/dist/...`); node accepts them and they need
+On Windows, paths in config files use forward slashes (`G:/nexus/dist/...`); node accepts them and they need
 no escaping in JSON or TOML. Tool input schemas avoid `exclusiveMinimum` and similar keywords, because
-Gemini function calling (Antigravity) rejects them. The token is a secret: do not commit client configs.
+Gemini function calling (Antigravity) rejects them.
 
 Optional: `NEXUS_DASHBOARD_URL` (default `http://localhost:5173`, shown in approval hints) and
 `NEXUS_TIMEOUT_MS` (default 45000, kept below Codex's default 60 s tool timeout). Each transfer carries an idempotency key. If a call times out or the agent
@@ -255,12 +239,13 @@ different keys are two transfers, and only the policy limits those.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Client shows the server as failed; stderr says `NEXUS_AGENT_TOKEN is missing or malformed` | Entry has no token, an old `NEXUS_OWNER_PUBKEY` entry, or a truncated token | Copy the entry again from the dashboard or `pnpm mcp:config` |
-| Client cannot start the server: `Cannot find module .../nexuspay-mcp.mjs` | Bundle not built, or the path points at another checkout | `pnpm mcp:build`; use the absolute path the dashboard shows |
+| Stderr says `no MCP token found in <dataDir>` | Owner has not signed in to the dashboard on this machine | Sign in to the dashboard with your wallet once to create the token |
+| Stderr says `multiple owners with MCP tokens found` | More than one owner wallet has a token in the data directory | Set `NEXUS_OWNER_PUBKEY=<your_wallet_address>` in client env |
+| Tool error `mcp_token_rejected` | Agent service is using a different data directory or token was rotated | Verify `NEXUS_AGENT_DATA_DIR` or sign in to the dashboard to refresh |
+| Server fails to start from `.mcp.json` / relative path | Client was started from a directory other than repo root | Open client from the repository root, or run `pnpm mcp:install` |
+| Client cannot start the server: `Cannot find module .../nexuspay-mcp.mjs` | Bundle not built, or path points at another checkout | `pnpm mcp:build`; verify bundle in `dist/mcp/nexuspay-mcp.mjs` |
 | `node` not found | Node.js missing from the client's PATH | Install Node.js 22+, or put the absolute path of `node` in `command` |
 | Tool error `agent_unreachable` | Agent service not running or on another port | `pnpm dev` from the repository root; check `NEXUS_API_URL` |
-| Tool error `mcp_token_rejected` | Token rotated, from another checkout, or copied wrong | Copy the entry again, then restart the client |
-| `pnpm mcp:config` says `no agent tenant` | The owner never signed in on this machine | Sign in to the dashboard with that wallet once, then rerun |
 | Transfer returns `pending_approval` | Amount above the per-transaction limit | The owner approves in the dashboard; poll `nexuspay_get_request` |
 | Transfer returns `outcome_unknown` | Timeout or server error after submission | Retry with the same `idempotencyKey`; never change the amount |
 | Codex cuts the call at 60 s | Missing `tool_timeout_sec` | Keep `tool_timeout_sec = 90` in the TOML entry |
