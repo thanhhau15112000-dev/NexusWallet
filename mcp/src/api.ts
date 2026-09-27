@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import type { McpConfig } from './config.js';
 
 /** The agent answered with an error status. `code` is the API's `error` field. */
@@ -39,7 +40,12 @@ export class NexusApi {
     return this.call<T>('POST', path, body);
   }
 
-  private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async execute(
+    token: string,
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<{ response: Response; text: string }> {
     let response: Response;
     let text: string;
     try {
@@ -47,7 +53,7 @@ export class NexusApi {
         method,
         headers: {
           accept: 'application/json',
-          authorization: `Bearer ${this.config.agentToken}`,
+          authorization: `Bearer ${token}`,
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -63,6 +69,28 @@ export class NexusApi {
           : `nexusPay agent is not reachable at ${this.config.apiUrl}`,
         timedOut,
       );
+    }
+    return { response, text };
+  }
+
+  private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    let { response, text } = await this.execute(this.config.agentToken, method, path, body);
+
+    // Self-healing on 401 when token was discovered from a file: re-read file once and retry.
+    if (response.status === 401 && this.config.tokenSource !== 'env') {
+      try {
+        if (this.config.tokenSource && existsSync(this.config.tokenSource)) {
+          const freshToken = readFileSync(this.config.tokenSource, 'utf8').trim();
+          if (freshToken && freshToken !== this.config.agentToken) {
+            this.config.agentToken = freshToken;
+            const retried = await this.execute(freshToken, method, path, body);
+            response = retried.response;
+            text = retried.text;
+          }
+        }
+      } catch {
+        // Non-fatal if re-reading fails; proceed with reporting 401
+      }
     }
 
     let payload: unknown = null;

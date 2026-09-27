@@ -45,13 +45,13 @@ function fail(code: string, message: string, extra: Record<string, unknown> = {}
 }
 
 // Error messages name the fix, so an agent on another machine can repair its setup without the repo history.
-function failFromError(err: unknown, extra: Record<string, unknown> = {}): CallToolResult {
+function failFromError(err: unknown, config: McpConfig, extra: Record<string, unknown> = {}): CallToolResult {
   if (err instanceof ApiError && err.status === 401) {
-    return fail(
-      'mcp_token_rejected',
-      'The nexusPay agent rejected NEXUS_AGENT_TOKEN (rotated, from another checkout, or copied wrong). Copy the MCP entry again from the dashboard (agent card > Connect an AI agent) or run pnpm mcp:config, then restart the MCP client.',
-      extra,
-    );
+    const message =
+      config.tokenSource === 'env'
+        ? 'The nexusPay agent rejected NEXUS_AGENT_TOKEN (rotated, from another checkout, or copied wrong). Copy the MCP entry again from the dashboard (agent card > Connect an AI agent) or run pnpm mcp:config, then restart the MCP client.'
+        : `The nexusPay agent rejected the MCP token from ${config.tokenSource}. If the agent is using a different data directory, set NEXUS_AGENT_DATA_DIR to point to it, or sign in to the dashboard with the owner wallet once.`;
+    return fail('mcp_token_rejected', message, extra);
   }
   if (err instanceof ApiError) return fail(err.code, err.message, extra);
   if (err instanceof ApiUnreachableError) {
@@ -106,6 +106,7 @@ const idempotencyKeyInput = z
 
 export function createServer(api: NexusApi, config: McpConfig): McpServer {
   const server = new McpServer({ name: 'nexuspay', version: '0.1.0' }, { instructions: INSTRUCTIONS });
+  const handleError = (err: unknown, extra: Record<string, unknown> = {}) => failFromError(err, config, extra);
 
   async function submit(action: Record<string, unknown>, idempotencyKey: string | undefined) {
     // Fixed before the call, so a timed-out submission can be retried without paying twice.
@@ -125,7 +126,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
           { idempotencyKey: key },
         );
       }
-      return failFromError(err, { idempotencyKey: key });
+      return handleError(err, { idempotencyKey: key });
     }
   }
 
@@ -157,7 +158,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
           },
         });
       } catch (err) {
-        return failFromError(err);
+        return handleError(err);
       }
     },
   );
@@ -183,7 +184,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
             .map((request) => summarizeRequest(request, config.dashboardUrl)),
         );
       } catch (err) {
-        return failFromError(err);
+        return handleError(err);
       }
     },
   );
@@ -203,7 +204,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
         );
         return ok(summarizeRequest(request, config.dashboardUrl));
       } catch (err) {
-        return failFromError(err);
+        return handleError(err);
       }
     },
   );

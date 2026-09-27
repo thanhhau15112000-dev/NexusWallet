@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -15,6 +17,7 @@ const config: McpConfig = {
   apiUrl: 'http://127.0.0.1:8787',
   agentToken: TOKEN,
   ownerPubkey: OWNER,
+  tokenSource: 'env',
   dashboardUrl: 'http://localhost:5173',
   timeoutMs: 5_000,
 };
@@ -66,11 +69,12 @@ function parse(result: Awaited<ReturnType<Client['callTool']>>) {
 }
 
 describe('loadMcpConfig', () => {
-  it('accepts a loopback agent and a valid token, and reads the owner from it', () => {
+  it('accepts a loopback agent and a valid token from env, setting tokenSource to env', () => {
     expect(loadMcpConfig({ NEXUS_AGENT_TOKEN: TOKEN })).toMatchObject({
       apiUrl: 'http://127.0.0.1:8787',
       agentToken: TOKEN,
       ownerPubkey: OWNER,
+      tokenSource: 'env',
     });
   });
 
@@ -83,11 +87,127 @@ describe('loadMcpConfig', () => {
     expect(() => loadMcpConfig({ NEXUS_API_URL: url, NEXUS_AGENT_TOKEN: TOKEN })).toThrow(/loopback/);
   });
 
-  it('requires a well-formed agent token and ignores the old owner variable', () => {
-    expect(() => loadMcpConfig({})).toThrow(/NEXUS_AGENT_TOKEN/);
-    expect(() => loadMcpConfig({ NEXUS_OWNER_PUBKEY: OWNER })).toThrow(/NEXUS_AGENT_TOKEN/);
-    expect(() => loadMcpConfig({ NEXUS_AGENT_TOKEN: OWNER })).toThrow(/NEXUS_AGENT_TOKEN/);
-    expect(() => loadMcpConfig({ NEXUS_AGENT_TOKEN: `${TOKEN}x` })).toThrow(/NEXUS_AGENT_TOKEN/);
+  it('rejects malformed agent tokens', () => {
+    expect(() => loadMcpConfig({ NEXUS_AGENT_TOKEN: OWNER })).toThrow(/malformed/);
+    expect(() => loadMcpConfig({ NEXUS_AGENT_TOKEN: `${TOKEN}x` })).toThrow(/malformed/);
+  });
+
+  it('rejects nonexistent NEXUS_AGENT_DATA_DIR with clear message and path', () => {
+    const bogus = resolve(tmpdir(), 'nexus-nonexistent-dir-' + Date.now());
+    expect(() => loadMcpConfig({ NEXUS_AGENT_DATA_DIR: bogus })).toThrow(
+      new RegExp(`NEXUS_AGENT_DATA_DIR directory does not exist: .*${bogus.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+    );
+  });
+
+  describe('token discovery from disk', () => {
+    const OWNER_B = '7Y4b8zP16bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+    const TOKEN_B = `nxp_${OWNER_B}_${'b'.repeat(43)}`;
+
+    it('discovers single valid owner token and ignores noise', () => {
+      const tempRepo = mkdtempSync(resolve(tmpdir(), 'nexus-repo-'));
+      try {
+        const usersDir = resolve(tempRepo, 'agent/data/users');
+        mkdirSync(usersDir, { recursive: true });
+
+        // Noise entries that must be safely ignored:
+        mkdirSync(resolve(usersDir, 'not-a-pubkey')); // invalid name
+        mkdirSync(resolve(usersDir, '11111111111111111111111111111111')); // valid pubkey but no token
+        const corruptedDir = resolve(usersDir, '22222222222222222222222222222222');
+        mkdirSync(corruptedDir);
+        writeFileSync(resolve(corruptedDir, 'mcp-token'), 'invalid-token-content');
+        const mismatchedDir = resolve(usersDir, '33333333333333333333333333333333');
+        mkdirSync(mismatchedDir);
+        writeFileSync(resolve(mismatchedDir, 'mcp-token'), TOKEN); // owner mismatch with dir name
+
+        // Valid owner entry
+        const validDir = resolve(usersDir, OWNER);
+        mkdirSync(validDir);
+        const tokenPath = resolve(validDir, 'mcp-token');
+        writeFileSync(tokenPath, TOKEN);
+
+        const loaded = loadMcpConfig({}, { repoRoot: tempRepo });
+        expect(loaded.ownerPubkey).toBe(OWNER);
+        expect(loaded.agentToken).toBe(TOKEN);
+        expect(loaded.tokenSource).toBe(tokenPath);
+      } finally {
+        rmSync(tempRepo, { recursive: true, force: true });
+      }
+    });
+
+    it('parses .env with quoted AGENT_DATA_DIR', () => {
+      const tempRepo = mkdtempSync(resolve(tmpdir(), 'nexus-repo-'));
+      try {
+        const usersDir = resolve(tempRepo, 'agent/custom-data/users', OWNER);
+        mkdirSync(usersDir, { recursive: true });
+        writeFileSync(resolve(usersDir, 'mcp-token'), TOKEN);
+
+        writeFileSync(resolve(tempRepo, '.env'), 'AGENT_DATA_DIR="./custom-data"\n');
+
+        const loaded = loadMcpConfig({}, { repoRoot: tempRepo });
+        expect(loaded.ownerPubkey).toBe(OWNER);
+        expect(loaded.agentToken).toBe(TOKEN);
+      } finally {
+        rmSync(tempRepo, { recursive: true, force: true });
+      }
+    });
+
+    it('parses .env with absolute AGENT_DATA_DIR', () => {
+      const tempRepo = mkdtempSync(resolve(tmpdir(), 'nexus-repo-'));
+      const absDir = mkdtempSync(resolve(tmpdir(), 'nexus-absdata-'));
+      try {
+        const usersDir = resolve(absDir, 'users', OWNER);
+        mkdirSync(usersDir, { recursive: true });
+        writeFileSync(resolve(usersDir, 'mcp-token'), TOKEN);
+
+        // Forward slashes in .env avoid unintended escape sequences on Windows
+        const normalized = absDir.replaceAll('\\', '/');
+        writeFileSync(resolve(tempRepo, '.env'), `AGENT_DATA_DIR="${normalized}"\n`);
+
+        const loaded = loadMcpConfig({}, { repoRoot: tempRepo });
+        expect(loaded.ownerPubkey).toBe(OWNER);
+        expect(loaded.agentToken).toBe(TOKEN);
+      } finally {
+        rmSync(tempRepo, { recursive: true, force: true });
+        rmSync(absDir, { recursive: true, force: true });
+      }
+    });
+
+    it('requires NEXUS_OWNER_PUBKEY when multiple owners with tokens exist', () => {
+      const tempRepo = mkdtempSync(resolve(tmpdir(), 'nexus-repo-'));
+      try {
+        const usersDir = resolve(tempRepo, 'agent/data/users');
+        mkdirSync(resolve(usersDir, OWNER), { recursive: true });
+        writeFileSync(resolve(usersDir, OWNER, 'mcp-token'), TOKEN);
+        mkdirSync(resolve(usersDir, OWNER_B), { recursive: true });
+        writeFileSync(resolve(usersDir, OWNER_B, 'mcp-token'), TOKEN_B);
+
+        // Without NEXUS_OWNER_PUBKEY -> error listing owners
+        expect(() => loadMcpConfig({}, { repoRoot: tempRepo })).toThrow(/multiple owners with MCP tokens found/);
+
+        // With NEXUS_OWNER_PUBKEY -> selects specified owner
+        const loaded = loadMcpConfig({ NEXUS_OWNER_PUBKEY: OWNER_B }, { repoRoot: tempRepo });
+        expect(loaded.ownerPubkey).toBe(OWNER_B);
+        expect(loaded.agentToken).toBe(TOKEN_B);
+
+        // With nonexistent owner -> throws clear error
+        expect(() =>
+          loadMcpConfig({ NEXUS_OWNER_PUBKEY: '44444444444444444444444444444444' }, { repoRoot: tempRepo }),
+        ).toThrow(/no MCP token found for owner/);
+      } finally {
+        rmSync(tempRepo, { recursive: true, force: true });
+      }
+    });
+
+    it('fails with dashboard sign-in advice when 0 tokens found', () => {
+      const tempRepo = mkdtempSync(resolve(tmpdir(), 'nexus-repo-'));
+      try {
+        expect(() => loadMcpConfig({}, { repoRoot: tempRepo })).toThrow(
+          /sign in to the dashboard with the owner wallet once/,
+        );
+      } finally {
+        rmSync(tempRepo, { recursive: true, force: true });
+      }
+    });
   });
 });
 
@@ -239,7 +359,7 @@ describe('nexusPay MCP tools', () => {
     expect(parse(result).message).toMatch(/pnpm dev/);
   });
 
-  it('tells the agent how to repair a rejected token', async () => {
+  it('tells the agent how to repair a rejected token when sourced from env', async () => {
     const client = await connect(vi.fn(async () => json(401, { error: 'authentication_required' })) as unknown as Fetch);
 
     const result = await client.callTool({ name: 'nexuspay_get_status', arguments: {} });
@@ -247,6 +367,88 @@ describe('nexusPay MCP tools', () => {
     expect(result.isError).toBe(true);
     expect(parse(result).error).toBe('mcp_token_rejected');
     expect(parse(result).message).toMatch(/Connect an AI agent|pnpm mcp:config/);
+  });
+
+  it('self-heals on 401 when token was read from file and file was rotated', async () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'nexus-token-heal-'));
+    try {
+      const tokenFile = resolve(tempDir, 'mcp-token');
+      const oldToken = `nxp_${OWNER}_${'1'.repeat(43)}`;
+      const newToken = `nxp_${OWNER}_${'2'.repeat(43)}`;
+      writeFileSync(tokenFile, oldToken);
+
+      const fileConfig: McpConfig = {
+        ...config,
+        agentToken: oldToken,
+        tokenSource: tokenFile,
+      };
+
+      const calls: string[] = [];
+      const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+        const auth = (init?.headers as Record<string, string>)?.authorization || '';
+        calls.push(auth);
+        if (auth === `Bearer ${oldToken}`) {
+          // Simulate token rotated on disk while server was running
+          writeFileSync(tokenFile, newToken);
+          return json(401, { error: 'unauthorized' });
+        }
+        if (auth === `Bearer ${newToken}`) {
+          return json(200, {
+            cluster: 'devnet',
+            agent: { agentId: 'a', pubkey: OWNER, lamports: 100_000_000, rpcError: null, explorerUrl: 'x' },
+            policy: { version: 1, maxSolPerTx: 1, allowedRecipients: [], allowedMints: [], maxTokenAmountByMint: {} },
+          });
+        }
+        return json(500, { error: 'unexpected' });
+      });
+
+      const server = createServer(new NexusApi(fileConfig, fetchImpl as unknown as Fetch), fileConfig);
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      const client = new Client({ name: 'test', version: '0.0.0' });
+      await client.connect(clientTransport);
+
+      const result = await client.callTool({ name: 'nexuspay_get_status', arguments: {} });
+      expect(result.isError).toBeFalsy();
+      expect(calls).toEqual([`Bearer ${oldToken}`, `Bearer ${newToken}`]);
+      expect(fileConfig.agentToken).toBe(newToken);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports token file path and NEXUS_AGENT_DATA_DIR advice when file token is rejected and unchanged', async () => {
+    const tempDir = mkdtempSync(resolve(tmpdir(), 'nexus-token-reject-'));
+    try {
+      const tokenFile = resolve(tempDir, 'mcp-token');
+      writeFileSync(tokenFile, TOKEN);
+
+      const fileConfig: McpConfig = {
+        ...config,
+        agentToken: TOKEN,
+        tokenSource: tokenFile,
+      };
+
+      const client = await (async () => {
+        const server = createServer(
+          new NexusApi(fileConfig, vi.fn(async () => json(401, { error: 'unauthorized' })) as unknown as Fetch),
+          fileConfig,
+        );
+        const [cTransport, sTransport] = InMemoryTransport.createLinkedPair();
+        await server.connect(sTransport);
+        const c = new Client({ name: 'test', version: '0.0.0' });
+        await c.connect(cTransport);
+        return c;
+      })();
+
+      const result = await client.callTool({ name: 'nexuspay_get_status', arguments: {} });
+      expect(result.isError).toBe(true);
+      expect(parse(result).error).toBe('mcp_token_rejected');
+      expect(parse(result).message).toContain(tokenFile);
+      expect(parse(result).message).toContain('NEXUS_AGENT_DATA_DIR');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('returns wallet status without admin or RPC details', async () => {

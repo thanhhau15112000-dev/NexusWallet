@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const config = loadMcpConfig();
   const server = createServer(new NexusApi(config), config);
   await server.connect(new StdioServerTransport());
-  console.error(`nexuspay-mcp ready: ${config.apiUrl} (owner ${config.ownerPubkey})`);
+  console.error(`nexuspay-mcp ready: ${config.apiUrl} (owner ${config.ownerPubkey}, source ${config.tokenSource})`);
 }
 
 main().catch((err) => {
