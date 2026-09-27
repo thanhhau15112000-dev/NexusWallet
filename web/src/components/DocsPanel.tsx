@@ -613,8 +613,9 @@ function buildPages(ctx: DocsContext): DocPage[] {
                         label: 'Claude Code',
                         body: (
                           <p className="docs-muted">
-                            Open the repository root and approve the project server from <code>.mcp.json</code> when
-                            prompted. It is already committed; there are no paths or secrets to fill in.
+                            Open Claude Code in the repository root, not a subfolder, and approve the project server
+                            from <code>.mcp.json</code> when prompted. It is already committed; there are no paths or
+                            secrets to fill in.
                           </p>
                         ),
                       },
@@ -623,7 +624,7 @@ function buildPages(ctx: DocsContext): DocPage[] {
                         label: 'Cursor',
                         body: (
                           <p className="docs-muted">
-                            Open the repository root and enable <code>nexuspay</code> from the committed
+                            Open the repository root (not a subfolder) and enable <code>nexuspay</code> from the committed
                             {' '}<code>.cursor/mcp.json</code>.
                           </p>
                         ),
@@ -677,8 +678,8 @@ function buildPages(ctx: DocsContext): DocPage[] {
               </Steps>
               <Callout tone="note" title="About the installer">
                 Without <code>--client</code>, <code>pnpm mcp:install</code> registers Codex, Claude Desktop and
-                Antigravity together. It writes absolute paths and no token, and keeps a <code>.bak</code> copy of
-                each config it changes. Add <code>--dry-run</code> to preview the entry first.
+                Antigravity together. It writes absolute paths and no token, and keeps a backup of each config it changes
+                (<code>.bak</code>, or a timestamped <code>.bak-…</code> when one already exists). Add <code>--dry-run</code> to preview the entry first.
               </Callout>
               <p>
                 Fallback: copy the entry from <em>Connect an AI agent (MCP)</em> on the agent card, or run
@@ -770,11 +771,11 @@ function buildPages(ctx: DocsContext): DocPage[] {
                 </tr>
               </thead>
               <tbody>
-                <tr><td><code>no MCP token found</code></td><td>Sign in to this dashboard with your wallet once on this machine.</td></tr>
-                <tr><td><code>multiple owners with MCP tokens found</code></td><td>Set <code>NEXUS_OWNER_PUBKEY</code> to your wallet address in the client env.</td></tr>
+                <tr><td><code>mcp_setup_required</code>: no MCP token found</td><td>Sign in to this dashboard with your wallet once on this machine. The next tool call picks the token up; no client restart.</td></tr>
+                <tr><td><code>mcp_setup_required</code>: multiple owners</td><td>Set <code>NEXUS_OWNER_PUBKEY</code> to your wallet address in the client env.</td></tr>
                 <tr><td><code>mcp_token_rejected</code></td><td>The token was rotated or the agent uses another data directory. Check <code>NEXUS_AGENT_DATA_DIR</code>, or sign in again.</td></tr>
                 <tr><td><code>agent_unreachable</code></td><td>Run <code>pnpm dev</code> from the repository root; check <code>NEXUS_API_URL</code>.</td></tr>
-                <tr><td>Server fails to start from <code>.mcp.json</code></td><td>Open the client from the repository root, or run <code>pnpm mcp:install</code>.</td></tr>
+                <tr><td>Server fails to start from <code>.mcp.json</code></td><td>The client was opened in a subfolder, so the relative bundle path does not resolve. Open it in the repository root, or run <code>pnpm mcp:install</code>.</td></tr>
                 <tr><td><code>Cannot find module .../nexuspay-mcp.mjs</code></td><td>Run <code>pnpm mcp:build</code> and check <code>dist/mcp/nexuspay-mcp.mjs</code>.</td></tr>
                 <tr><td><code>node</code> not found</td><td>Install Node.js 22+, or put the absolute path of <code>node</code> in <code>command</code>.</td></tr>
                 <tr><td>Codex cuts the call at 60 s</td><td>Keep <code>tool_timeout_sec = 90</code> in the Codex entry.</td></tr>
