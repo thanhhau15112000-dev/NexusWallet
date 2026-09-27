@@ -211,8 +211,8 @@ where file access relies on Windows ACLs.
 1. Start the stack: `pnpm dev` (this automatically runs `pnpm mcp:build`).
 2. Sign in to the dashboard (`http://localhost:5173`) with your Phantom wallet once to create the owner tenant and MCP token.
 3. Connect your AI agent:
-   - **Claude Code, Cursor, or Codex:** Open this repository root. Approve `.mcp.json` / trust the project in Codex — the server is configured out of the box with zero secret copying.
-   - **Claude Desktop or Antigravity:** Run `pnpm mcp:install` (or `pnpm mcp:install -- --client antigravity` / `claude-desktop`) to register the server into global configuration.
+   - **Claude Code or Cursor:** Open this repository root and approve the project's `.mcp.json` / `.cursor/mcp.json`. No secrets or paths to copy.
+   - **Codex, Claude Desktop or Antigravity:** Run `pnpm mcp:install -- --client codex` (or `claude-desktop`, `antigravity`, or omit `--client` for all three) to register the server in the client's global configuration. `.codex/config.toml` is also committed, but Codex only reads project config for trusted projects and this has not been verified on every Codex build, so prefer the installer.
    - **Fallback:** Copy the entry manually from the dashboard (agent card > **Connect an AI agent (MCP)**) or run `pnpm mcp:config`.
 
 Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to be on the client's PATH.
@@ -221,7 +221,7 @@ Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to 
 | --- | --- | --- |
 | Claude Code | `.mcp.json` in project root | Pre-configured in repo (approve on launch) |
 | Cursor | `.cursor/mcp.json` in project root | Pre-configured in repo |
-| Codex (CLI, app, extension) | `.codex/config.toml` in project root | Pre-configured in repo (trust project) |
+| Codex (CLI, app, extension) | `~/.codex/config.toml` | Run `pnpm mcp:install -- --client codex` (project `.codex/config.toml` also committed; trusted projects only) |
 | Claude Desktop | `claude_desktop_config.json` | Run `pnpm mcp:install -- --client claude-desktop` |
 | Antigravity (app, IDE, CLI) | `~/.gemini/config/mcp_config.json` | Run `pnpm mcp:install -- --client antigravity` |
 
