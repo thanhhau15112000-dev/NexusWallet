@@ -105,6 +105,18 @@ describe('nexusPay MCP tools', () => {
     expect(tools.find((tool) => tool.name === 'nexuspay_get_status')?.annotations?.readOnlyHint).toBe(true);
   });
 
+  it('keeps tool schemas inside the subset Gemini function calling accepts', async () => {
+    const client = await connect(vi.fn());
+    const { tools } = await client.listTools();
+
+    // Gemini (Antigravity) rejects these with "Unknown name"; OpenAI and Anthropic accept the rest.
+    for (const tool of tools) {
+      expect(JSON.stringify(tool.inputSchema)).not.toMatch(/exclusiveMinimum|exclusiveMaximum|oneOf|allOf|\$ref/);
+    }
+    const transfer = tools.find((tool) => tool.name === 'nexuspay_transfer_sol')!;
+    expect(transfer.inputSchema.properties?.amountSol).toMatchObject({ type: 'number', minimum: 1e-9 });
+  });
+
   it('submits a structured transfer with the owner header and a fixed idempotency key', async () => {
     const fetchImpl = vi.fn(async () => json(200, { request: request() }));
     const client = await connect(fetchImpl as unknown as Fetch);

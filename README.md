@@ -201,11 +201,19 @@ token and is not implemented yet. On loopback the scope is advisory: any local p
 API directly, so the hard limits are the policy, the owner signature and the wallet balance.
 
 ```bash
-pnpm mcp:build   # writes dist/mcp/nexuspay-mcp.mjs
+pnpm mcp:build                        # writes dist/mcp/nexuspay-mcp.mjs
+pnpm mcp:config -- <owner wallet address>   # prints the entries below with this checkout's absolute path
 ```
 
-Client configuration (Claude Desktop `claude_desktop_config.json`, Cursor `.cursor/mcp.json`, or a
-project `.mcp.json` for Claude Code). Use the absolute path of your checkout:
+Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to be on the client's PATH.
+The agent service must already be running.
+
+| Client | Where the entry goes | Format |
+| --- | --- | --- |
+| Claude Desktop | `claude_desktop_config.json` (Settings > Developer > Edit Config), then restart the app | `mcpServers` JSON |
+| Claude Code | `.mcp.json` in the project root (approve it on the next `claude` start), or `claude mcp add` | `mcpServers` JSON |
+| Codex (CLI, app, IDE extension) | `~/.codex/config.toml` | `[mcp_servers.nexuspay]` TOML |
+| Antigravity (app, IDE, `agy` CLI) | `~/.gemini/config/mcp_config.json`, shared by every Antigravity surface | `mcpServers` JSON |
 
 ```json
 {
@@ -222,8 +230,20 @@ project `.mcp.json` for Claude Code). Use the absolute path of your checkout:
 }
 ```
 
+```toml
+[mcp_servers.nexuspay]
+command = "node"
+args = ["/absolute/path/to/nexus/dist/mcp/nexuspay-mcp.mjs"]
+env = { NEXUS_API_URL = "http://127.0.0.1:8787", NEXUS_OWNER_PUBKEY = "<owner wallet address>" }
+tool_timeout_sec = 90
+```
+
+On Windows, write paths with forward slashes (`G:/nexus/dist/...`); node accepts them and they need
+no escaping in JSON or TOML. Tool input schemas avoid `exclusiveMinimum` and similar keywords, because
+Gemini function calling (Antigravity) rejects them.
+
 Optional: `NEXUS_DASHBOARD_URL` (default `http://localhost:5173`, shown in approval hints) and
-`NEXUS_TIMEOUT_MS` (default 60000). Each transfer carries an idempotency key. If a call times out or the agent
+`NEXUS_TIMEOUT_MS` (default 45000, kept below Codex's default 60 s tool timeout). Each transfer carries an idempotency key. If a call times out or the agent
 answers with a server error, the tool returns `outcome_unknown` with that key, and retrying with the same key cannot pay twice.
 Reusing a key for a different transfer returns `idempotency_conflict`. Two separate calls with
 different keys are two transfers, and only the policy limits those.

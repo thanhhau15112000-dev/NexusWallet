@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm --filter @nexus/agent --filter @nexus/mcp test",
     "mcp:build": "pnpm --filter @nexus/mcp build",
+    "mcp:config": "node mcp/scripts/print-config.mjs",
     "e2e": "pnpm --filter @nexus/agent e2e"
   },
   "devDependencies": {

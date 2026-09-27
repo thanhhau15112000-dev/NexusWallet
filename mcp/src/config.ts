@@ -49,7 +49,9 @@ export function loadMcpConfig(env: NodeJS.ProcessEnv = process.env): McpConfig {
   }
 
   const rawTimeout = env.NEXUS_TIMEOUT_MS?.trim();
-  const timeoutMs = rawTimeout ? Number(rawTimeout) : 60_000;
+  // Below the 60 s tool timeout some clients (Codex) apply by default, so a slow transfer
+  // still comes back as outcome_unknown with its key instead of a client-side cutoff.
+  const timeoutMs = rawTimeout ? Number(rawTimeout) : 45_000;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 300_000) {
     throw new Error('NEXUS_TIMEOUT_MS must be an integer between 1000 and 300000');
   }

@@ -75,6 +75,12 @@ export function summarizeRequest(request: PaymentRequest, dashboardUrl: string) 
   };
 }
 
+// `.positive()` would emit `exclusiveMinimum`, which Gemini function calling (Antigravity) rejects.
+// A 1e-9 floor keeps the schema to plain `minimum`; the policy still denies amounts that round to zero.
+function amountInput(description: string) {
+  return z.number().min(1e-9).max(1_000_000_000).describe(description);
+}
+
 const idempotencyKeyInput = z
   .string()
   .trim()
@@ -201,7 +207,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
           .min(1)
           .max(64)
           .describe('An allowlisted recipient label or its exact address.'),
-        amountSol: z.number().positive().max(1_000_000),
+        amountSol: amountInput('SOL amount, for example 0.05.'),
         idempotencyKey: idempotencyKeyInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
@@ -219,7 +225,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
       inputSchema: {
         recipient: z.string().trim().min(1).max(64).describe('An allowlisted recipient label or its exact address.'),
         mint: z.string().trim().min(1).max(64).describe('An allowlisted mint label or its exact address.'),
-        amount: z.number().positive().max(1_000_000_000),
+        amount: amountInput('Token amount in token units, not base units.'),
         idempotencyKey: idempotencyKeyInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
