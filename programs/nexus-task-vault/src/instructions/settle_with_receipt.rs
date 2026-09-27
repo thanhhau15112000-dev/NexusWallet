@@ -37,12 +37,12 @@ pub struct SettleWithReceipt<'info> {
     #[account(mut)]
     pub worker: Signer<'info>,
 
-    /// CHECK: Task owner who receives the rent refund from closed escrow account
+    /// CHECK: Agent signer who funded the escrow account rent and receives the rent refund upon settlement
     #[account(
         mut,
-        address = task_capability.owner
+        address = task_capability.agent_signer
     )]
-    pub owner: AccountInfo<'info>,
+    pub agent_signer: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -89,7 +89,7 @@ pub fn handle_settle_with_receipt(
     receipt.settled_at = now;
     receipt.bump = ctx.bumps.receipt;
 
-    // Release escrowed payment to worker, return account rent to owner
+    // Release escrowed payment to worker, return account rent to agent signer
     let payment_amount = ctx.accounts.escrow.amount_lamports;
     let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
     let rent_refund = escrow_lamports.saturating_sub(payment_amount);
@@ -97,7 +97,7 @@ pub fn handle_settle_with_receipt(
     **ctx.accounts.escrow.to_account_info().try_borrow_mut_lamports()? = 0;
     **ctx.accounts.worker.to_account_info().try_borrow_mut_lamports()? += payment_amount;
     if rent_refund > 0 {
-        **ctx.accounts.owner.to_account_info().try_borrow_mut_lamports()? += rent_refund;
+        **ctx.accounts.agent_signer.to_account_info().try_borrow_mut_lamports()? += rent_refund;
     }
 
     // Zero out escrow data to close account

@@ -167,7 +167,8 @@ export interface SettleWithReceiptArgs {
   escrow: PublicKey;
   paymentId: Uint8Array | string;
   worker: PublicKey;
-  owner: PublicKey;
+  agentSigner?: PublicKey;
+  owner?: PublicKey;
   resultHash: Uint8Array | string;
   programId?: PublicKey;
 }
@@ -183,6 +184,9 @@ export function settleWithReceiptInstruction(args: SettleWithReceiptArgs): Trans
   data.set(DISCRIMINATORS.settle_with_receipt, 0);
   data.set(resultHashBytes, 8);
 
+  const rentRecipient = args.agentSigner ?? args.owner;
+  if (!rentRecipient) throw new Error('agentSigner or owner is required for settleWithReceiptInstruction');
+
   return new TransactionInstruction({
     programId,
     keys: [
@@ -190,7 +194,7 @@ export function settleWithReceiptInstruction(args: SettleWithReceiptArgs): Trans
       { pubkey: args.escrow, isSigner: false, isWritable: true },
       { pubkey: receipt, isSigner: false, isWritable: true },
       { pubkey: args.worker, isSigner: true, isWritable: true },
-      { pubkey: args.owner, isSigner: false, isWritable: true },
+      { pubkey: rentRecipient, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data: Buffer.from(data),
@@ -247,6 +251,7 @@ export interface RefundExpiredEscrowArgs {
   taskCapability: PublicKey;
   escrow: PublicKey;
   owner: PublicKey;
+  agentSigner: PublicKey;
   caller: PublicKey;
   programId?: PublicKey;
 }
@@ -262,6 +267,7 @@ export function refundExpiredEscrowInstruction(args: RefundExpiredEscrowArgs): T
       { pubkey: args.taskCapability, isSigner: false, isWritable: true },
       { pubkey: args.escrow, isSigner: false, isWritable: true },
       { pubkey: args.owner, isSigner: false, isWritable: true },
+      { pubkey: args.agentSigner, isSigner: false, isWritable: true },
       { pubkey: args.caller, isSigner: true, isWritable: false },
     ],
     data: Buffer.from(data),

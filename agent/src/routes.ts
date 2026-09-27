@@ -852,7 +852,7 @@ const inFlightClaims = new Set<string>();
             escrow: new PublicKey(payment.escrowPda!),
             paymentId,
             worker: workerKeypair.publicKey,
-            owner: new PublicKey(task.owner),
+            agentSigner: new PublicKey(task.agentSigner),
             resultHash: body.resultHash,
           }),
           workerKeypair,

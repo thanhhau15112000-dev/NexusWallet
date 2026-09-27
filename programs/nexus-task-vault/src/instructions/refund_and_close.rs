@@ -98,6 +98,13 @@ pub struct RefundExpiredEscrow<'info> {
     )]
     pub owner: AccountInfo<'info>,
 
+    /// CHECK: Agent signer who funded the escrow account rent
+    #[account(
+        mut,
+        address = task_capability.agent_signer
+    )]
+    pub agent_signer: AccountInfo<'info>,
+
     pub caller: Signer<'info>,
 }
 
@@ -116,9 +123,15 @@ pub fn handle_refund_expired_escrow(ctx: Context<RefundExpiredEscrow>) -> Result
         TaskVaultError::EscrowNotHeld
     );
 
+    let payment_amount = ctx.accounts.escrow.amount_lamports;
     let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
+    let rent_refund = escrow_lamports.saturating_sub(payment_amount);
+
     **ctx.accounts.escrow.to_account_info().try_borrow_mut_lamports()? = 0;
-    **ctx.accounts.owner.to_account_info().try_borrow_mut_lamports()? += escrow_lamports;
+    **ctx.accounts.owner.to_account_info().try_borrow_mut_lamports()? += payment_amount;
+    if rent_refund > 0 {
+        **ctx.accounts.agent_signer.to_account_info().try_borrow_mut_lamports()? += rent_refund;
+    }
 
     let escrow_info = ctx.accounts.escrow.to_account_info();
     let mut escrow_data = escrow_info.try_borrow_mut_data()?;

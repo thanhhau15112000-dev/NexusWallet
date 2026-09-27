@@ -164,13 +164,14 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     // 5. Worker settles with receipt on-chain
     const resultHash = createHash('sha256').update('temp:28C:humidity:70%').digest();
     const workerBalanceBefore = await connection.getBalance(worker.publicKey);
+    const agentBalanceBeforeSettle = await connection.getBalance(agent.publicKey);
 
     const settleIx = settleWithReceiptInstruction({
       taskCapability: taskCapPda,
       escrow: escrowPda,
       paymentId,
       worker: worker.publicKey,
-      owner: owner.publicKey,
+      agentSigner: agent.publicKey,
       resultHash,
     });
 
@@ -179,6 +180,10 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
       commitment: 'confirmed',
     });
     expect(settleSig).toBeDefined();
+
+    // Verify agent received rent refund from closed escrow
+    const agentBalanceAfterSettle = await connection.getBalance(agent.publicKey);
+    expect(agentBalanceAfterSettle).toBeGreaterThan(agentBalanceBeforeSettle);
 
     // Verify worker received the payment (paymentAmount minus receipt PDA account rent and fee)
     const workerBalanceAfter = await connection.getBalance(worker.publicKey);

@@ -380,7 +380,7 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
         escrow: escrowPda,
         paymentId,
         worker,
-        owner,
+        agentSigner: agent,
         resultHash: 'ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb',
       });
 
@@ -388,6 +388,8 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       expect(ix.keys).toHaveLength(6);
       expect(ix.keys[3]!.pubkey.toBase58()).toBe(worker.toBase58());
       expect(ix.keys[3]!.isSigner).toBe(true);
+      expect(ix.keys[4]!.pubkey.toBase58()).toBe(agent.toBase58());
+      expect(ix.keys[4]!.isWritable).toBe(true);
       expect(ix.data.length).toBe(8 + 32);
     });
 
@@ -430,15 +432,17 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
         taskCapability: capPda,
         escrow: escrowPda,
         owner,
+        agentSigner: agent,
         caller,
       });
 
       expect(ix.programId.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
-      expect(ix.keys).toHaveLength(4);
+      expect(ix.keys).toHaveLength(5);
       expect(ix.keys[1]!.pubkey.toBase58()).toBe(escrowPda.toBase58());
       expect(ix.keys[2]!.pubkey.toBase58()).toBe(owner.toBase58());
-      expect(ix.keys[3]!.pubkey.toBase58()).toBe(caller.toBase58());
-      expect(ix.keys[3]!.isSigner).toBe(true);
+      expect(ix.keys[3]!.pubkey.toBase58()).toBe(agent.toBase58());
+      expect(ix.keys[4]!.pubkey.toBase58()).toBe(caller.toBase58());
+      expect(ix.keys[4]!.isSigner).toBe(true);
       expect(ix.data.length).toBe(8);
     });
 
