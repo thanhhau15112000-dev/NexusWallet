@@ -88,6 +88,7 @@ export type TaskTransition =
  * active        | settle_payment       | valid receipt; if spent == budget & pending == 0 | completed
  * active        | settle_payment       | valid receipt; if spent < budget or pending > 0   | active
  * active        | revoke               | owner signer                         | revoked
+ * revoked       | settle_payment       | held escrow, now < expiry            | revoked
  * active        | expire               | now >= expiry                        | expired
  * active        | refund_and_close     | owner signer                         | closed
  * revoked       | refund_and_close     | owner or permissionless              | closed
@@ -139,6 +140,10 @@ export function validateTaskTransition(
     }
 
     case 'settle_payment': {
+      // Revoke blocks new payments only; escrows already held stay settleable until expiry.
+      if (task.status === 'revoked') {
+        return { valid: true, nextStatus: 'revoked' };
+      }
       if (task.status !== 'active') {
         return { valid: false, error: `cannot settle payment in ${task.status} state` };
       }

@@ -38,6 +38,7 @@ const TASK_STATUS_ACTIVE = 0;
 const ERR = {
   TaskNotActive: '0x1773',
   TaskExpired: '0x1774',
+  TaskNotExpired: '0x1775',
   ExceedsPaymentCap: '0x1776',
   ExceedsTaskBudget: '0x1777',
   UnauthorizedSigner: '0x1779',
@@ -45,6 +46,7 @@ const ERR = {
   UnauthorizedService: '0x177b',
   PaymentIdAlreadyUsed: '0x1781',
   ReceiptLockedWhileTaskActive: '0x1782',
+  InvalidAllowedWorker: '0x1783',
   AccountNotInitialized: '0xbc4',
 } as const;
 
@@ -247,13 +249,17 @@ async function cleanTask(task: ProbeTask): Promise<boolean> {
     const [escrow] = deriveEscrowPda(task.capability, paymentId);
     const [receipt] = deriveReceiptPda(task.capability, paymentId);
     if (await connection.getAccountInfo(escrow, 'confirmed')) {
-      ok = await bestEffort(`refund-escrow-${paymentId}`, () => submit(`cleanup-escrow-${paymentId}`, refundExpiredEscrowInstruction({
-        taskCapability: task.capability,
-        escrow,
-        owner: owner.publicKey,
-        agentSigner: agent.publicKey,
-        caller: owner.publicKey,
-      }), owner)) && ok;
+      // Held escrows belong to the worker until expiry; afterwards anyone can refund them.
+      const expired = Math.floor(Date.now() / 1000) > task.expiry;
+      ok = await bestEffort(`resolve-escrow-${paymentId}`, () => (expired
+        ? submit(`cleanup-escrow-${paymentId}`, refundExpiredEscrowInstruction({
+          taskCapability: task.capability,
+          escrow,
+          owner: owner.publicKey,
+          agentSigner: agent.publicKey,
+          caller: owner.publicKey,
+        }), owner)
+        : submit(`cleanup-settle-${paymentId}`, settleIx(task, paymentId), worker))) && ok;
     }
     if (await connection.getAccountInfo(receipt, 'confirmed')) {
       ok = await bestEffort(`close-receipt-${paymentId}`, () => submit(`cleanup-receipt-${paymentId}`, closeReceiptIx(task, paymentId), worker)) && ok;
@@ -302,6 +308,16 @@ async function main(): Promise<void> {
   await transfer(owner, worker.publicKey, 20_000_000, 'fund-worker');
 
   // Flow task: budget 8M, cap 4M; two valid 3M payments leave 2M so an over-budget amount stays under the cap.
+  await expectRejected('create-without-allowed-worker', createAndFundTaskInstruction({
+    owner: owner.publicKey,
+    agentSigner: agent.publicKey,
+    taskId: `issue6-noworker-${randomUUID().slice(0, 8)}`,
+    budgetLamports: 1_000_000,
+    perPaymentCapLamports: 1_000_000,
+    allowedServiceId: SERVICE_ID,
+    expiry: Math.floor(Date.now() / 1000) + 600,
+  }), owner, ERR.InvalidAllowedWorker);
+
   const flow = await createTask('flow', 8_000_000, 4_000_000, 900);
   const pay1 = await executePayment(flow, 'payment-1', 3_000_000);
   const pay2 = await executePayment(flow, 'payment-2', 3_000_000);
@@ -324,21 +340,34 @@ async function main(): Promise<void> {
   await expectRejected('replay-settled-payment-id', paymentIx(flow, pay1, 1_000_000), agent, ERR.PaymentIdAlreadyUsed);
   await expectRejected('close-receipt-while-active', closeReceiptIx(flow, pay1), worker, ERR.ReceiptLockedWhileTaskActive);
 
+  // A third escrow is still held when the owner revokes.
+  const pay3 = await executePayment(flow, 'payment-3', 1_000_000);
   await submit('revoke-task', revokeTaskInstruction({
     taskCapability: flow.capability,
     owner: owner.publicKey,
   }), owner);
   await expectRejected('payment-after-revoke', paymentIx(flow, 'revoked-fail', 1), agent, ERR.TaskNotActive);
+  await expectRejected('owner-clawback-held-escrow-before-expiry', refundExpiredEscrowInstruction({
+    taskCapability: flow.capability,
+    escrow: deriveEscrowPda(flow.capability, pay3)[0],
+    owner: owner.publicKey,
+    agentSigner: agent.publicKey,
+    caller: owner.publicKey,
+  }), owner, ERR.TaskNotExpired);
+  await submit('settle-held-payment-after-revoke', settleIx(flow, pay3), worker);
+  receipts.push(deriveReceiptPda(flow.capability, pay3)[0]);
 
-  await submit('close-receipt-1', closeReceiptIx(flow, pay1), worker);
-  await submit('close-receipt-2', closeReceiptIx(flow, pay2), worker);
   const vaultBeforeRefund = await connection.getBalance(flow.vault, 'confirmed');
-  if (vaultBeforeRefund < 2_000_000) throw new Error(`Vault holds ${vaultBeforeRefund}, expected unspent 2000000 plus rent`);
+  if (vaultBeforeRefund < 1_000_000) throw new Error(`Vault holds ${vaultBeforeRefund}, expected unspent 1000000 plus rent`);
   await submit('refund-close-revoked-task', refundAndCloseInstruction({
     taskCapability: flow.capability,
     owner: owner.publicKey,
     caller: owner.publicKey,
   }), owner);
+  // Receipts left open at refund time stay recoverable by the worker.
+  await submit('close-receipt-1-after-task-closed', closeReceiptIx(flow, pay1), worker);
+  await submit('close-receipt-2-after-task-closed', closeReceiptIx(flow, pay2), worker);
+  await submit('close-receipt-3-after-task-closed', closeReceiptIx(flow, pay3), worker);
   console.log(`REFUND flow vaultLamportsReturned=${vaultBeforeRefund}`);
 
   // Expiry task: a held escrow and the task itself are refunded permissionlessly after on-chain expiry.
@@ -359,7 +388,7 @@ async function main(): Promise<void> {
     caller: worker.publicKey,
   }), worker);
 
-  console.log('RESULT twoPayments=PASS cap=PASS budget=PASS allowlist=PASS signer=PASS doubleSettle=PASS replayGuard=PASS receiptLock=PASS revoke=PASS refund=PASS expiry=PASS');
+  console.log('RESULT twoPayments=PASS cap=PASS budget=PASS allowlist=PASS signer=PASS doubleSettle=PASS replayGuard=PASS receiptLock=PASS revoke=PASS heldEscrowCommitted=PASS refund=PASS receiptAfterClose=PASS expiry=PASS');
 }
 
 let result = 'FAIL';

@@ -51,8 +51,10 @@ pub fn handle_settle_with_receipt(
     ctx: Context<SettleWithReceipt>,
     params: SettleWithReceiptParams,
 ) -> Result<()> {
+    // Revoke stops new payments; escrows already held stay settleable until expiry.
+    let status = ctx.accounts.task_capability.status;
     require!(
-        ctx.accounts.task_capability.status == TaskStatus::Active,
+        status == TaskStatus::Active || status == TaskStatus::Revoked,
         TaskVaultError::TaskNotActive
     );
     let now = Clock::get()?.unix_timestamp;
@@ -108,7 +110,8 @@ pub fn handle_settle_with_receipt(
     }
 
     // If all budget spent and no pending escrows remain, mark task completed
-    if ctx.accounts.task_capability.spent_lamports >= ctx.accounts.task_capability.budget_lamports
+    if status == TaskStatus::Active
+        && ctx.accounts.task_capability.spent_lamports >= ctx.accounts.task_capability.budget_lamports
         && remaining_pending == 0
     {
         ctx.accounts.task_capability.status = TaskStatus::Completed;

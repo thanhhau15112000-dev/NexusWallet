@@ -116,7 +116,11 @@ export function TaskVaultPanel(props: {
       props.onToast({ tone: 'warn', text: 'Per-payment cap cannot exceed budget' });
       return;
     }
-    if (submitOnchain && newAllowedWorker.trim()) {
+    if (submitOnchain && !newAllowedWorker.trim()) {
+      props.onToast({ tone: 'warn', text: 'On-chain tasks require an allowed worker' });
+      return;
+    }
+    if (submitOnchain) {
       try {
         if (new PublicKey(newAllowedWorker.trim()).toBase58() !== DEFAULT_MOCK_WORKER_PUBKEY) {
           props.onToast({ tone: 'warn', text: 'On-chain demo tasks currently use the configured mock worker' });
@@ -295,7 +299,7 @@ export function TaskVaultPanel(props: {
     }
   };
 
-  const handleCloseReceipt = async (paymentId: string) => {
+  const handleCloseReceipt = async (paymentId: string, worker: string) => {
     if (!detail || !props.owner) return;
     setBusyAction(`close-receipt-${paymentId}`);
     try {
@@ -309,7 +313,8 @@ export function TaskVaultPanel(props: {
         taskCapability: taskPda,
         receipt: receiptPda,
         authority: ownerPubkey,
-        rentRecipient: ownerPubkey,
+        // The program returns receipt rent to the worker who paid it.
+        rentRecipient: new PublicKey(worker),
       });
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
       const transaction = new Transaction().add(instruction);
@@ -319,7 +324,7 @@ export function TaskVaultPanel(props: {
       const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
       if (confirmation.value.err) throw new Error('Receipt close transaction failed');
       await api.closeTaskReceipt(detail.task.taskId, paymentId, signature);
-      props.onToast({ tone: 'ok', text: `Receipt rent reclaimed: ${shorten(signature, 4)}` });
+      props.onToast({ tone: 'ok', text: `Receipt closed, rent returned to worker: ${shorten(signature, 4)}` });
       await selectTask(detail.task.taskId);
     } catch (err) {
       props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to close receipt' });
@@ -839,20 +844,20 @@ export function TaskVaultPanel(props: {
                                     ) : <Pill tone="neutral">Simulated</Pill>}
                                     {receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
                                       <span title="On-chain receipts block payment-id replay until the task is revoked, completed or expired">
-                                        Rent locked until task ends
+                                        Receipt locked until task ends
                                       </span>
                                     ) : receipt.isSimulated === false && !receipt.isClosed ? (
                                       <button
                                         type="button"
                                         className="link primary-link"
-                                        title="Close receipt and reclaim rent"
+                                        title="Close receipt; rent returns to the worker who paid it"
                                         disabled={Boolean(busyAction)}
-                                        onClick={() => void handleCloseReceipt(receipt.paymentId)}
+                                        onClick={() => void handleCloseReceipt(receipt.paymentId, receipt.worker)}
                                       >
                                         <XCircle size={14} />
-                                        {busyAction === `close-receipt-${receipt.paymentId}` ? 'Closing…' : 'Reclaim rent'}
+                                        {busyAction === `close-receipt-${receipt.paymentId}` ? 'Closing…' : 'Close receipt'}
                                       </button>
-                                    ) : receipt.isClosed ? <span>Rent reclaimed</span> : null}
+                                    ) : receipt.isClosed ? <span>Receipt closed</span> : null}
                                   </div>
                                 ) : p.status === 'held' ? (
                                   <button

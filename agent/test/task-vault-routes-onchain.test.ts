@@ -208,7 +208,7 @@ describe('Task Vault API with the local Solana program', () => {
         taskCapability: taskPda,
         receipt: receiptPda,
         authority: owner.publicKey,
-        rentRecipient: owner.publicKey,
+        rentRecipient: worker.publicKey,
       });
       const closeReceiptSignature = await sendAndConfirmTransaction(connection, new Transaction().add(closeReceiptIx), [owner], {
         commitment: 'confirmed',

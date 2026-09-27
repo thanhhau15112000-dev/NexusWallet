@@ -109,14 +109,12 @@ pub struct RefundExpiredEscrow<'info> {
 }
 
 pub fn handle_refund_expired_escrow(ctx: Context<RefundExpiredEscrow>) -> Result<()> {
+    // A held escrow is committed to its worker until expiry; neither the owner nor a
+    // revoke can claw it back earlier. After expiry anyone may return it to the owner.
     let now = Clock::get()?.unix_timestamp;
-    let is_owner = ctx.accounts.caller.key() == ctx.accounts.task_capability.owner;
-    let is_expired = now >= ctx.accounts.task_capability.expiry;
-    let is_revoked = ctx.accounts.task_capability.status == TaskStatus::Revoked;
-
     require!(
-        is_owner || is_expired || is_revoked,
-        TaskVaultError::UnauthorizedSigner
+        now >= ctx.accounts.task_capability.expiry,
+        TaskVaultError::TaskNotExpired
     );
     require!(
         ctx.accounts.escrow.status == EscrowStatus::Held,

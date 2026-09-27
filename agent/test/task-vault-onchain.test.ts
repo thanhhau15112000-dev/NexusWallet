@@ -18,6 +18,7 @@ import {
   settleWithReceiptInstruction,
   closeReceiptInstruction,
   refundAndCloseInstruction,
+  refundExpiredEscrowInstruction,
   revokeTaskInstruction,
   toHex,
 } from '@nexus/shared';
@@ -81,6 +82,25 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
       commitment: 'confirmed',
     });
     expect(createSig).toBeDefined();
+
+    // A task without a distinct allowed worker would let the agent pay itself.
+    for (const allowedWorker of [undefined, agent.publicKey]) {
+      const invalidWorkerIx = createAndFundTaskInstruction({
+        owner: owner.publicKey,
+        agentSigner: agent.publicKey,
+        taskId: `${taskId}-bad-${allowedWorker ? 'agent' : 'none'}`,
+        budgetLamports,
+        perPaymentCapLamports: paymentCapLamports,
+        allowedWorker,
+        allowedServiceId: serviceId,
+        expiry,
+      });
+      await expect(
+        sendAndConfirmTransaction(connection, new Transaction().add(invalidWorkerIx), [owner], {
+          commitment: 'confirmed',
+        }),
+      ).rejects.toThrow(/0x1783/);
+    }
 
     // Verify on-chain state after creation
     const vaultBalanceAfterCreate = await connection.getBalance(vaultPda);
@@ -219,6 +239,20 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     ).rejects.toThrow(/0x1782/);
     expect(await connection.getAccountInfo(receiptPda)).not.toBeNull();
 
+    // A second escrow is still held when the owner revokes.
+    const heldPaymentId = 'pay-onchain-002';
+    const [heldEscrowPda] = deriveEscrowPda(taskCapPda, heldPaymentId);
+    const [heldReceiptPda] = deriveReceiptPda(taskCapPda, heldPaymentId);
+    await sendAndConfirmTransaction(connection, new Transaction().add(executeTaskPaymentInstruction({
+      taskCapability: taskCapPda,
+      agentSigner: agent.publicKey,
+      worker: worker.publicKey,
+      paymentId: heldPaymentId,
+      amountLamports: 100_000_000,
+      serviceId,
+      requestHash,
+    })), [agent], { commitment: 'confirmed' });
+
     const revokeSig = await sendAndConfirmTransaction(
       connection,
       new Transaction().add(revokeTaskInstruction({ taskCapability: taskCapPda, owner: owner.publicKey })),
@@ -227,39 +261,49 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     );
     expect(revokeSig).toBeDefined();
 
-    const workerBalanceBeforeClose = await connection.getBalance(worker.publicKey);
-    const redirectedRentIx = closeReceiptInstruction({
+    // Revoke blocks new payments, but the held escrow stays committed to the worker until expiry.
+    const ownerClawbackIx = refundExpiredEscrowInstruction({
       taskCapability: taskCapPda,
-      receipt: receiptPda,
-      authority: worker.publicKey,
-      rentRecipient: owner.publicKey,
+      escrow: heldEscrowPda,
+      owner: owner.publicKey,
+      agentSigner: agent.publicKey,
+      caller: owner.publicKey,
     });
     await expect(
-      sendAndConfirmTransaction(connection, new Transaction().add(redirectedRentIx), [worker], {
+      sendAndConfirmTransaction(connection, new Transaction().add(ownerClawbackIx), [owner], {
         commitment: 'confirmed',
       }),
-    ).rejects.toThrow();
-    expect(await connection.getAccountInfo(receiptPda)).not.toBeNull();
-
-    const closeReceiptIx = closeReceiptInstruction({
+    ).rejects.toThrow(/0x1775/);
+    await sendAndConfirmTransaction(connection, new Transaction().add(settleWithReceiptInstruction({
       taskCapability: taskCapPda,
-      receipt: receiptPda,
-      authority: worker.publicKey,
-      rentRecipient: worker.publicKey,
-    });
-    const closeReceiptTx = new Transaction().add(closeReceiptIx);
-    const closeReceiptSig = await sendAndConfirmTransaction(connection, closeReceiptTx, [worker], {
-      commitment: 'confirmed',
-    });
-    expect(closeReceiptSig).toBeDefined();
-    expect(await connection.getAccountInfo(receiptPda)).toBeNull();
-    expect(await connection.getBalance(worker.publicKey)).toBeGreaterThan(workerBalanceBeforeClose);
+      escrow: heldEscrowPda,
+      paymentId: heldPaymentId,
+      worker: worker.publicKey,
+      agentSigner: agent.publicKey,
+      resultHash: createHash('sha256').update('held-result').digest(),
+    })), [worker], { commitment: 'confirmed' });
+
+    // Receipt rent can only return to the worker who paid it.
+    for (const [authority, signer] of [[worker.publicKey, worker], [owner.publicKey, owner]] as const) {
+      const redirectedRentIx = closeReceiptInstruction({
+        taskCapability: taskCapPda,
+        receipt: receiptPda,
+        authority,
+        rentRecipient: owner.publicKey,
+      });
+      await expect(
+        sendAndConfirmTransaction(connection, new Transaction().add(redirectedRentIx), [signer], {
+          commitment: 'confirmed',
+        }),
+      ).rejects.toThrow();
+    }
+    expect(await connection.getAccountInfo(receiptPda)).not.toBeNull();
 
     // Verify escrow account was closed (lamports == 0 and data zeroed)
     const closedEscrowAccount = await connection.getAccountInfo(escrowPda);
     expect(closedEscrowAccount === null || closedEscrowAccount.lamports === 0).toBe(true);
 
-    // 6. Owner executes refund_and_close on-chain
+    // 6. Owner executes refund_and_close on-chain while receipts are still open
     const refundIx = refundAndCloseInstruction({
       taskCapability: taskCapPda,
       owner: owner.publicKey,
@@ -278,5 +322,18 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
 
     const closedTaskCapAccount = await connection.getAccountInfo(taskCapPda);
     expect(closedTaskCapAccount === null || closedTaskCapAccount.lamports === 0).toBe(true);
+
+    // 7. The worker still recovers receipt rent after the capability is closed.
+    const workerBalanceBeforeClose = await connection.getBalance(worker.publicKey);
+    for (const openReceipt of [receiptPda, heldReceiptPda]) {
+      await sendAndConfirmTransaction(connection, new Transaction().add(closeReceiptInstruction({
+        taskCapability: taskCapPda,
+        receipt: openReceipt,
+        authority: worker.publicKey,
+        rentRecipient: worker.publicKey,
+      })), [worker], { commitment: 'confirmed' });
+      expect(await connection.getAccountInfo(openReceipt)).toBeNull();
+    }
+    expect(await connection.getBalance(worker.publicKey)).toBeGreaterThan(workerBalanceBeforeClose);
   }, 30000);
 });

@@ -4,12 +4,10 @@ use crate::errors::TaskVaultError;
 
 #[derive(Accounts)]
 pub struct CloseReceipt<'info> {
-    #[account(
-        mut,
-        seeds = [b"capability", task_capability.owner.as_ref(), task_capability.task_id.as_ref()],
-        bump = task_capability.bump
-    )]
-    pub task_capability: Account<'info, TaskCapability>,
+    /// CHECK: The capability may already be closed by refund_and_close; the handler only
+    /// deserializes it while it is still owned by this program.
+    #[account(mut)]
+    pub task_capability: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -22,22 +20,25 @@ pub struct CloseReceipt<'info> {
 
     pub authority: Signer<'info>,
 
-    /// CHECK: The handler requires this to be the authorized signer before closing the receipt.
-    #[account(mut)]
+    /// CHECK: Receipt rent always returns to the worker who paid it.
+    #[account(mut, address = receipt.worker @ TaskVaultError::UnauthorizedSigner)]
     pub rent_recipient: AccountInfo<'info>,
 }
 
 pub fn handle_close_receipt(ctx: Context<CloseReceipt>) -> Result<()> {
-    require_keys_eq!(
-        ctx.accounts.rent_recipient.key(),
-        ctx.accounts.authority.key(),
-        TaskVaultError::UnauthorizedSigner
-    );
+    let authority = ctx.accounts.authority.key();
+    let capability_info = ctx.accounts.task_capability.to_account_info();
 
-    // Only the worker who paid the rent or the task owner can close it
+    if capability_info.owner != ctx.program_id {
+        // Capability already closed: only the worker can recover its receipt rent.
+        require_keys_eq!(authority, ctx.accounts.receipt.worker, TaskVaultError::UnauthorizedSigner);
+        return Ok(());
+    }
+
+    let data = capability_info.try_borrow_data()?;
+    let capability = TaskCapability::try_deserialize(&mut &data[..])?;
     require!(
-        ctx.accounts.authority.key() == ctx.accounts.receipt.worker
-            || ctx.accounts.authority.key() == ctx.accounts.task_capability.owner,
+        authority == ctx.accounts.receipt.worker || authority == capability.owner,
         TaskVaultError::UnauthorizedSigner
     );
 
@@ -45,8 +46,7 @@ pub fn handle_close_receipt(ctx: Context<CloseReceipt>) -> Result<()> {
     // while execute_task_payment can still succeed for this task.
     let now = Clock::get()?.unix_timestamp;
     require!(
-        ctx.accounts.task_capability.status != TaskStatus::Active
-            || now >= ctx.accounts.task_capability.expiry,
+        capability.status != TaskStatus::Active || now >= capability.expiry,
         TaskVaultError::ReceiptLockedWhileTaskActive
     );
 

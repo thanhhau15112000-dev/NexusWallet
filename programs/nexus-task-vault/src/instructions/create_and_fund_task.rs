@@ -53,6 +53,12 @@ pub fn handle_create_and_fund_task(
     );
     let now = Clock::get()?.unix_timestamp;
     require!(params.expiry > now, TaskVaultError::InvalidExpiry);
+    // Without a distinct worker the agent could pay and settle escrows to itself.
+    require!(
+        params.allowed_worker != Pubkey::default()
+            && params.allowed_worker != params.agent_signer,
+        TaskVaultError::InvalidAllowedWorker
+    );
 
     let task = &mut ctx.accounts.task_capability;
     task.owner = ctx.accounts.owner.key();

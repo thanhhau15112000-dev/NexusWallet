@@ -40,4 +40,6 @@ pub enum TaskVaultError {
     PaymentIdAlreadyUsed,
     #[msg("Receipt cannot be closed while the task can still accept payments")]
     ReceiptLockedWhileTaskActive,
+    #[msg("Allowed worker must be set and differ from the agent signer")]
+    InvalidAllowedWorker,
 }
