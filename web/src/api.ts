@@ -80,14 +80,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
   });
   const text = await response.text();
-  let body: unknown = {};
+  let body: unknown = null;
   if (text) {
     try {
       body = JSON.parse(text);
     } catch {
-      throw new Error(`agent returned an invalid response (${response.status})`);
+      body = null;
     }
   }
+  // The agent always answers errors with a JSON `error` field. A 5xx without one comes from
+  // the dev proxy (or a hosting layer) when the agent service itself is down.
+  const hasErrorField = Boolean(body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string');
+  if (response.status >= 500 && !hasErrorField) {
+    throw new Error('nexusPay agent service is not reachable. Start it with pnpm dev from the repository root, then reload.');
+  }
+  if (text && body === null) {
+    throw new Error(`agent returned an invalid response (${response.status})`);
+  }
+  body ??= {};
   if (!response.ok) {
     const errorBody =
       body && typeof body === 'object' ? (body as { message?: unknown; error?: unknown }) : {};
