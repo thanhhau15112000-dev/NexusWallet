@@ -31,6 +31,7 @@ export const TaskCapabilityRecordSchema = z.object({
   vaultPda: PubkeySchema.optional(),
   txSignature: z.string().optional(),
   isSimulated: z.boolean().optional(),
+  isClosed: z.boolean().optional(),
 });
 
 export type TaskCapabilityRecord = z.infer<typeof TaskCapabilityRecordSchema>;
@@ -63,6 +64,8 @@ export const TaskReceiptRecordSchema = z.object({
   receiptPda: PubkeySchema.optional(),
   txSignature: z.string().optional(),
   isSimulated: z.boolean().optional(),
+  isClosed: z.boolean().optional(),
+  closeTxSignature: z.string().optional(),
 });
 
 export type TaskReceiptRecord = z.infer<typeof TaskReceiptRecordSchema>;

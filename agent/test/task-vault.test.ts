@@ -22,9 +22,11 @@ import {
   createAndFundTaskInstruction,
   executeTaskPaymentInstruction,
   settleWithReceiptInstruction,
+  closeReceiptInstruction,
   revokeTaskInstruction,
   refundAndCloseInstruction,
   refundExpiredEscrowInstruction,
+  to32ByteArray,
 } from '@nexus/shared';
 import { Store } from '../src/store.js';
 import { AuditLog } from '../src/audit.js';
@@ -336,6 +338,8 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
         taskId,
         budgetLamports: 1_000_000_000,
         perPaymentCapLamports: 250_000_000,
+        allowedWorker: worker,
+        allowedServiceId: 'service-allowlisted',
         expirySeconds: 1750000000,
       });
 
@@ -343,7 +347,9 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       expect(ix.keys).toHaveLength(4);
       expect(ix.keys[2]!.pubkey.toBase58()).toBe(owner.toBase58());
       expect(ix.keys[2]!.isSigner).toBe(true);
-      expect(ix.data.length).toBe(8 + 32 + 8 + 8 + 8 + 32);
+      expect(ix.data.length).toBe(8 + 32 + 8 + 8 + 8 + 32 + 32 + 32);
+      expect(ix.data.subarray(96, 128)).toEqual(worker.toBuffer());
+      expect(ix.data.subarray(128, 160)).toEqual(Buffer.from(to32ByteArray('service-allowlisted')));
     });
 
     it('builds valid execute_task_payment instruction', () => {
@@ -434,6 +440,24 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       expect(ix.keys[3]!.pubkey.toBase58()).toBe(caller.toBase58());
       expect(ix.keys[3]!.isSigner).toBe(true);
       expect(ix.data.length).toBe(8);
+    });
+
+    it('builds close_receipt accounts in Anchor context order and sends rent to authority', () => {
+      const [capPda] = deriveTaskCapabilityPda(owner, taskId);
+      const [receiptPda] = deriveReceiptPda(capPda, paymentId);
+      const ix = closeReceiptInstruction({
+        taskCapability: capPda,
+        receipt: receiptPda,
+        authority: worker,
+        rentRecipient: worker,
+      });
+
+      expect(ix.keys[0]!.pubkey.toBase58()).toBe(capPda.toBase58());
+      expect(ix.keys[1]!.pubkey.toBase58()).toBe(receiptPda.toBase58());
+      expect(ix.keys[2]!.pubkey.toBase58()).toBe(worker.toBase58());
+      expect(ix.keys[2]!.isSigner).toBe(true);
+      expect(ix.keys[3]!.pubkey.toBase58()).toBe(worker.toBase58());
+      expect(ix.keys[3]!.isWritable).toBe(true);
     });
   });
 

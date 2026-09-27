@@ -77,6 +77,8 @@ export interface CreateAndFundTaskArgs {
   taskId: Uint8Array | string;
   budgetLamports: number | bigint;
   perPaymentCapLamports: number | bigint;
+  allowedWorker?: PublicKey;
+  allowedServiceId?: Uint8Array | string;
   expirySeconds?: number | bigint;
   expiry?: number | bigint;
   programId?: PublicKey;
@@ -88,8 +90,8 @@ export function createAndFundTaskInstruction(args: CreateAndFundTaskArgs): Trans
   const [taskCapability] = deriveTaskCapabilityPda(args.owner, taskIdBytes, programId);
   const [vault] = deriveVaultPda(taskCapability, programId);
 
-  // Layout: discriminator(8) + task_id(32) + budget_lamports(8) + per_payment_cap(8) + expiry(8) + agent_signer(32)
-  const data = new Uint8Array(8 + 32 + 8 + 8 + 8 + 32);
+  // Layout follows CreateAndFundTaskParams, including zero-value allowlist defaults.
+  const data = new Uint8Array(8 + 32 + 8 + 8 + 8 + 32 + 32 + 32);
   data.set(DISCRIMINATORS.create_and_fund_task, 0);
   data.set(taskIdBytes, 8);
 
@@ -101,6 +103,8 @@ export function createAndFundTaskInstruction(args: CreateAndFundTaskArgs): Trans
   view.setBigUint64(48, BigInt(args.perPaymentCapLamports), true);
   view.setBigInt64(56, BigInt(expiry), true);
   data.set(args.agentSigner.toBuffer(), 64);
+  data.set((args.allowedWorker ?? PublicKey.default).toBuffer(), 96);
+  data.set(args.allowedServiceId ? to32ByteArray(args.allowedServiceId) : new Uint8Array(32), 128);
 
   return new TransactionInstruction({
     programId,
@@ -282,8 +286,8 @@ export function closeReceiptInstruction(args: CloseReceiptArgs): TransactionInst
     keys: [
       { pubkey: args.taskCapability, isSigner: false, isWritable: true },
       { pubkey: args.receipt, isSigner: false, isWritable: true },
-      { pubkey: args.rentRecipient, isSigner: false, isWritable: true },
       { pubkey: args.authority, isSigner: true, isWritable: false },
+      { pubkey: args.rentRecipient, isSigner: false, isWritable: true },
     ],
     data: Buffer.from(data),
   });

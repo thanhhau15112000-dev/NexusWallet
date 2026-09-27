@@ -272,15 +272,20 @@ export const api = {
       `/api/tasks/${taskId}/payments/${paymentId}/settle`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
-  revokeTask: (taskId: string) =>
+  closeTaskReceipt: (taskId: string, paymentId: string, txSignature: string) =>
+    request<{ receipt: TaskReceiptRecord }>(
+      `/api/tasks/${taskId}/receipts/${paymentId}/close`,
+      { method: 'POST', body: JSON.stringify({ txSignature }) },
+    ),
+  revokeTask: (taskId: string, txSignature?: string) =>
     request<{ task: TaskCapabilityRecord }>(`/api/tasks/${taskId}/revoke`, {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ txSignature }),
     }),
-  refundTask: (taskId: string) =>
+  refundTask: (taskId: string, txSignature?: string) =>
     request<{ task: TaskCapabilityRecord; refundedLamports: number }>(
       `/api/tasks/${taskId}/refund`,
-      { method: 'POST', body: JSON.stringify({}) },
+      { method: 'POST', body: JSON.stringify({ txSignature }) },
     ),
   runMockService: (input: { taskId: string; paymentId?: string; serviceId: string; payload?: Record<string, unknown> }) =>
     request<{

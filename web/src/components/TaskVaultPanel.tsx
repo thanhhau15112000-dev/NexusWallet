@@ -20,9 +20,11 @@ import {
   type TaskPaymentRecord,
   type TaskReceiptRecord,
   createAndFundTaskInstruction,
+  closeReceiptInstruction,
   refundAndCloseInstruction,
   revokeTaskInstruction,
   deriveTaskCapabilityPda,
+  deriveReceiptPda,
 } from '@nexus/shared';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { getPhantom } from '../phantom.js';
@@ -114,6 +116,17 @@ export function TaskVaultPanel(props: {
       props.onToast({ tone: 'warn', text: 'Per-payment cap cannot exceed budget' });
       return;
     }
+    if (submitOnchain && newAllowedWorker.trim()) {
+      try {
+        if (new PublicKey(newAllowedWorker.trim()).toBase58() !== DEFAULT_MOCK_WORKER_PUBKEY) {
+          props.onToast({ tone: 'warn', text: 'On-chain demo tasks currently use the configured mock worker' });
+          return;
+        }
+      } catch {
+        props.onToast({ tone: 'warn', text: 'Allowed worker must be a valid Solana address' });
+        return;
+      }
+    }
 
     setBusyAction('create');
     try {
@@ -138,6 +151,8 @@ export function TaskVaultPanel(props: {
           taskId: newTaskId.trim(),
           budgetLamports: Math.round(budgetSol * LAMPORTS_PER_SOL),
           perPaymentCapLamports: Math.round(capSol * LAMPORTS_PER_SOL),
+          allowedWorker: newAllowedWorker.trim() ? new PublicKey(newAllowedWorker.trim()) : undefined,
+          allowedServiceId: newAllowedServiceId.trim() || undefined,
           expiry,
         });
 
@@ -216,14 +231,19 @@ export function TaskVaultPanel(props: {
     try {
       const paymentId = `pay-${Date.now().toString(36)}`;
       const requestHash = `reqhash-${Date.now().toString(36)}`;
-      await api.executeTaskPayment(detail.task.taskId, {
+      const result = await api.executeTaskPayment(detail.task.taskId, {
         paymentId,
         worker,
         serviceId: paymentService.trim(),
         amountLamports: Math.round(amountSol * LAMPORTS_PER_SOL),
         requestHash,
       });
-      props.onToast({ tone: 'ok', text: `Payment escrow ${paymentId} locked in vault` });
+      props.onToast({
+        tone: 'ok',
+        text: result.payment.txSignature
+          ? `On-chain escrow ${paymentId}: ${shorten(result.payment.txSignature, 4)}`
+          : `Simulated escrow ${paymentId} locked in vault`,
+      });
       await selectTask(detail.task.taskId);
     } catch (err) {
       props.onToast({
@@ -247,12 +267,17 @@ export function TaskVaultPanel(props: {
         payload: { simulatedTask: detail.task.taskId, paymentId },
       });
       // 2. Submit settlement receipt with cryptographic worker signature
-      await api.settleTaskPayment(detail.task.taskId, paymentId, {
+      const result = await api.settleTaskPayment(detail.task.taskId, paymentId, {
         resultHash: mockResult.resultHash,
         workerPubkey: mockResult.workerPubkey,
         workerSignature: mockResult.workerSignature,
       });
-      props.onToast({ tone: 'ok', text: `Escrow ${paymentId} settled with worker receipt proof` });
+      props.onToast({
+        tone: 'ok',
+        text: result.receipt.txSignature
+          ? `On-chain settlement ${paymentId}: ${shorten(result.receipt.txSignature, 4)}`
+          : `Simulated settlement ${paymentId} recorded with worker receipt`,
+      });
       await selectTask(detail.task.taskId);
     } catch (err) {
       props.onToast({
@@ -264,32 +289,61 @@ export function TaskVaultPanel(props: {
     }
   };
 
+  const handleCloseReceipt = async (paymentId: string) => {
+    if (!detail || !props.owner) return;
+    setBusyAction(`close-receipt-${paymentId}`);
+    try {
+      const provider = getPhantom();
+      if (!provider) throw new Error('Phantom wallet is required to reclaim receipt rent');
+      const connection = new Connection(props.rpcUrl, 'confirmed');
+      const ownerPubkey = new PublicKey(props.owner);
+      const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, detail.task.taskId);
+      const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
+      const instruction = closeReceiptInstruction({
+        taskCapability: taskPda,
+        receipt: receiptPda,
+        authority: ownerPubkey,
+        rentRecipient: ownerPubkey,
+      });
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const transaction = new Transaction().add(instruction);
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = ownerPubkey;
+      const { signature } = await provider.signAndSendTransaction(transaction as any);
+      const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+      if (confirmation.value.err) throw new Error('Receipt close transaction failed');
+      await api.closeTaskReceipt(detail.task.taskId, paymentId, signature);
+      props.onToast({ tone: 'ok', text: `Receipt rent reclaimed: ${shorten(signature, 4)}` });
+      await selectTask(detail.task.taskId);
+    } catch (err) {
+      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to close receipt' });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleRevoke = async (taskId: string) => {
     setBusyAction(`revoke-${taskId}`);
     try {
-      if (detail?.task.txSignature && props.owner) {
-        try {
-          const provider = getPhantom();
-          if (provider) {
-            const connection = new Connection(props.rpcUrl, 'confirmed');
-            const ownerPubkey = new PublicKey(props.owner);
-            const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
-            const ix = revokeTaskInstruction({
-              taskCapability: taskPda,
-              owner: ownerPubkey,
-            });
-            const { blockhash } = await connection.getLatestBlockhash('confirmed');
-            const tx = new Transaction().add(ix);
-            tx.recentBlockhash = blockhash;
-            tx.feePayer = ownerPubkey;
-            const { signature } = await provider.signAndSendTransaction(tx as any);
-            await connection.confirmTransaction(signature, 'confirmed');
-          }
-        } catch (onchainErr) {
-          console.warn('On-chain revoke transaction failed, continuing with state update:', onchainErr);
-        }
+      let txSignature: string | undefined;
+      if (detail?.task.isSimulated === false) {
+        if (!props.owner) throw new Error('Connect the owner wallet to revoke this on-chain task');
+        const provider = getPhantom();
+        if (!provider) throw new Error('Phantom wallet is required to revoke this on-chain task');
+        const connection = new Connection(props.rpcUrl, 'confirmed');
+        const ownerPubkey = new PublicKey(props.owner);
+        const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
+        const ix = revokeTaskInstruction({ taskCapability: taskPda, owner: ownerPubkey });
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        const tx = new Transaction().add(ix);
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = ownerPubkey;
+        const { signature } = await provider.signAndSendTransaction(tx as any);
+        const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+        if (confirmation.value.err) throw new Error('On-chain revoke transaction failed');
+        txSignature = signature;
       }
-      await api.revokeTask(taskId);
+      await api.revokeTask(taskId, txSignature);
       props.onToast({ tone: 'warn', text: `Task Capability "${taskId}" has been revoked` });
       await selectTask(taskId);
     } catch (err) {
@@ -302,30 +356,29 @@ export function TaskVaultPanel(props: {
   const handleRefund = async (taskId: string) => {
     setBusyAction(`refund-${taskId}`);
     try {
-      if (detail?.task.txSignature && props.owner) {
-        try {
-          const provider = getPhantom();
-          if (provider) {
-            const connection = new Connection(props.rpcUrl, 'confirmed');
-            const ownerPubkey = new PublicKey(props.owner);
-            const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
-            const ix = refundAndCloseInstruction({
-              taskCapability: taskPda,
-              owner: ownerPubkey,
-              caller: ownerPubkey,
-            });
-            const { blockhash } = await connection.getLatestBlockhash('confirmed');
-            const tx = new Transaction().add(ix);
-            tx.recentBlockhash = blockhash;
-            tx.feePayer = ownerPubkey;
-            const { signature } = await provider.signAndSendTransaction(tx as any);
-            await connection.confirmTransaction(signature, 'confirmed');
-          }
-        } catch (onchainErr) {
-          console.warn('On-chain refund transaction failed, continuing with state update:', onchainErr);
-        }
+      let txSignature: string | undefined;
+      if (detail?.task.isSimulated === false) {
+        if (!props.owner) throw new Error('Connect the owner wallet to close this on-chain task');
+        const provider = getPhantom();
+        if (!provider) throw new Error('Phantom wallet is required to close this on-chain task');
+        const connection = new Connection(props.rpcUrl, 'confirmed');
+        const ownerPubkey = new PublicKey(props.owner);
+        const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
+        const ix = refundAndCloseInstruction({
+          taskCapability: taskPda,
+          owner: ownerPubkey,
+          caller: ownerPubkey,
+        });
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        const tx = new Transaction().add(ix);
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = ownerPubkey;
+        const { signature } = await provider.signAndSendTransaction(tx as any);
+        const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+        if (confirmation.value.err) throw new Error('On-chain refund transaction failed');
+        txSignature = signature;
       }
-      const res = await api.refundTask(taskId);
+      const res = await api.refundTask(taskId, txSignature);
       props.onToast({
         tone: 'ok',
         text: `Vault closed: ${(res.refundedLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL refunded to owner`,
@@ -566,7 +619,7 @@ export function TaskVaultPanel(props: {
                         Revoke Task
                       </button>
                     ) : null}
-                    {detail.task.status !== 'completed' ? (
+                    {!detail.task.isClosed ? (
                       <button
                         type="button"
                         className="secondary"
@@ -755,6 +808,11 @@ export function TaskVaultPanel(props: {
                                 <Pill tone={p.status === 'settled' ? 'ok' : 'warn'}>
                                   {p.status}
                                 </Pill>
+                                {p.txSignature ? (
+                                  <a href={`https://explorer.solana.com/tx/${p.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
+                                    <Pill tone="ok">On-Chain Devnet</Pill>
+                                  </a>
+                                ) : <Pill tone="neutral">Simulated</Pill>}
                               </td>
                               <td>
                                 {receipt ? (
@@ -763,6 +821,23 @@ export function TaskVaultPanel(props: {
                                     <Mono title={receipt.resultHash}>
                                       proof {shorten(receipt.resultHash, 4)}
                                     </Mono>
+                                    {receipt.txSignature ? (
+                                      <a href={`https://explorer.solana.com/tx/${receipt.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
+                                        <Pill tone="ok">On-Chain Devnet</Pill>
+                                      </a>
+                                    ) : <Pill tone="neutral">Simulated</Pill>}
+                                    {receipt.isSimulated === false && !receipt.isClosed ? (
+                                      <button
+                                        type="button"
+                                        className="link primary-link"
+                                        title="Close receipt and reclaim rent"
+                                        disabled={Boolean(busyAction)}
+                                        onClick={() => void handleCloseReceipt(receipt.paymentId)}
+                                      >
+                                        <XCircle size={14} />
+                                        {busyAction === `close-receipt-${receipt.paymentId}` ? 'Closing…' : 'Reclaim rent'}
+                                      </button>
+                                    ) : receipt.isClosed ? <span>Rent reclaimed</span> : null}
                                   </div>
                                 ) : p.status === 'held' ? (
                                   <button

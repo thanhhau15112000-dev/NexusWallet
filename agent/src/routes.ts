@@ -16,6 +16,9 @@ import {
   deriveReceiptPda,
   computeCanonicalSeed,
   computeReceiptSigningMessage,
+  TASK_VAULT_PROGRAM_PUBKEY,
+  executeTaskPaymentInstruction,
+  settleWithReceiptInstruction,
 } from '@nexus/shared';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
@@ -32,6 +35,66 @@ import {
 import { runCommand } from './pipeline.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
+import { submitTaskVaultInstruction } from './task-vault-chain.js';
+
+function getMockWorkerKeypair(): Keypair {
+  return Keypair.fromSeed(computeCanonicalSeed('NEXUS_DEFAULT_MOCK_WORKER_V1'));
+}
+
+async function hasConfirmedSignature(ctx: AppContext, signature: string): Promise<boolean> {
+  const statuses = await ctx.connection.getSignatureStatuses([signature], { searchTransactionHistory: true });
+  const status = statuses.value[0];
+  return Boolean(
+    status
+      && !status.err
+      && (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized'),
+  );
+}
+
+async function taskCapabilityMatchesOnChain(
+  ctx: AppContext,
+  expected: {
+    owner: string;
+    agentSigner: string;
+    taskId: string;
+    budgetLamports: number;
+    perPaymentCapLamports: number;
+    expiry: number;
+    allowedWorker?: string;
+    allowedServiceId?: string;
+  },
+): Promise<boolean> {
+  const [taskPda] = deriveTaskCapabilityPda(new PublicKey(expected.owner), expected.taskId);
+  const [vaultPda] = deriveVaultPda(taskPda);
+  const [taskInfo, vaultInfo] = await Promise.all([
+    ctx.connection.getAccountInfo(taskPda, 'confirmed'),
+    ctx.connection.getAccountInfo(vaultPda, 'confirmed'),
+  ]);
+  if (
+    !taskInfo
+    || !vaultInfo
+    || !taskInfo.owner.equals(TASK_VAULT_PROGRAM_PUBKEY)
+    || !vaultInfo.owner.equals(TASK_VAULT_PROGRAM_PUBKEY)
+    || taskInfo.data.length < 207
+  ) return false;
+
+  const data = taskInfo.data;
+  const expectedWorker = expected.allowedWorker
+    ? new PublicKey(expected.allowedWorker).toBuffer()
+    : PublicKey.default.toBuffer();
+  const expectedService = expected.allowedServiceId
+    ? Buffer.from(computeCanonicalSeed(expected.allowedServiceId))
+    : Buffer.alloc(32);
+
+  return data.subarray(8, 40).equals(new PublicKey(expected.owner).toBuffer())
+    && data.subarray(40, 72).equals(new PublicKey(expected.agentSigner).toBuffer())
+    && data.subarray(72, 104).equals(Buffer.from(computeCanonicalSeed(expected.taskId)))
+    && Number(data.readBigUInt64LE(104)) === expected.budgetLamports
+    && Number(data.readBigUInt64LE(120)) === expected.perPaymentCapLamports
+    && Number(data.readBigInt64LE(128)) === expected.expiry
+    && data.subarray(143, 175).equals(expectedWorker)
+    && data.subarray(175, 207).equals(expectedService);
+}
 
 const CommandBody = z.object({
   prompt: z.string().trim().min(1).max(600),
@@ -543,6 +606,26 @@ const inFlightClaims = new Set<string>();
     if (body.perPaymentCapLamports > body.budgetLamports) {
       return reply.status(400).send({ error: 'invalid_cap', message: 'per-payment cap cannot exceed budget' });
     }
+    const isSimulated = body.isSimulated ?? !body.txSignature;
+    if (isSimulated === Boolean(body.txSignature)) {
+      return reply.status(400).send({ error: 'invalid_transaction_mode' });
+    }
+    if (!isSimulated) {
+      const signatureConfirmed = await hasConfirmedSignature(userCtx, body.txSignature!);
+      const matchesOnChain = signatureConfirmed && await taskCapabilityMatchesOnChain(userCtx, {
+        owner,
+        agentSigner: userCtx.agentPubkey,
+        taskId: body.taskId,
+        budgetLamports: body.budgetLamports,
+        perPaymentCapLamports: body.perPaymentCapLamports,
+        expiry: body.expiry,
+        allowedWorker: body.allowedWorker,
+        allowedServiceId: body.allowedServiceId,
+      });
+      if (!matchesOnChain) {
+        return reply.status(409).send({ error: 'onchain_task_mismatch', message: 'confirmed Devnet task state does not match this request' });
+      }
+    }
 
     const record = {
       owner,
@@ -558,7 +641,8 @@ const inFlightClaims = new Set<string>();
       pda: pda.toBase58(),
       vaultPda: vaultPda.toBase58(),
       txSignature: body.txSignature,
-      isSimulated: body.isSimulated ?? !body.txSignature,
+      isSimulated,
+      isClosed: false,
     };
 
     userCtx.store.setTask(record, { allowOverwrite: false });
@@ -629,6 +713,38 @@ const inFlightClaims = new Set<string>();
 
     const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
     const [escrowPda] = deriveEscrowPda(taskPda, body.paymentId);
+    const isSimulated = task.isSimulated !== false;
+    let txSignature: string | undefined;
+    if (!isSimulated) {
+      const mockWorker = getMockWorkerKeypair();
+      if (task.agentSigner !== userCtx.agentPubkey) {
+        return reply.status(409).send({ error: 'agent_signer_mismatch' });
+      }
+      if (body.worker !== mockWorker.publicKey.toBase58()) {
+        return reply.status(400).send({
+          error: 'unsupported_onchain_worker',
+          message: 'on-chain demo payments currently require the configured mock worker signer',
+        });
+      }
+      try {
+        txSignature = await submitTaskVaultInstruction(
+          userCtx.connection,
+          executeTaskPaymentInstruction({
+            taskCapability: taskPda,
+            agentSigner: userCtx.signer.publicKey,
+            worker: new PublicKey(body.worker),
+            paymentId: body.paymentId,
+            amountLamports: body.amountLamports,
+            serviceId: body.serviceId,
+            requestHash: body.requestHash,
+          }),
+          userCtx.signer,
+        );
+      } catch (error) {
+        req.log.error({ err: error, taskId, paymentId: body.paymentId }, 'Task Vault payment transaction failed');
+        return reply.status(502).send({ error: 'onchain_payment_failed' });
+      }
+    }
 
     const updatedTask = {
       ...task,
@@ -645,8 +761,8 @@ const inFlightClaims = new Set<string>();
       requestHash: body.requestHash,
       status: 'held' as const,
       escrowPda: escrowPda.toBase58(),
-      txSignature: body.txSignature,
-      isSimulated: body.isSimulated ?? !body.txSignature,
+      txSignature,
+      isSimulated,
       createdAt: new Date().toISOString(),
     };
     userCtx.store.setPayment(paymentRecord, { allowOverwrite: false });
@@ -718,8 +834,36 @@ const inFlightClaims = new Set<string>();
 
     const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
     const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
+    const isSimulated = task.isSimulated !== false;
+    let txSignature: string | undefined;
+    if (!isSimulated) {
+      const workerKeypair = getMockWorkerKeypair();
+      if (workerKeypair.publicKey.toBase58() !== payment.worker) {
+        return reply.status(400).send({
+          error: 'unsupported_onchain_worker',
+          message: 'only the configured mock worker can sign on-chain demo settlements',
+        });
+      }
+      try {
+        txSignature = await submitTaskVaultInstruction(
+          userCtx.connection,
+          settleWithReceiptInstruction({
+            taskCapability: taskPda,
+            escrow: new PublicKey(payment.escrowPda!),
+            paymentId,
+            worker: workerKeypair.publicKey,
+            owner: new PublicKey(task.owner),
+            resultHash: body.resultHash,
+          }),
+          workerKeypair,
+        );
+      } catch (error) {
+        req.log.error({ err: error, taskId, paymentId }, 'Task Vault settlement transaction failed');
+        return reply.status(502).send({ error: 'onchain_settlement_failed' });
+      }
+    }
 
-    userCtx.store.setPayment({ ...payment, status: 'settled', txSignature: body.txSignature }, { allowOverwrite: true });
+    userCtx.store.setPayment({ ...payment, status: 'settled', txSignature, isSimulated }, { allowOverwrite: true });
 
     const receiptRecord = {
       taskId,
@@ -731,8 +875,8 @@ const inFlightClaims = new Set<string>();
       amountLamports: payment.amountLamports,
       settledAt: now,
       receiptPda: receiptPda.toBase58(),
-      txSignature: body.txSignature,
-      isSimulated: body.isSimulated ?? !body.txSignature,
+      txSignature,
+      isSimulated,
     };
     userCtx.store.setReceipt(receiptRecord, { allowOverwrite: false });
 
@@ -751,14 +895,32 @@ const inFlightClaims = new Set<string>();
       isSimulated: receiptRecord.isSimulated,
     });
 
-    return { payment: { ...payment, status: 'settled', txSignature: body.txSignature }, receipt: receiptRecord };
+    return { payment: { ...payment, status: 'settled', txSignature, isSimulated }, receipt: receiptRecord };
   });
 
   app.post('/api/tasks/:taskId/revoke', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const { taskId } = req.params as { taskId: string };
+    const body = z.object({ txSignature: z.string().trim().min(32).optional() }).parse(req.body ?? {});
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.status === 'revoked') return { task };
+
+    if (task.isSimulated === false) {
+      if (!body.txSignature || !await hasConfirmedSignature(userCtx, body.txSignature)) {
+        return reply.status(409).send({ error: 'revoke_not_confirmed' });
+      }
+      const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+      const account = await userCtx.connection.getAccountInfo(taskPda, 'confirmed');
+      if (
+        !account
+        || !account.owner.equals(TASK_VAULT_PROGRAM_PUBKEY)
+        || account.data.length <= 136
+        || account.data[136] !== 2
+      ) {
+        return reply.status(409).send({ error: 'onchain_task_not_revoked' });
+      }
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const check = validateTaskTransition(task, { type: 'revoke' }, now);
@@ -773,11 +935,45 @@ const inFlightClaims = new Set<string>();
     return { task: updated };
   });
 
+  app.post('/api/tasks/:taskId/receipts/:paymentId/close', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
+    const body = z.object({ txSignature: z.string().trim().min(32) }).parse(req.body ?? {});
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.isSimulated !== false) return reply.status(409).send({ error: 'task_is_simulated' });
+
+    const receipt = userCtx.store.getReceipt(paymentId);
+    if (!receipt || receipt.taskId !== taskId) return reply.status(404).send({ error: 'receipt_not_found' });
+    if (receipt.isClosed) return { receipt };
+    if (!await hasConfirmedSignature(userCtx, body.txSignature)) {
+      return reply.status(409).send({ error: 'receipt_close_not_confirmed' });
+    }
+
+    const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+    const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
+    if (await userCtx.connection.getAccountInfo(receiptPda, 'confirmed')) {
+      return reply.status(409).send({ error: 'onchain_receipt_not_closed' });
+    }
+
+    const updatedReceipt = { ...receipt, isClosed: true, closeTxSignature: body.txSignature };
+    userCtx.store.setReceipt(updatedReceipt, { allowOverwrite: true });
+    userCtx.audit.record('task_receipt_rent_reclaimed', null, {
+      taskId,
+      paymentId,
+      receiptPda: receiptPda.toBase58(),
+      txSignature: body.txSignature,
+    });
+    return { receipt: updatedReceipt };
+  });
+
   app.post('/api/tasks/:taskId/refund', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const { taskId } = req.params as { taskId: string };
+    const body = z.object({ txSignature: z.string().trim().min(32).optional() }).parse(req.body ?? {});
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.isClosed) return { task, refundedLamports: Math.max(0, task.budgetLamports - task.spentLamports) };
 
     // Invariant: Reject refund and close if pending escrows exist
     const pending = userCtx.store.getPayments(taskId).filter((p) => p.status === 'held');
@@ -794,8 +990,23 @@ const inFlightClaims = new Set<string>();
       return reply.status(400).send({ error: 'refund_rejected', message: check.error });
     }
 
+    if (task.isSimulated === false) {
+      if (!body.txSignature || !await hasConfirmedSignature(userCtx, body.txSignature)) {
+        return reply.status(409).send({ error: 'refund_not_confirmed' });
+      }
+      const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+      const [vaultPda] = deriveVaultPda(taskPda);
+      const [taskAccount, vaultAccount] = await Promise.all([
+        userCtx.connection.getAccountInfo(taskPda, 'confirmed'),
+        userCtx.connection.getAccountInfo(vaultPda, 'confirmed'),
+      ]);
+      if (taskAccount || vaultAccount) {
+        return reply.status(409).send({ error: 'onchain_task_not_closed' });
+      }
+    }
+
     const remainingLamports = Math.max(0, task.budgetLamports - task.spentLamports);
-    const updated = { ...task, status: 'completed' as const };
+    const updated = { ...task, status: 'completed' as const, isClosed: true };
     userCtx.store.setTask(updated, { allowOverwrite: true });
 
     userCtx.audit.record('task_refunded_and_closed', null, {
@@ -815,7 +1026,7 @@ const inFlightClaims = new Set<string>();
 
   app.post('/api/tasks/mock-service/run', async (req) => {
     const body = MockServiceBody.parse(req.body);
-    const workerKeypair = Keypair.fromSeed(computeCanonicalSeed('NEXUS_DEFAULT_MOCK_WORKER_V1'));
+    const workerKeypair = getMockWorkerKeypair();
     const workerPubkey = workerKeypair.publicKey.toBase58();
 
     const requestHash = computeReceiptHash({

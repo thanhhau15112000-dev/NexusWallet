@@ -16,6 +16,7 @@ import {
   createAndFundTaskInstruction,
   executeTaskPaymentInstruction,
   settleWithReceiptInstruction,
+  closeReceiptInstruction,
   refundAndCloseInstruction,
   toHex,
 } from '@nexus/shared';
@@ -57,6 +58,7 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     const budgetLamports = 1 * LAMPORTS_PER_SOL; // 1 SOL
     const paymentCapLamports = 500_000_000; // 0.5 SOL
     const expiry = now + 3600;
+    const serviceId = 'weather-oracle-v1';
 
     const [taskCapPda] = deriveTaskCapabilityPda(owner.publicKey, taskId);
     const [vaultPda] = deriveVaultPda(taskCapPda);
@@ -68,6 +70,8 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
       taskId,
       budgetLamports,
       perPaymentCapLamports: paymentCapLamports,
+      allowedWorker: worker.publicKey,
+      allowedServiceId: serviceId,
       expiry,
     });
 
@@ -88,10 +92,39 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     // 3. Agent executes execute_task_payment on-chain to lock escrow
     const paymentId = 'pay-onchain-001';
     const paymentAmount = 300_000_000; // 0.3 SOL
-    const serviceId = 'weather-oracle-v1';
     const requestHash = createHash('sha256').update('get_temperature:HN').digest();
 
     const [escrowPda] = deriveEscrowPda(taskCapPda, paymentId);
+
+    const unauthorizedWorkerIx = executeTaskPaymentInstruction({
+      taskCapability: taskCapPda,
+      agentSigner: agent.publicKey,
+      worker: Keypair.generate().publicKey,
+      paymentId,
+      amountLamports: paymentAmount,
+      serviceId,
+      requestHash,
+    });
+    await expect(
+      sendAndConfirmTransaction(connection, new Transaction().add(unauthorizedWorkerIx), [agent], {
+        commitment: 'confirmed',
+      }),
+    ).rejects.toThrow();
+
+    const unauthorizedServiceIx = executeTaskPaymentInstruction({
+      taskCapability: taskCapPda,
+      agentSigner: agent.publicKey,
+      worker: worker.publicKey,
+      paymentId,
+      amountLamports: paymentAmount,
+      serviceId: 'different-service',
+      requestHash,
+    });
+    await expect(
+      sendAndConfirmTransaction(connection, new Transaction().add(unauthorizedServiceIx), [agent], {
+        commitment: 'confirmed',
+      }),
+    ).rejects.toThrow();
 
     const payIx = executeTaskPaymentInstruction({
       taskCapability: taskCapPda,
@@ -156,6 +189,34 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     const receiptAccount = await connection.getAccountInfo(receiptPda);
     expect(receiptAccount).not.toBeNull();
     expect(receiptAccount!.owner.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
+
+    const workerBalanceBeforeClose = await connection.getBalance(worker.publicKey);
+    const redirectedRentIx = closeReceiptInstruction({
+      taskCapability: taskCapPda,
+      receipt: receiptPda,
+      authority: worker.publicKey,
+      rentRecipient: owner.publicKey,
+    });
+    await expect(
+      sendAndConfirmTransaction(connection, new Transaction().add(redirectedRentIx), [worker], {
+        commitment: 'confirmed',
+      }),
+    ).rejects.toThrow();
+    expect(await connection.getAccountInfo(receiptPda)).not.toBeNull();
+
+    const closeReceiptIx = closeReceiptInstruction({
+      taskCapability: taskCapPda,
+      receipt: receiptPda,
+      authority: worker.publicKey,
+      rentRecipient: worker.publicKey,
+    });
+    const closeReceiptTx = new Transaction().add(closeReceiptIx);
+    const closeReceiptSig = await sendAndConfirmTransaction(connection, closeReceiptTx, [worker], {
+      commitment: 'confirmed',
+    });
+    expect(closeReceiptSig).toBeDefined();
+    expect(await connection.getAccountInfo(receiptPda)).toBeNull();
+    expect(await connection.getBalance(worker.publicKey)).toBeGreaterThan(workerBalanceBeforeClose);
 
     // Verify escrow account was closed (lamports == 0 and data zeroed)
     const closedEscrowAccount = await connection.getAccountInfo(escrowPda);
