@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ShieldCheck } from './icons.js';
+import { ShieldCheck, Wallet } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card, Mono, shorten } from './ui.js';
 import { useI18n } from '../i18n/context.js';
@@ -82,117 +82,121 @@ export function PolicyPanel(props: {
   };
 
   return (
-    <Card
-      title={dict.policy.title}
-      titleIcon={<ShieldCheck size={16} />}
-      className="panel-policy"
-      actions={<span className="version">v{policy.version}</span>}
-    >
-      <label className="field">
-        <span>{dict.policy.maxPerTx}</span>
-        <div className="input-with-suffix">
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={maxSol}
-            onChange={(e) => {
-              setMaxSol(e.target.value);
-              setDirty(true);
-            }}
-          />
-          <span>SOL</span>
-        </div>
-      </label>
+    <div className="page-stack">
+      <div className="split-grid policy-grid">
+        <Card
+          title={dict.overview.spendingLimits}
+          titleIcon={<ShieldCheck size={16} />}
+          actions={<span className="version">v{policy.version}</span>}
+        >
+          <label className="field">
+            <span>{dict.policy.maxPerTx}</span>
+            <div className="input-with-suffix">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={maxSol}
+                onChange={(e) => {
+                  setMaxSol(e.target.value);
+                  setDirty(true);
+                }}
+              />
+              <span>SOL</span>
+            </div>
+          </label>
 
-      <label className="field">
-        <span>{dict.policy.maxPerDay}</span>
-        <div className="input-with-suffix">
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder={dict.policy.unlimitedPlaceholder}
-            value={maxSolDay}
-            onChange={(e) => {
-              setMaxSolDay(e.target.value);
-              setDirty(true);
-            }}
-          />
-          <span>SOL</span>
-        </div>
-      </label>
+          <label className="field">
+            <span>{dict.policy.maxPerDay}</span>
+            <div className="input-with-suffix">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder={dict.policy.unlimitedPlaceholder}
+                value={maxSolDay}
+                onChange={(e) => {
+                  setMaxSolDay(e.target.value);
+                  setDirty(true);
+                }}
+              />
+              <span>SOL</span>
+            </div>
+          </label>
+        </Card>
 
-      <div className="field">
-        <div className="field-row">
-          <span>{dict.policy.recipients}</span>
-          <span className="count">{recipients.length}</span>
-        </div>
-        {recipients.length === 0 ? (
-          <p className="empty">{dict.policy.noRecipients}</p>
-        ) : (
-          <ul className="entry-list">
-            {recipients.map((entry) => (
-              <li key={entry.address}>
-                <div>
-                  <strong>{entry.label}</strong>
-                  <Mono title={entry.address}>{shorten(entry.address, 6)}</Mono>
-                </div>
-                <button
-                  type="button"
-                  className="link danger"
-                  onClick={() => {
-                    setRecipients(recipients.filter((r) => r.address !== entry.address));
-                    setDirty(true);
-                  }}
-                >
-                  {dict.policy.remove}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <Card
+          title={dict.policy.recipients}
+          titleIcon={<Wallet size={16} />}
+          actions={<span className="count-badge">{recipients.length}</span>}
+        >
+          {recipients.length === 0 ? (
+            <p className="empty">{dict.policy.noRecipients}</p>
+          ) : (
+            <ul className="entry-list">
+              {recipients.map((entry) => (
+                <li key={entry.address}>
+                  <div>
+                    <strong>{entry.label}</strong>
+                    <Mono title={entry.address}>{shorten(entry.address, 6)}</Mono>
+                  </div>
+                  <button
+                    type="button"
+                    className="link danger"
+                    onClick={() => {
+                      setRecipients(recipients.filter((r) => r.address !== entry.address));
+                      setDirty(true);
+                    }}
+                  >
+                    {dict.policy.remove}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="recipient-form">
+            <input
+              aria-label={dict.policy.namePlaceholder}
+              placeholder={dict.policy.namePlaceholder}
+              value={label}
+              onChange={(e) => setLabel(e.target.value.trim())}
+            />
+            <input
+              aria-label={dict.policy.addressPlaceholder}
+              placeholder={dict.policy.addressPlaceholder}
+              value={address}
+              onChange={(e) => setAddress(e.target.value.trim())}
+            />
+            <button
+              type="button"
+              disabled={!label || !address}
+              onClick={() => {
+                addEntry({ label, address });
+                setLabel('');
+                setAddress('');
+              }}
+            >
+              {dict.policy.addRecipient}
+            </button>
+          </div>
+          <button
+            type="button"
+            className="link"
+            disabled={!props.wallet}
+            onClick={() => props.wallet && addEntry({ label: 'my-wallet', address: props.wallet })}
+          >
+            {dict.policy.useOwnerWallet}
+          </button>
+        </Card>
       </div>
 
-      <div className="row">
-        <input
-          aria-label={dict.policy.namePlaceholder}
-          placeholder={dict.policy.namePlaceholder}
-          value={label}
-          onChange={(e) => setLabel(e.target.value.trim())}
-        />
-        <input
-          aria-label={dict.policy.addressPlaceholder}
-          placeholder={dict.policy.addressPlaceholder}
-          value={address}
-          onChange={(e) => setAddress(e.target.value.trim())}
-        />
-        <button
-          type="button"
-          onClick={() => {
-            addEntry({ label, address });
-            setLabel('');
-            setAddress('');
-          }}
-        >
-          {dict.policy.addRecipient}
-        </button>
-      </div>
-
-      <div className="row">
-        <button
-          type="button"
-          className="ghost"
-          disabled={!props.wallet}
-          onClick={() => props.wallet && addEntry({ label: 'my-wallet', address: props.wallet })}
-        >
-          {dict.policy.useOwnerWallet}
-        </button>
+      <div className={dirty ? 'save-bar is-dirty' : 'save-bar'}>
+        {dirty ? <span className="hint">{dict.policy.unsaved}</span> : null}
         <button type="button" className="primary" disabled={props.busy || !dirty} onClick={save}>
           {props.busy ? dict.policy.saving : dict.policy.save}
         </button>
       </div>
-      {dirty ? <p className="hint warn">{dict.policy.unsaved}</p> : null}
-    </Card>
+    </div>
   );
 }

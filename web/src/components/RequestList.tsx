@@ -4,7 +4,7 @@ import { LAMPORTS_PER_SOL, type PaymentRequest, type RequestStatus } from '@nexu
 import { Card, Empty, Mono, Pill, shorten } from './ui.js';
 import { useI18n } from '../i18n/context.js';
 
-const TONE: Record<RequestStatus, string> = {
+export const TONE: Record<RequestStatus, string> = {
   planned: 'neutral',
   auto_approved: 'ok',
   pending_approval: 'warn',
@@ -21,7 +21,7 @@ function verdictTone(verdict: string): string {
   return 'bad';
 }
 
-function describeAction(request: PaymentRequest): string {
+export function describeAction(request: PaymentRequest): string {
   const action = request.plan?.action;
   if (!action) return '-';
   switch (action.type) {

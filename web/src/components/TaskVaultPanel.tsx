@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  AlertTriangle,
-  ArrowRight,
   CheckCircle2,
   Clock,
   Coins,
@@ -10,7 +8,6 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Shield,
   XCircle,
 } from './icons.js';
 import {
@@ -443,40 +440,6 @@ export function TaskVaultPanel(props: {
 
   return (
     <div className="task-vault-container">
-      {/* Non-Custodial Architecture Notice Banner */}
-      <div className="vault-architecture-notice">
-        <div className="notice-icon">
-          <Shield size={24} />
-        </div>
-        <div className="notice-content">
-          <div className="notice-title">
-            <strong>{dict.taskVault.notice.title}</strong>
-            {detail?.task.txSignature ? (
-              <a
-                href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
-                target="_blank"
-                rel="noreferrer"
-                className="explorer-link-pill"
-              >
-                <Pill tone="ok">{interpolate(dict.taskVault.notice.onChainDevnet, { sig: shorten(detail.task.txSignature, 4) })}</Pill>
-              </a>
-            ) : detail?.task ? (
-              <Pill tone="neutral">{dict.taskVault.notice.offChainSimulated}</Pill>
-            ) : (
-              <Pill tone="neutral">{dict.taskVault.notice.engineTag}</Pill>
-            )}
-          </div>
-          <p>
-            {dict.taskVault.notice.desc}
-          </p>
-          <div className="notice-comparison">
-            <span className="contrast-tag legacy">{dict.taskVault.notice.legacyTag}</span>
-            <ArrowRight size={14} />
-            <span className="contrast-tag modern">{dict.taskVault.notice.modernTag}</span>
-          </div>
-        </div>
-      </div>
-
       <div className="vault-grid">
         {/* Left Column: Create Task & Task Selector */}
         <div className="vault-sidebar">
@@ -555,13 +518,13 @@ export function TaskVaultPanel(props: {
                 />
               </label>
 
-              <label className="checkbox-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: '8px 0' }}>
+              <label className="checkbox-row">
                 <input
                   type="checkbox"
                   checked={submitOnchain}
                   onChange={(e) => setSubmitOnchain(e.target.checked)}
                 />
-                <span style={{ fontSize: '0.82rem' }}>{dict.taskVault.create.broadcastOnChain}</span>
+                <span>{dict.taskVault.create.broadcastOnChain}</span>
               </label>
 
               <button
@@ -743,7 +706,7 @@ export function TaskVaultPanel(props: {
                         href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
                         target="_blank"
                         rel="noreferrer"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--c-accent)' }}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                       >
                         <Mono>{shorten(detail.task.txSignature, 8)}</Mono>
                         <ExternalLink size={12} />

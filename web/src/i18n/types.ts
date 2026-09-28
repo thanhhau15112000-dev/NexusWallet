@@ -10,19 +10,48 @@ export type TranslationDictionary = {
     audit: string;
     docs: string;
   };
+  nav: {
+    operate: string;
+    control: string;
+    resources: string;
+  };
+  pageDesc: {
+    wallet: string;
+    tasks: string;
+    commands: string;
+    policy: string;
+    approvals: string;
+    audit: string;
+    docs: string;
+  };
   topbar: {
     ready: string;
     offline: string;
     switchLanguage: string;
   };
-  settings: {
-    title: string;
-    language: string;
-    selectLanguage: string;
-    english: string;
-    vietnamese: string;
-    close: string;
-    logout: string;
+  overview: {
+    agentBalance: string;
+    ownerBalance: string;
+    spendingLimits: string;
+    pendingApprovals: string;
+    perTx: string;
+    perDay: string;
+    unlimited: string;
+    spent24h: string;
+    recipientsCount: string;
+    editPolicy: string;
+    review: string;
+    noPending: string;
+    agentControl: string;
+    agentActive: string;
+    activeDesc: string;
+    frozenDesc: string;
+    recentActivity: string;
+    viewAll: string;
+    colStatus: string;
+    colCommand: string;
+    colAction: string;
+    colTime: string;
   };
   boot: {
     serviceUnavailable: string;
@@ -53,16 +82,6 @@ export type TranslationDictionary = {
     agentId: string;
     rpcError: string;
     masterFunder: string;
-    claimSeed: string;
-    seedClaimed: string;
-    claimSeedTitle: string;
-    claimSeedDoneTitle: string;
-    deposit: string;
-    depositTitle: string;
-    airdrop: string;
-    airdropRequesting: string;
-    airdropTitle: string;
-    faucet: string;
     frozenStatus: string;
     freezeBtn: string;
     unfreezeBtn: string;
@@ -87,6 +106,7 @@ export type TranslationDictionary = {
     connectToViewBalance: string;
     loadingBalance: string;
     rpcError: string;
+    logout: string;
   };
   funding: {
     title: string;
@@ -127,6 +147,9 @@ export type TranslationDictionary = {
     approvalHint: string;
     deniedHint: string;
     noPresets: string;
+    desc: string;
+    presetsTitle: string;
+    recentTitle: string;
   };
   requests: {
     title: string;
@@ -158,7 +181,6 @@ export type TranslationDictionary = {
   };
   audit: {
     title: string;
-    showLog: string;
     ciphertext: string;
     noEntries: string;
   };
@@ -219,15 +241,6 @@ export type TranslationDictionary = {
     clipboardUnavailable: string;
   },
   taskVault: {
-    notice: {
-      title: string;
-      desc: string;
-      legacyTag: string;
-      modernTag: string;
-      onChainDevnet: string;
-      offChainSimulated: string;
-      engineTag: string;
-    };
     create: {
       title: string;
       taskId: string;

@@ -226,12 +226,12 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
               </li>
               <li>
                 <strong>Fund the agent.</strong> Claim the one-time 0.1 SOL seed or deposit from your wallet.{' '}
-                <TabLink tab="wallet" label="Wallet" ctx={ctx} />
+                <TabLink tab="wallet" label="Overview" ctx={ctx} />
               </li>
               <li>
                 <strong>Run a command.</strong> <code>Send 0.05 SOL to my-wallet</code> is inside the limit, so the
                 agent signs it and an Explorer link appears.{' '}
-                <TabLink tab="commands" label="Commands" ctx={ctx} />
+                <TabLink tab="commands" label="AI Commands" ctx={ctx} />
               </li>
               <li>
                 <strong>Try the other outcomes.</strong> <code>Send 0.5 SOL to my-wallet</code> is held for your
@@ -298,7 +298,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
               <Callout tone="note" title="Zero balance is fine for policy checks">
                 The policy decision does not depend on the balance. Only the on-chain transfer needs funds.
               </Callout>
-              <TabLink tab="wallet" label="Wallet" ctx={ctx} />
+              <TabLink tab="wallet" label="Overview" ctx={ctx} />
             </>
           ),
         },
@@ -405,9 +405,9 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
           title: 'Presets',
           body: (
             <p>
-              Once a recipient is allowlisted, the Commands tab shows three presets: one under the limit (Auto), one
-              above it (Approval), and one to an address that is never allowlisted (Denied). They are the fastest way
-              to see all three verdicts. <TabLink tab="commands" label="Commands" ctx={ctx} />
+              Once a recipient is allowlisted, the AI Commands page shows three presets: one under the limit (Auto),
+              one above it (Approval), and one to an address that is never allowlisted (Denied). They are the fastest
+              way to see all three verdicts. <TabLink tab="commands" label="AI Commands" ctx={ctx} />
             </p>
           ),
         },
@@ -557,7 +557,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
               <p>
                 The client connects to the agent&apos;s <code>/mcp</code> URL (Streamable HTTP) with your personal MCP
                 token as a bearer header. Nothing is installed on the client&apos;s machine: copy the entry for your
-                client from the MCP card on the <TabLink tab="wallet" label="Wallet" ctx={ctx} /> tab.
+                client from the MCP card on the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page.
               </p>
               <Callout tone="note" title="Where the URL points">
                 On a hosted dashboard the URL is the dashboard origin, so any machine can connect. When you run the
@@ -604,7 +604,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
               <Steps>
                 <li>
                   Sign in to this dashboard with your wallet, then open <em>Show my connection</em> in the MCP card on
-                  the <TabLink tab="wallet" label="Wallet" ctx={ctx} /> tab.
+                  the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page.
                 </li>
                 <li>
                   Pick your client and copy its entry. The card shows the token masked; <em>Copy</em> puts the full
@@ -741,7 +741,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 server reads it from the agent&apos;s data directory.
               </li>
               <li>
-                <em>Rotate token</em> in the MCP card on the Wallet tab replaces it. Clients connected by URL stop
+                <em>Rotate token</em> in the MCP card on the AI Commands page replaces it. Clients connected by URL stop
                 working until you copy their entry again. The local stdio bundle re-reads the file when the agent
                 rejects the old token, so it needs no restart; a token pinned with
                 {' '}<code>NEXUS_AGENT_TOKEN</code> is not re-read and must be updated by hand.
