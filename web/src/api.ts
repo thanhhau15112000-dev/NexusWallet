@@ -108,14 +108,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** Remote MCP connection for one owner: a URL plus the MCP token as a bearer header. */
 export type McpClientConfig = {
   owner: string;
-  bundlePath: string;
-  bundleBuilt: boolean;
-  buildCommand: string;
-  env: { NEXUS_API_URL: string; NEXUS_AGENT_TOKEN: string };
-  mcpServersJson: string;
+  url: string;
+  token: string;
+  claudeCode: string;
   codexToml: string;
+  antigravityJson: string;
+  claudeDesktopJson: string;
 };
 
 export const api = {

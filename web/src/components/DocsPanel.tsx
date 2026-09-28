@@ -550,18 +550,20 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
           body: (
             <>
               <p>
-                The nexusPay MCP server is a small local process that your AI client starts over stdio. Your client
-                is the planner: it calls a tool with a structured transfer, and the agent service runs it through the
-                same policy as a dashboard command. Inside the policy the agent signs; above the limit the request
-                waits for your approval here; off-allowlist recipients are denied.
+                Your AI client is the planner: it calls a tool with a structured transfer, and the agent service runs
+                it through the same policy as a dashboard command. Inside the policy the agent signs; above the limit
+                the request waits for your approval here; off-allowlist recipients are denied.
               </p>
               <p>
-                The server authenticates with a per-owner MCP token that the agent service creates when you sign in to
-                this dashboard. It finds the token on its own, so there is nothing secret to copy into a client config.
+                The client connects to the agent&apos;s <code>/mcp</code> URL (Streamable HTTP) with your personal MCP
+                token as a bearer header. Nothing is installed on the client&apos;s machine: copy the entry for your
+                client from the MCP card on the <TabLink tab="wallet" label="Wallet" ctx={ctx} /> tab.
               </p>
-              <Callout tone="warn" title="Local only">
-                The MCP server talks to an agent service on your own machine (<code>127.0.0.1</code>). It does not
-                connect to a hosted dashboard; hosted access is not implemented.
+              <Callout tone="note" title="Where the URL points">
+                On a hosted dashboard the URL is the dashboard origin, so any machine can connect. When you run the
+                stack yourself it is <code>http://127.0.0.1:8787/mcp</code>, reachable only from the same computer.
+                If you cloned the repository you can also use the local stdio bundle described under{' '}
+                <em>Set up from the repository</em>.
               </Callout>
             </>
           ),
@@ -595,10 +597,47 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
           ),
         },
         {
-          id: 'setup',
-          title: 'Set up',
+          id: 'connect',
+          title: 'Connect a client',
           body: (
             <>
+              <Steps>
+                <li>
+                  Sign in to this dashboard with your wallet, then open <em>Show my connection</em> in the MCP card on
+                  the <TabLink tab="wallet" label="Wallet" ctx={ctx} /> tab.
+                </li>
+                <li>
+                  Pick your client and copy its entry. The card shows the token masked; <em>Copy</em> puts the full
+                  value on the clipboard.
+                  <table className="docs-table">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Where the entry goes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Claude Code</td><td>Run the <code>claude mcp add --transport http …</code> command once.</td></tr>
+                      <tr><td>Codex</td><td><code>~/.codex/config.toml</code> (<code>url</code> + <code>http_headers</code>).</td></tr>
+                      <tr><td>Antigravity</td><td><code>~/.gemini/config/mcp_config.json</code> (<code>serverUrl</code> + <code>headers</code>).</td></tr>
+                      <tr><td>Claude Desktop</td><td><code>claude_desktop_config.json</code>, through the <code>mcp-remote</code> bridge (needs Node.js).</td></tr>
+                    </tbody>
+                  </table>
+                </li>
+                <li>
+                  Restart or reload the client, then ask it something like <em>&ldquo;Check my nexusPay wallet
+                  status&rdquo;</em>.
+                </li>
+              </Steps>
+            </>
+          ),
+        },
+        {
+          id: 'setup',
+          title: 'Set up from the repository',
+          body: (
+            <>
+              <p>If you run the stack yourself, the local stdio bundle needs no token at all:</p>
               <Steps>
                 <li>
                   Start the stack from the repository root. This also builds the MCP bundle at
@@ -686,8 +725,8 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 (<code>.bak</code>, or a timestamped <code>.bak-…</code> when one already exists). Add <code>--dry-run</code> to preview the entry first.
               </Callout>
               <p>
-                Fallback: copy the entry from <em>Connect an AI agent (MCP)</em> on the agent card, or run
-                {' '}<code>pnpm mcp:config</code>. <TabLink tab="wallet" label="Wallet" ctx={ctx} />
+                Fallback: run <code>pnpm mcp:config</code> for an entry with the absolute bundle path, or use the remote URL
+                from the MCP card (see <em>Connect a client</em>).
               </p>
             </>
           ),
@@ -702,8 +741,9 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 server reads it from the agent&apos;s data directory.
               </li>
               <li>
-                <em>Rotate token</em> on the agent card replaces it. When the agent rejects the old token, the MCP
-                server reads the file again and retries, so no restart is needed. A token pinned with
+                <em>Rotate token</em> in the MCP card on the Wallet tab replaces it. Clients connected by URL stop
+                working until you copy their entry again. The local stdio bundle re-reads the file when the agent
+                rejects the old token, so it needs no restart; a token pinned with
                 {' '}<code>NEXUS_AGENT_TOKEN</code> is not re-read and must be updated by hand.
               </li>
               <li>

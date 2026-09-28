@@ -29,6 +29,7 @@ import {
   type WalletChoice,
 } from './solanaWallets.js';
 import { AgentFundingPanel } from './components/AgentFundingPanel.js';
+import { McpConnectPanel } from './components/McpConnectPanel.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
@@ -604,6 +605,7 @@ export function App() {
               />
             }
           />
+          <McpConnectPanel />
           <AgentFundingPanel
             state={state}
             busy={Boolean(busy.airdrop || busy.seed || busy.deposit)}

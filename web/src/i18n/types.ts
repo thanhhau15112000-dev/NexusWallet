@@ -180,19 +180,35 @@ export type TranslationDictionary = {
   };
   mcp: {
     title: string;
-    loadFailed: string;
-    clipboardUnavailable: string;
-    bundleNotBuilt: string;
-    claudeDesc: string;
-    copyJson: string;
+    eyebrow: string;
+    pitch: string;
+    step1Title: string;
+    step1Desc: string;
+    reveal: string;
+    localOnlyNote: string;
+    hintClaudeCode: string;
+    hintCodex: string;
+    hintAntigravity: string;
+    hintClaudeDesktop: string;
+    step2Title: string;
+    step2Desc: string;
+    step3Title: string;
+    step3Prompt: string;
+    copy: string;
     copied: string;
-    codexDesc: string;
-    copyToml: string;
+    scopeTitle: string;
+    scopeStatus: string;
+    scopeRequests: string;
+    scopeTransfers: string;
+    scopeDenied: string;
+    tokenTitle: string;
     securityNote: string;
     rotateToken: string;
     rotating: string;
     loading: string;
-  };
+    loadFailed: string;
+    clipboardUnavailable: string;
+  },
   taskVault: {
     notice: {
       title: string;

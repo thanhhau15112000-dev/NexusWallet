@@ -2720,9 +2720,36 @@ pre {
   align-items: flex-start;
 }
 
+/* In the dashboard the caption flashes on each change, then fades so it never
+   sits over content; hovering the mascot brings it back. */
 .app-mascot .mascot-bubble {
   margin-left: 58px;
   border-bottom-left-radius: 4px;
+  animation: mascot-bubble-flash 3.6s ease forwards;
+}
+
+.app-mascot .mascot-figure {
+  pointer-events: auto;
+}
+
+.app-mascot:hover .mascot-bubble {
+  animation: none;
+  opacity: 1;
+  visibility: visible;
+}
+
+@keyframes mascot-bubble-flash {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 
 .boot-mascot {
@@ -2789,5 +2816,344 @@ pre {
 @media (prefers-reduced-motion: reduce) {
   .mascot-figure {
     animation: none;
+  }
+}
+
+/* MCP connect: the headline feature, a full-width card right under the wallet hero. */
+.mcp-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #c9e1d8;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #f1fff9 0%, #ffffff 65%);
+}
+
+.mcp-card-intro {
+  position: relative;
+  min-width: 0;
+  padding: 26px 28px;
+}
+
+.mcp-card-mascot {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  width: 104px;
+  height: 104px;
+}
+
+.mcp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #bcebdc;
+  border-radius: 999px;
+  background: #e3fff4;
+  padding: 3px 10px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mcp-card h2 {
+  margin: 12px 0 8px;
+  padding-right: 110px;
+  color: var(--wallet-ink);
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.mcp-pitch {
+  max-width: 60ch;
+  margin: 0 0 20px;
+  padding-right: 110px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.mcp-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: mcp-step;
+}
+
+.mcp-steps li {
+  position: relative;
+  min-width: 0;
+  padding-left: 38px;
+  counter-increment: mcp-step;
+}
+
+.mcp-steps li::before {
+  content: counter(mcp-step);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mcp-steps strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.mcp-steps p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mcp-steps .mcp-prompt {
+  display: inline-block;
+  margin-top: 8px;
+  border: 1px dashed #bcebdc;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 8px 12px;
+  color: var(--wallet-ink);
+  font-style: italic;
+}
+
+.mcp-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  border-radius: 7px;
+  background: var(--wallet-ink);
+  padding: 7px 7px 7px 14px;
+}
+
+.mcp-command code {
+  min-width: 0;
+  color: #bff5e0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.mcp-copy-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 6px 10px;
+  color: #e3fff4;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mcp-copy-btn:hover:not(:disabled),
+.mcp-copy-btn:active:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.mcp-steps .mcp-format-switch,
+.mcp-steps .mcp-code,
+.mcp-steps .mcp-reveal-btn {
+  margin-top: 10px;
+}
+
+.mcp-steps .mcp-warn {
+  margin-top: 8px;
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.mcp-card-manual {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 1px solid #dcefe7;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 26px 28px;
+}
+
+.mcp-card-manual h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.mcp-scope {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mcp-scope li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mcp-scope svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.mcp-scope li.is-denied {
+  color: var(--muted);
+}
+
+.mcp-scope li.is-denied svg {
+  color: var(--bad);
+}
+
+.mcp-card-manual .mcp-manual-title {
+  margin-top: 12px;
+  border-top: 1px solid #dcefe7;
+  padding-top: 18px;
+}
+
+.mcp-warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mcp-reveal-btn {
+  align-self: flex-start;
+  border-color: var(--accent);
+  background: #ffffff;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mcp-reveal-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #f1fff9;
+}
+
+.mcp-format-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 3px;
+  border: 1px solid #c9e1d8;
+  border-radius: 7px;
+  background: #f1fff9;
+  padding: 3px;
+}
+
+.mcp-format-switch button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 5px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mcp-format-switch button:hover:not(:disabled) {
+  background: #e3fff4;
+}
+
+.mcp-format-switch button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.mcp-code {
+  position: relative;
+}
+
+.mcp-code pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  border: 0;
+  border-radius: 7px;
+  background: var(--wallet-ink);
+  padding: 14px;
+  color: #d8fbef;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.mcp-code .mcp-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.mcp-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.mcp-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.mcp-card-manual button.link {
+  align-self: flex-start;
+}
+
+@media (max-width: 760px) {
+  .mcp-card {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-card-intro,
+  .mcp-card-manual {
+    padding: 20px;
+  }
+
+  .mcp-card-manual {
+    border-top: 1px solid #dcefe7;
+    border-left: 0;
+  }
+
+  .mcp-card-mascot {
+    top: 12px;
+    right: 12px;
+    width: 72px;
+    height: 72px;
+  }
+
+  .mcp-card h2,
+  .mcp-pitch {
+    padding-right: 76px;
   }
 }

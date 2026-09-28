@@ -31,7 +31,8 @@ export function Mascot(props: { pose: MascotPose; caption: string; className?: s
 
   return (
     <div className={props.className ? `mascot ${props.className}` : 'mascot'} aria-hidden="true">
-      <p className="mascot-bubble">{props.caption}</p>
+      {/* Keyed by caption so the flash animation replays whenever the message changes. */}
+      <p key={props.caption} className="mascot-bubble">{props.caption}</p>
       <img key={props.pose} className="mascot-figure" src={poseSrc(props.pose)} alt="" width={112} height={112} />
     </div>
   );
