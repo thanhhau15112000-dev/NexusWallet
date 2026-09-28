@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Send } from './icons.js';
+import { Command, Send } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card, Pill } from './ui.js';
 import { useI18n } from '../i18n/context.js';
@@ -48,7 +48,8 @@ export function ConsolePanel(props: {
   };
 
   return (
-    <Card title={dict.console.title} className="panel-command">
+    <Card title={dict.console.title} titleIcon={<Command size={16} />} className="panel-command">
+      <p className="card-desc">{dict.console.desc}</p>
       <form
         className="row"
         onSubmit={(e) => {
@@ -79,6 +80,7 @@ export function ConsolePanel(props: {
 
       {presets.length > 0 ? (
         <div className="presets">
+          <span className="section-label">{dict.console.presetsTitle}</span>
           {presets.map((preset) => (
             <button
               key={preset.text}
