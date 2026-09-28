@@ -6,7 +6,8 @@ import {
   ClipboardList,
   Command,
   Layers,
-  WalletCards,
+  LayoutGrid,
+  LogOut,
   ShieldCheck,
   Wallet as WalletIcon,
   X,
@@ -28,47 +29,38 @@ import {
   type ConnectedWallet,
   type WalletChoice,
 } from './solanaWallets.js';
-import { AgentFundingPanel } from './components/AgentFundingPanel.js';
 import { McpConnectPanel } from './components/McpConnectPanel.js';
-import { AgentPanel } from './components/AgentPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
 import { DocsPanel } from './components/DocsPanel.js';
+import { OverviewPanel } from './components/OverviewPanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
+import { RecentRequests } from './components/RecentRequests.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
-import { WalletPanel } from './components/WalletPanel.js';
-import { LanguageToggle, SettingsMenu } from './components/SettingsMenu.js';
-import { Mascot, type MascotPose } from './components/Mascot.js';
+import { LanguageToggle } from './components/SettingsMenu.js';
+import { Mascot } from './components/Mascot.js';
+import { Mono, Pill, shorten } from './components/ui.js';
 import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
 type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit' | 'docs';
 
-const FEATURE_TABS: Array<{
-  id: FeatureTab;
-  label: string;
-  icon: typeof WalletCards;
-}> = [
-  { id: 'wallet', label: 'Wallet', icon: WalletCards },
-  { id: 'tasks', label: 'Task Vault', icon: Layers },
-  { id: 'commands', label: 'Commands', icon: Command },
-  { id: 'policy', label: 'Policy', icon: ShieldCheck },
-  { id: 'approvals', label: 'Approvals', icon: CheckCircle2 },
-  { id: 'audit', label: 'Audit', icon: ClipboardList },
-  { id: 'docs', label: 'Docs', icon: BookOpen },
+type NavGroup = 'operate' | 'control' | 'resources';
+
+// Sidebar order; arrow keys move through this list top to bottom.
+const FEATURE_TABS: Array<{ id: FeatureTab; group: NavGroup; icon: typeof LayoutGrid }> = [
+  { id: 'wallet', group: 'operate', icon: LayoutGrid },
+  { id: 'commands', group: 'operate', icon: Command },
+  { id: 'approvals', group: 'operate', icon: CheckCircle2 },
+  { id: 'policy', group: 'control', icon: ShieldCheck },
+  { id: 'tasks', group: 'control', icon: Layers },
+  { id: 'audit', group: 'control', icon: ClipboardList },
+  { id: 'docs', group: 'resources', icon: BookOpen },
 ];
 
-const TAB_POSE: Record<FeatureTab, MascotPose> = {
-  wallet: 'wallet',
-  tasks: 'tasks',
-  commands: 'command',
-  policy: 'policy',
-  approvals: 'approved',
-  audit: 'audit',
-  docs: 'docs',
-};
+const NAV_GROUPS: NavGroup[] = ['operate', 'control', 'resources'];
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -115,7 +107,6 @@ export function App() {
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
   const [walletChoices, setWalletChoices] = useState<WalletChoice[]>([]);
   const [walletPickerOpen, setWalletPickerOpen] = useState(false);
-  const [ownerWalletSettingsOpen, setOwnerWalletSettingsOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -461,14 +452,15 @@ export function App() {
   const pendingApprovals = requests.filter((request) => request.status === 'pending_approval').length;
 
   const selectTabWithKeyboard = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
+    const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
     const nextIndex =
       event.key === 'Home'
         ? 0
         : event.key === 'End'
           ? FEATURE_TABS.length - 1
-          : (index + (event.key === 'ArrowRight' ? 1 : -1) + FEATURE_TABS.length) % FEATURE_TABS.length;
+          : (index + step + FEATURE_TABS.length) % FEATURE_TABS.length;
     const next = FEATURE_TABS[nextIndex];
     if (!next) return;
     setActiveTab(next.id);
@@ -522,181 +514,182 @@ export function App() {
     );
   }
 
-  // Mascot mirrors what is happening: service and action outcomes win over the open tab.
-  const working = Object.values(busy).some(Boolean) || approvingId !== null;
-  const [mascotPose, mascotCaption]: [MascotPose, string] = offline
-    ? ['sleep', dict.mascot.offline]
-    : toast?.tone === 'bad'
-      ? ['denied', dict.mascot.failed]
-      : toast?.tone === 'ok'
-        ? ['cheer', dict.mascot.success]
-        : working
-          ? ['think', dict.mascot.working]
-          : [TAB_POSE[activeTab], dict.mascot[activeTab]];
+  const boundToThisWallet = Boolean(wallet && state.owner === wallet);
+  const ownerRole = boundToThisWallet ? (
+    <Pill tone={state.isAdmin ? 'wallet' : 'ok'}>{state.isAdmin ? dict.wallet.admin : dict.wallet.owner}</Pill>
+  ) : state.owner ? (
+    <Pill tone="warn">{dict.wallet.bound} {shorten(state.owner, 4)}</Pill>
+  ) : (
+    <Pill tone="warn">{dict.wallet.unbound}</Pill>
+  );
+
+  const panel = (tab: FeatureTab, content: React.ReactNode) => (
+    <section
+      id={`feature-panel-${tab}`}
+      role="tabpanel"
+      aria-labelledby={`feature-tab-${tab}`}
+      className="tab-panel"
+      hidden={activeTab !== tab}
+    >
+      {content}
+    </section>
+  );
 
   return (
-    <main className="app">
-      <header className="topbar">
+    <div className="shell">
+      <aside className="sidebar">
         <div className="brand">
-          <img className="brand-logo" src="/brand/logo.svg" alt="" width={44} height={44} />
-          <div>
-            <h1>nexusPay</h1>
-          </div>
+          <img className="brand-logo" src="/brand/logo.svg" alt="" width={32} height={32} />
+          <span className="brand-name">nexusPay</span>
           <span className="brand-network-tag">{state.cluster}</span>
         </div>
-        <div className="topbar-right">
-          <div className={`service-state ${offline ? 'is-offline' : ''}`}>
-            <Activity size={15} aria-hidden="true" />
-            {offline ? dict.topbar.offline : dict.topbar.ready}
-          </div>
-          <LanguageToggle />
-          <SettingsMenu onLogout={() => void disconnect()} />
+
+        <nav className="side-nav" role="tablist" aria-orientation="vertical" aria-label="App features">
+          {NAV_GROUPS.map((group) => (
+            <div key={group} className="side-nav-group" role="presentation">
+              <span className="side-nav-heading" role="presentation">{dict.nav[group]}</span>
+              {FEATURE_TABS.filter((tab) => tab.group === group).map((tab) => {
+                const Icon = tab.icon;
+                const index = FEATURE_TABS.indexOf(tab);
+                const selected = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    id={`feature-tab-${tab.id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    aria-controls={`feature-panel-${tab.id}`}
+                    tabIndex={selected ? 0 : -1}
+                    className={`side-nav-item${selected ? ' is-active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                    onKeyDown={(event) => selectTabWithKeyboard(event, index)}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    <span>{dict.tabs[tab.id]}</span>
+                    {tab.id === 'approvals' && pendingApprovals > 0 ? (
+                      <span className="side-nav-badge">{pendingApprovals}</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        <div className="sidebar-owner">
+          {wallet ? (
+            <>
+              <div className="owner-row">
+                <span className="owner-avatar" aria-hidden="true">
+                  <WalletIcon size={16} />
+                </span>
+                <div className="owner-meta">
+                  <span className="owner-label">{dict.wallet.title}</span>
+                  <Mono title={wallet}>{shorten(wallet, 4)}</Mono>
+                </div>
+                {ownerRole}
+              </div>
+              <button type="button" className="sidebar-logout button-with-icon" onClick={() => void disconnect()}>
+                <LogOut size={14} aria-hidden="true" />
+                {authRequired ? dict.wallet.logout : dict.wallet.disconnect}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="primary"
+                disabled={!walletChoices.length || Boolean(busy.connect)}
+                onClick={() => setWalletPickerOpen(true)}
+              >
+                {busy.connect ? dict.wallet.connecting : dict.wallet.connectWallet}
+              </button>
+              {!walletChoices.length ? <span className="hint">{dict.wallet.installPhantom}</span> : null}
+            </>
+          )}
         </div>
-      </header>
+      </aside>
 
-      {offline ? <div className="banner bad">{interpolate(dict.walletModal.serviceUnavailable, { offline })}</div> : null}
+      <main className="main">
+        <header className="page-head">
+          <div className="page-title">
+            <h1>{dict.tabs[activeTab]}</h1>
+            <p>{dict.pageDesc[activeTab]}</p>
+          </div>
+          <div className="page-tools">
+            <span className={`service-state${offline ? ' is-offline' : ''}`}>
+              <Activity size={14} aria-hidden="true" />
+              {offline ? dict.topbar.offline : dict.topbar.ready}
+            </span>
+            <LanguageToggle />
+          </div>
+        </header>
 
-      <nav className="feature-tabs" role="tablist" aria-label="App features">
-        {FEATURE_TABS.map((tab, index) => {
-          const Icon = tab.icon;
-          const selected = activeTab === tab.id;
-          const count = tab.id === 'approvals' ? pendingApprovals : tab.id === 'audit' ? audit.length : null;
-          return (
-            <button
-              key={tab.id}
-              id={`feature-tab-${tab.id}`}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              aria-controls={`feature-panel-${tab.id}`}
-              tabIndex={selected ? 0 : -1}
-              className={`feature-tab${selected ? ' is-active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-              onKeyDown={(event) => selectTabWithKeyboard(event, index)}
-            >
-              <Icon size={15} aria-hidden="true" />
-              <span>{dict.tabs[tab.id] ?? tab.label}</span>
-              {count !== null ? <span className="feature-tab-count">{count}</span> : null}
-            </button>
-          );
-        })}
-      </nav>
+        {offline ? <div className="banner bad">{interpolate(dict.walletModal.serviceUnavailable, { offline })}</div> : null}
 
-      <section
-        id="feature-panel-wallet"
-        role="tabpanel"
-        aria-labelledby="feature-tab-wallet"
-        className="tab-panel"
-        hidden={activeTab !== 'wallet'}
-      >
-        <div className="workspace-grid">
-          <AgentPanel
+        {panel(
+          'wallet',
+          <OverviewPanel
             state={state}
-            ownerWalletSettingsOpen={ownerWalletSettingsOpen}
-            onToggleOwnerWalletSettings={() => setOwnerWalletSettingsOpen((open) => !open)}
-            onCloseOwnerWalletSettings={() => setOwnerWalletSettingsOpen(false)}
-            onRefresh={refresh}
-            onToast={setToast}
-            ownerWallet={
-              <WalletPanel
-                state={state}
-                settingsOpen={ownerWalletSettingsOpen}
-                wallet={wallet}
-                hasWallet={walletChoices.length > 0}
-                busy={Boolean(busy.connect)}
-                onConnect={() => setWalletPickerOpen(true)}
-                onDisconnect={() => void disconnect()}
-              />
-            }
-          />
-          <McpConnectPanel />
-          <AgentFundingPanel
-            state={state}
-            busy={Boolean(busy.airdrop || busy.seed || busy.deposit)}
+            wallet={wallet}
+            requests={requests}
+            fundingBusy={Boolean(busy.airdrop || busy.seed || busy.deposit)}
             onAirdrop={() => void airdrop()}
             onClaimSeed={() => void claimSeed()}
             onDeposit={(amount) => void deposit(amount)}
-          />
-        </div>
-      </section>
+            onRefresh={refresh}
+            onToast={setToast}
+            onOpenTab={setActiveTab}
+          />,
+        )}
 
-      <section
-        id="feature-panel-tasks"
-        role="tabpanel"
-        aria-labelledby="feature-tab-tasks"
-        className="tab-panel"
-        hidden={activeTab !== 'tasks'}
-      >
-        <TaskVaultPanel
-          owner={state.owner}
-          agentPubkey={state.agent.pubkey}
-          mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
-          rpcUrl={state.rpcUrl}
-          onToast={setToast}
-        />
-      </section>
+        {panel(
+          'commands',
+          <div className="page-stack">
+            <ConsolePanel state={state} busy={Boolean(busy.command)} onRun={runCommand} />
+            <RecentRequests
+              title={dict.console.recentTitle}
+              requests={requests}
+              limit={5}
+              onViewAll={() => setActiveTab('approvals')}
+            />
+            <McpConnectPanel />
+          </div>,
+        )}
 
-      <section
-        id="feature-panel-commands"
-        role="tabpanel"
-        aria-labelledby="feature-tab-commands"
-        className="tab-panel"
-        hidden={activeTab !== 'commands'}
-      >
-        <ConsolePanel state={state} busy={Boolean(busy.command)} onRun={runCommand} />
-      </section>
+        {panel(
+          'approvals',
+          <RequestList
+            requests={requests}
+            wallet={wallet}
+            owner={state.owner}
+            busyId={approvingId}
+            focusId={focusRequestId}
+            onApprove={(request) => void approve(request)}
+          />,
+        )}
 
-      <section
-        id="feature-panel-policy"
-        role="tabpanel"
-        aria-labelledby="feature-tab-policy"
-        className="tab-panel"
-        hidden={activeTab !== 'policy'}
-      >
-        <PolicyPanel
-          state={state}
-          wallet={wallet}
-          busy={Boolean(busy.policy)}
-          onSave={savePolicy}
-        />
-      </section>
+        {panel(
+          'policy',
+          <PolicyPanel state={state} wallet={wallet} busy={Boolean(busy.policy)} onSave={savePolicy} />,
+        )}
 
-      <section
-        id="feature-panel-approvals"
-        role="tabpanel"
-        aria-labelledby="feature-tab-approvals"
-        className="tab-panel"
-        hidden={activeTab !== 'approvals'}
-      >
-        <RequestList
-          requests={requests}
-          wallet={wallet}
-          owner={state.owner}
-          busyId={approvingId}
-          focusId={focusRequestId}
-          onApprove={(request) => void approve(request)}
-        />
-      </section>
+        {panel(
+          'tasks',
+          <TaskVaultPanel
+            owner={state.owner}
+            agentPubkey={state.agent.pubkey}
+            mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
+            rpcUrl={state.rpcUrl}
+            onToast={setToast}
+          />,
+        )}
 
-      <section
-        id="feature-panel-audit"
-        role="tabpanel"
-        aria-labelledby="feature-tab-audit"
-        className="tab-panel"
-        hidden={activeTab !== 'audit'}
-      >
-        <AuditPanel entries={audit} />
-      </section>
+        {panel('audit', <AuditPanel entries={audit} />)}
 
-      <section
-        id="feature-panel-docs"
-        role="tabpanel"
-        aria-labelledby="feature-tab-docs"
-        className="tab-panel"
-        hidden={activeTab !== 'docs'}
-      >
-        <DocsPanel onOpenTab={setActiveTab} />
-      </section>
+        {panel('docs', <DocsPanel onOpenTab={setActiveTab} />)}
+      </main>
 
       {walletPickerOpen ? (
         <div
@@ -730,9 +723,7 @@ export function App() {
         </div>
       ) : null}
 
-      <Mascot className="app-mascot" pose={mascotPose} caption={mascotCaption} />
-
-      {toast ? <div className={`toast ${toast.tone}`}>{toast.text}</div> : null}
-    </main>
+      {toast ? <div className={`toast ${toast.tone}`} role="status">{toast.text}</div> : null}
+    </div>
   );
 }

@@ -75,7 +75,6 @@ export function McpConnectPanel() {
   return (
     <section className="mcp-card" aria-labelledby="mcp-card-title">
       <div className="mcp-card-intro">
-        <img className="mcp-card-mascot" src="/brand/mascot-command.svg" alt="" width={104} height={104} />
         <span className="mcp-eyebrow">
           <Plug size={14} />
           {dict.mcp.eyebrow}
