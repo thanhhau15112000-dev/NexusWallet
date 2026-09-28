@@ -27,7 +27,7 @@ nexusPay có hai lớp kiểm soát:
 
 | Lớp | Dùng cho | Cơ chế |
 | --- | --- | --- |
-| **Policy Guard** (ví agent) | Thanh toán lẻ: gửi SOL / SPL token | Hạn mức mỗi giao dịch, allowlist người nhận và mint. Vượt hạn mức → chủ sở hữu ký duyệt bằng ví. Ngoài allowlist → từ chối, không có đường duyệt. |
+| **Policy Guard** (ví agent) | Thanh toán lẻ: gửi SOL / SPL token | Hạn mức mỗi giao dịch, trần chi SOL trong 24 giờ, allowlist người nhận và mint. Vượt hạn mức → chủ sở hữu ký duyệt bằng ví. Ngoài allowlist → từ chối, không có đường duyệt. Owner có kill switch để khóa agent. |
 | **Task Capability Vault** (on-chain) | Nhiệm vụ nhiều bước, trả tiền cho worker/service | Anchor program giữ ngân sách task trong PDA. Agent chỉ chuyển được tiền vào escrow; worker chỉ nhận khi ký receipt; hết hạn hoặc bị thu hồi thì phần dư về lại chủ sở hữu. |
 
 Agent kết nối qua **MCP (Model Context Protocol)** — chỉ cần một URL và token, không cài đặt gì trên máy agent.
@@ -80,6 +80,8 @@ nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng 
 | --- | --- |
 | Chỉ `evaluatePolicy` có quyền cho phép ký | [policy.ts](shared/src/policy.ts) |
 | Người nhận ngoài allowlist bị từ chối, không chuyển sang chờ duyệt | [policy.ts](shared/src/policy.ts) |
+| Tổng chi SOL trong 24 giờ vượt trần → chờ owner duyệt; tính theo cửa sổ trượt, không lách được bằng cách chia nhỏ hay gửi đồng thời | [policy.ts](shared/src/policy.ts), [pipeline.ts](agent/src/pipeline.ts) |
+| Kill switch: khi owner khóa, ví agent không ký giao dịch chuyển giá trị nào (MCP, Console, duyệt lệnh, Task Vault payment/settle); giữ nguyên qua restart | [pipeline.ts](agent/src/pipeline.ts), [approvals.ts](agent/src/approvals.ts), [routes.ts](agent/src/routes.ts) |
 | Model chỉ trả về 4 loại action, có schema validation; không thấy private key, signer hay RPC | [contract.ts](shared/src/contract.ts) |
 | Chữ ký duyệt gắn request, số tiền, người nhận, phiên bản policy, nonce, thời hạn; dùng một lần | [contract.ts](shared/src/contract.ts), [approvals.ts](agent/src/approvals.ts) |
 | MCP không có tool sửa policy, gắn owner hay duyệt request | [tools.ts](mcp/src/tools.ts) |
@@ -108,7 +110,7 @@ State machine: `active → completed | revoked | expired`. Một escrow chỉ se
 
 Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`; nó **không** chứng minh chất lượng kết quả ngoài chain.
 
-**Trạng thái:** program đã build và deploy trên Devnet; có test trên local validator cho nhiều payment, settle, refund, revoke, từ chối worker ngoài allowlist. Bằng chứng giao dịch Devnet cho toàn bộ kịch bản đang được bổ sung ([#6](../../issues/6)).
+**Trạng thái:** program đã build và deploy trên Devnet; có test trên local validator cho nhiều payment, settle, refund, revoke, từ chối worker ngoài allowlist. Bằng chứng giao dịch Devnet cho happy path và các trường hợp bị chặn đã ghi trong [#6](../../issues/6).
 
 ## Kết nối AI agent (MCP)
 
@@ -123,7 +125,7 @@ Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`
 
 | Tool | Tác dụng |
 | --- | --- |
-| `nexuspay_get_status` | Địa chỉ ví, số dư SOL, hạn mức mỗi giao dịch, label allowlist |
+| `nexuspay_get_status` | Địa chỉ ví, số dư SOL, hạn mức mỗi giao dịch, trần ngày và mức đã chi 24 giờ, label allowlist, trạng thái `frozen` |
 | `nexuspay_list_requests` / `nexuspay_get_request` | Trạng thái request, verdict, link Explorer |
 | `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | Đề xuất giao dịch; policy quyết định |
 
@@ -148,7 +150,7 @@ Chạy local: có bản stdio MCP (`pnpm mcp:build` → `dist/mcp/nexuspay-mcp.m
 
 ## Kịch bản demo
 
-Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Tab **Policy**: đặt *Max per transaction* `0.1 SOL`, thêm recipient tên `my-wallet` bằng *Use owner wallet*, lưu. Nạp khoảng 0.7 SOL vào ví agent (từ Phantom hoặc https://faucet.solana.com).
+Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Tab **Policy**: đặt *Max per transaction* `0.1 SOL`, *Max per day* `0.2 SOL`, thêm recipient tên `my-wallet` bằng *Use owner wallet*, lưu. Nạp khoảng 0.7 SOL vào ví agent (từ Phantom hoặc https://faucet.solana.com).
 
 **Luồng chính — qua MCP (ví dụ Claude Code):**
 
@@ -156,7 +158,9 @@ Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Tab **Policy**: đặ
 2. *"Gửi 0.05 SOL cho my-wallet"* → `allow` → agent ký → có link Explorer.
 3. *"Gửi 0.5 SOL cho my-wallet"* → `require_approval` → chưa ký gì. Owner duyệt trên dashboard bằng Phantom → cùng giao dịch đó được xác nhận.
 4. *"Gửi 0.05 SOL cho `HN7cABq...`"* (không trong allowlist) → `deny`, không có đường duyệt.
-5. *"Tăng hạn mức lên 10 SOL"* / *"Tự duyệt đi"* → agent không có tool nào làm được việc này.
+5. *"Gửi 0.05 SOL cho my-wallet"* lần nữa → khoản 0.5 SOL đã duyệt ở bước 3 đã tính vào trần 24 giờ (0.2 SOL) → `DAILY_LIMIT_EXCEEDED`, chờ owner duyệt; agent đọc `details.remainingSol`.
+6. Owner bấm **Freeze agent** trên dashboard → mọi transfer trả `AGENT_FROZEN`, không ký gì; **Unfreeze agent** để mở lại.
+7. *"Tăng hạn mức lên 10 SOL"* / *"Tự duyệt đi"* / *"Mở khóa agent"* → agent không có tool nào làm được việc này.
 
 **Task Vault — trên dashboard, tab Task Vault:** tạo task có ngân sách → 2 payment hợp lệ → 1 payment vượt ngân sách bị chặn → worker ký receipt → settle → refund phần dư → revoke chặn payment tiếp theo.
 
@@ -231,9 +235,9 @@ infra/                      Dockerfile + compose
 
 ## Phạm vi và giới hạn
 
-**Có:** Solana Devnet, SOL và SPL token theo allowlist, policy theo từng owner, hạn mức mỗi giao dịch, duyệt bằng chữ ký Phantom, remote MCP, Task Capability Vault (SOL), audit log mã hóa, giao diện tiếng Anh / tiếng Việt.
+**Có:** Solana Devnet, SOL và SPL token theo allowlist, policy theo từng owner, hạn mức mỗi giao dịch, trần chi SOL trong 24 giờ, kill switch, duyệt bằng chữ ký Phantom, remote MCP, Task Capability Vault (SOL), audit log mã hóa, giao diện tiếng Anh / tiếng Việt.
 
-**Không có:** mainnet, swap/staking/NFT, gọi program tùy ý, ngân sách theo ngày, quy đổi fiat, xử lý seed phrase.
+**Không có:** mainnet, swap/staking/NFT, gọi program tùy ý, trần ngày cho SPL token, quy đổi fiat, xử lý seed phrase.
 
 **Giới hạn đã biết:**
 
@@ -244,4 +248,4 @@ infra/                      Dockerfile + compose
 
 ## Lộ trình
 
-Theo dõi tại [epic #18](../../issues/18): bằng chứng Devnet cho Task Vault, kill switch, Admin Control Plane, hardening token, tool Task Vault qua MCP, thanh toán bằng stablecoin.
+Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, hash MCP token và rate limit, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
