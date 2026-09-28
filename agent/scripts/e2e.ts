@@ -2,10 +2,9 @@
  * Headless end-to-end check against a running agent service.
  *
  * It drives the three demo paths and the approval attack cases with a locally
- * generated ed25519 key standing in for Phantom. It binds that key as the agent
- * owner, so re-connect Phantom in the dashboard afterwards to take ownership
- * back. This is intentionally a local-demo-only flow; pin OWNER_PUBKEY for a
- * deployed instance.
+ * generated ed25519 key standing in for Phantom. It signs a wallet login
+ * challenge with that key and works inside that key's own tenant, so it needs
+ * ALLOWED_OWNERS to be empty or to include the key (set E2E_OWNER_SECRET).
  *
  *   pnpm --filter @nexus/agent e2e
  */
@@ -23,6 +22,7 @@ const owner = configuredOwnerSecret
 const ownerPubkey = bs58.encode(owner.publicKey);
 
 let failures = 0;
+let sessionCookie = '';
 
 function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures += 1;
@@ -37,7 +37,7 @@ async function call<T>(
     ...init,
     headers: {
       'content-type': 'application/json',
-      ...(path !== '/api/health' ? { 'x-owner-pubkey': ownerPubkey } : {}),
+      ...(sessionCookie ? { cookie: sessionCookie } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -61,6 +61,20 @@ async function main(): Promise<void> {
   const health = await call<{ ok: boolean; cluster: string }>('/api/health');
   if (health.status !== 200) throw new Error(`agent service not reachable at ${BASE}`);
   console.log(`agent: ${BASE} cluster=${health.body.cluster}\n`);
+
+  // Every /api route requires a wallet-signed session.
+  const challenge = await call<{ challengeId: string; message: string }>('/api/auth/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ pubkey: ownerPubkey }),
+  });
+  if (challenge.status !== 200) throw new Error(`login challenge rejected: ${challenge.body.error ?? challenge.status}`);
+  const login = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ challengeId: challenge.body.challengeId, pubkey: ownerPubkey, signature: sign(challenge.body.message) }),
+  });
+  sessionCookie = (login.headers.get('set-cookie') ?? '').split(';', 1)[0] ?? '';
+  if (login.status !== 200 || !sessionCookie) throw new Error(`login failed: ${login.status}`);
 
   await call('/api/owner', { method: 'POST', body: JSON.stringify({ pubkey: ownerPubkey }) });
 

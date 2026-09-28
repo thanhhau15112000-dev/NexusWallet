@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { LAMPORTS_PER_SOL } from '@nexus/shared';
-import { Bot, Settings, ShieldCheck, Wallet } from 'lucide-react';
+import { Bot, Settings, ShieldCheck, Wallet } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { WalletSettingsPopover } from './WalletSettingsPopover.js';
+import { useI18n } from '../i18n/context.js';
 
 export function AgentPanel(props: {
   state: AgentState;
@@ -13,6 +14,7 @@ export function AgentPanel(props: {
   onToggleOwnerWalletSettings: () => void;
   onCloseOwnerWalletSettings: () => void;
 }) {
+  const { dict } = useI18n();
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const { agent } = props.state;
   const balance = agent.lamports === null ? null : agent.lamports / LAMPORTS_PER_SOL;
@@ -47,7 +49,7 @@ export function AgentPanel(props: {
 
   return (
     <Card
-      title="Agent wallet"
+      title={dict.agent.title}
       titleIcon={<Bot size={16} />}
       titleAction={
         <button
@@ -69,12 +71,12 @@ export function AgentPanel(props: {
         <div className="wallet-hero-header-actions">
           <div className="owner-wallet-heading">
             <Wallet size={15} aria-hidden="true" />
-            <span>Owner wallet</span>
+            <span>{dict.wallet.title}</span>
           </div>
           {props.state.isAdmin ? (
             <Pill tone="wallet">
               <ShieldCheck size={12} style={{ display: 'inline', marginRight: 4 }} />
-              Admin
+              {dict.wallet.admin}
             </Pill>
           ) : null}
           <button
@@ -96,9 +98,9 @@ export function AgentPanel(props: {
       <div className="wallet-hero-content">
         <div className="wallet-hero-main">
           <div className="wallet-balance-group">
-            <span className="wallet-label">Available balance</span>
+            <span className="wallet-label">{dict.agent.availableBalance}</span>
             {agent.rpcError ? (
-              <Pill tone="bad">RPC error</Pill>
+              <Pill tone="bad">{dict.agent.rpcError}</Pill>
             ) : (
               <div className="wallet-value">
                 <strong className={funded ? 'balance' : 'balance is-low'}>
@@ -110,7 +112,7 @@ export function AgentPanel(props: {
           </div>
           {props.state.isAdmin && funderBalance !== null ? (
             <div className="master-funder-balance">
-              Master Funder: <strong>{funderBalance.toFixed(4)} SOL</strong>
+              {dict.agent.masterFunder}: <strong>{funderBalance.toFixed(4)} SOL</strong>
             </div>
           ) : null}
           <WalletSettingsPopover
@@ -121,16 +123,16 @@ export function AgentPanel(props: {
           >
             <div className="agent-meta">
               <div>
-                <span className="wallet-label">Dedicated Agent Address</span>
+                <span className="wallet-label">{dict.agent.dedicatedAddress}</span>
                 <div className="address-line">
                   <a href={agent.explorerUrl} target="_blank" rel="noreferrer" className="mono">
                     {shorten(agent.pubkey, 6)}
                   </a>
-                  <CopyAddressButton value={agent.pubkey} label="Copy agent wallet address" />
+                  <CopyAddressButton value={agent.pubkey} label={dict.agent.copyAddress} />
                 </div>
               </div>
               <div>
-                <span className="wallet-label">Agent ID</span>
+                <span className="wallet-label">{dict.agent.agentId}</span>
                 <Mono title={agent.agentId}>{agent.agentId}</Mono>
               </div>
             </div>

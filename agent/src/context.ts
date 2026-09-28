@@ -23,6 +23,8 @@ export type AppContext = {
   sessions: SessionManager;
   masterFunder?: Keypair;
   masterFunderPubkey?: string;
+  /** Demo worker/service signer shared by all tenants; stored encrypted in the data dir, never exposed. */
+  mockWorker?: Keypair;
   getUserContext?: (ownerPubkey: string) => AppContext;
 };
 
@@ -36,9 +38,19 @@ export function createContext(config: AppConfig): AppContext {
     passphrase: config.AGENT_KEYSTORE_PASSPHRASE,
   });
 
+  // Per-deployment key so the demo worker cannot be derived from source.
+  const mockWorkerKey = loadOrCreateAgentKey(resolve(config.dataDir, 'mock-worker-keystore.json'), config.AGENT_KEYSTORE_PASSPHRASE);
+  const mockWorker = keypairFromSecret(mockWorkerKey.secretKey);
+
   const connection = createConnection(config.SOLANA_RPC_URL);
   const model = createModelPipeline(config);
-  const sessions = new SessionManager(config.allowedOwners, config.AUTH_SESSION_TTL_SECONDS, config.adminPubkey);
+  // Persisted so an agent restart (including tsx watch reloads) does not log every owner out.
+  const sessions = new SessionManager(
+    config.allowedOwners,
+    config.AUTH_SESSION_TTL_SECONDS,
+    config.adminPubkey,
+    resolve(config.dataDir, 'sessions.json'),
+  );
 
   const userContexts = new Map<string, AppContext>();
 
@@ -89,6 +101,7 @@ export function createContext(config: AppConfig): AppContext {
       sessions,
       masterFunder: funder.keypair,
       masterFunderPubkey: funder.pubkey,
+      mockWorker,
       getUserContext,
     };
 

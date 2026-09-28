@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { randomNonce, verifyMessageSignature } from './crypto.js';
 
 type Challenge = {
@@ -29,10 +31,13 @@ export class SessionManager {
     allowedOwners: string | string[] = [],
     private readonly ttlSeconds: number = 1800,
     private readonly adminPubkey?: string,
+    /** Optional file that keeps sessions across agent restarts; stores token hashes only. */
+    private readonly storePath?: string,
   ) {
     this.allowedOwners = Array.isArray(allowedOwners)
       ? allowedOwners
       : allowedOwners ? [allowedOwners] : [];
+    this.load();
   }
 
   createChallenge(pubkey: string, origin: string): { challengeId: string; message: string; expiresAt: string } | null {
@@ -88,6 +93,7 @@ export class SessionManager {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = Date.now() + this.ttlSeconds * 1000;
     this.sessions.set(tokenHash(token), { owner: input.pubkey, expiresAt });
+    this.persist();
     return { token, expiresAt: new Date(expiresAt).toISOString(), owner: input.pubkey };
   }
 
@@ -100,7 +106,7 @@ export class SessionManager {
   }
 
   revoke(token: string): void {
-    this.sessions.delete(tokenHash(token));
+    if (this.sessions.delete(tokenHash(token))) this.persist();
   }
 
   private prune(): void {
@@ -108,8 +114,33 @@ export class SessionManager {
     for (const [id, challenge] of this.challenges) {
       if (challenge.expiresAt <= now) this.challenges.delete(id);
     }
+    let removed = false;
     for (const [hash, session] of this.sessions) {
-      if (session.expiresAt <= now) this.sessions.delete(hash);
+      if (session.expiresAt <= now) removed = this.sessions.delete(hash) || removed;
     }
+    if (removed) this.persist();
+  }
+
+  private load(): void {
+    if (!this.storePath || !existsSync(this.storePath)) return;
+    try {
+      const stored = JSON.parse(readFileSync(this.storePath, 'utf8')) as Record<string, Session>;
+      const now = Date.now();
+      for (const [hash, session] of Object.entries(stored)) {
+        if (/^[0-9a-f]{64}$/.test(hash) && typeof session?.owner === 'string' && session.expiresAt > now) {
+          this.sessions.set(hash, { owner: session.owner, expiresAt: session.expiresAt });
+        }
+      }
+    } catch {
+      // A corrupt session file only costs a re-login; start empty.
+    }
+  }
+
+  private persist(): void {
+    if (!this.storePath) return;
+    mkdirSync(dirname(this.storePath), { recursive: true });
+    const tmp = `${this.storePath}.tmp`;
+    writeFileSync(tmp, JSON.stringify(Object.fromEntries(this.sessions)), { mode: 0o600 });
+    renameSync(tmp, this.storePath);
   }
 }

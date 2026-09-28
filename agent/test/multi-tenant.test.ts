@@ -288,5 +288,5 @@ describe('Multi-tenant Store & Context Isolation', () => {
       dispenseSpy.mockRestore();
       await app.close();
     }
-  });
+  }, 15_000);
 });

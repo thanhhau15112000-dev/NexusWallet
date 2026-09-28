@@ -1,6 +1,17 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { defaultPolicy, PolicySchema, type PaymentRequest, type Policy } from '@nexus/shared';
+import {
+  defaultPolicy,
+  PolicySchema,
+  TaskCapabilityRecordSchema,
+  TaskPaymentRecordSchema,
+  TaskReceiptRecordSchema,
+  type PaymentRequest,
+  type Policy,
+  type TaskCapabilityRecord,
+  type TaskPaymentRecord,
+  type TaskReceiptRecord,
+} from '@nexus/shared';
 import { z } from 'zod';
 
 const PendingInitialFundingSchema = z.object({
@@ -22,6 +33,9 @@ export type StoreData = {
   idempotency: Record<string, string>;
   claimedInitialFunding?: boolean;
   pendingInitialFunding?: PendingInitialFunding;
+  tasks?: Record<string, TaskCapabilityRecord>;
+  payments?: Record<string, TaskPaymentRecord>;
+  receipts?: Record<string, TaskReceiptRecord>;
 };
 
 /**
@@ -54,6 +68,10 @@ export class Store {
         pendingInitialFunding: claimedInitialFunding || raw.pendingInitialFunding === undefined
           ? undefined
           : PendingInitialFundingSchema.parse(raw.pendingInitialFunding),
+        tasks: raw.tasks ?? {},
+        // Older state files keyed these by paymentId alone; re-key per task on load.
+        payments: rekeyByTask(raw.payments ?? {}),
+        receipts: rekeyByTask(raw.receipts ?? {}),
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -71,6 +89,9 @@ export class Store {
         requests: [],
         idempotency: {},
         claimedInitialFunding: false,
+        tasks: {},
+        payments: {},
+        receipts: {},
       };
     }
   }
@@ -167,4 +188,68 @@ export class Store {
     this.flush();
     return next;
   }
+
+  getTasks(): TaskCapabilityRecord[] {
+    return Object.values(this.data.tasks ?? {});
+  }
+
+  getTask(taskId: string): TaskCapabilityRecord | undefined {
+    return this.data.tasks?.[taskId];
+  }
+
+  setTask(task: TaskCapabilityRecord, options?: { allowOverwrite?: boolean }): void {
+    if (!this.data.tasks) this.data.tasks = {};
+    if (this.data.tasks[task.taskId] && !options?.allowOverwrite) {
+      throw new Error(`Task with id '${task.taskId}' already exists`);
+    }
+    this.data.tasks[task.taskId] = TaskCapabilityRecordSchema.parse(task);
+    this.flush();
+  }
+
+  getPayments(taskId?: string): TaskPaymentRecord[] {
+    const all = Object.values(this.data.payments ?? {});
+    return taskId ? all.filter((p) => p.taskId === taskId) : all;
+  }
+
+  getPayment(taskId: string, paymentId: string): TaskPaymentRecord | undefined {
+    return this.data.payments?.[taskRecordKey(taskId, paymentId)];
+  }
+
+  setPayment(payment: TaskPaymentRecord, options?: { allowOverwrite?: boolean }): void {
+    if (!this.data.payments) this.data.payments = {};
+    const key = taskRecordKey(payment.taskId, payment.paymentId);
+    if (this.data.payments[key] && !options?.allowOverwrite) {
+      throw new Error(`Payment with id '${payment.paymentId}' already exists`);
+    }
+    this.data.payments[key] = TaskPaymentRecordSchema.parse(payment);
+    this.flush();
+  }
+
+  getReceipts(taskId?: string): TaskReceiptRecord[] {
+    const all = Object.values(this.data.receipts ?? {});
+    return taskId ? all.filter((r) => r.taskId === taskId) : all;
+  }
+
+  getReceipt(taskId: string, paymentId: string): TaskReceiptRecord | undefined {
+    return this.data.receipts?.[taskRecordKey(taskId, paymentId)];
+  }
+
+  setReceipt(receipt: TaskReceiptRecord, options?: { allowOverwrite?: boolean }): void {
+    if (!this.data.receipts) this.data.receipts = {};
+    const key = taskRecordKey(receipt.taskId, receipt.paymentId);
+    if (this.data.receipts[key] && !options?.allowOverwrite) {
+      throw new Error(`Receipt for payment '${receipt.paymentId}' already exists`);
+    }
+    this.data.receipts[key] = TaskReceiptRecordSchema.parse(receipt);
+    this.flush();
+  }
+}
+
+// Payment ids are scoped per task on-chain (escrow/receipt PDA seeds), so records are too.
+function taskRecordKey(taskId: string, paymentId: string): string {
+  return JSON.stringify([taskId, paymentId]);
+}
+
+function rekeyByTask<T extends { taskId: string; paymentId: string }>(records: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.values(records).map((record) => [taskRecordKey(record.taskId, record.paymentId), record]));
 }

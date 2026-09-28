@@ -10,12 +10,15 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.json ./
 COPY shared/package.json shared/
 COPY agent/package.json agent/
+COPY mcp/package.json mcp/
 COPY web/package.json web/
 
 RUN pnpm install --frozen-lockfile
 
 COPY shared ./shared
 COPY agent ./agent
+# The agent serves the remote MCP endpoint (/mcp) with the tools from the mcp workspace.
+COPY mcp ./mcp
 COPY web ./web
 
 RUN pnpm build

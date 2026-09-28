@@ -30,7 +30,7 @@ const EnvSchema = z.object({
   /** `auto` uses a provider when its key is set, `mock` never calls one. */
   MODEL_MODE: z.enum(['auto', 'mock']).default('auto'),
   GEMINI_API_KEY: z.string().trim().default(''),
-  GEMINI_MODEL: z.string().trim().default('gemini-2.5-flash'),
+  GEMINI_MODEL: z.string().trim().default('gemini-3.8-flash'),
   GEMINI_THINKING_BUDGET: z.coerce.number().int().min(0).default(2048),
   GROQ_API_KEY: z.string().trim().default(''),
   GROQ_MODEL: z.string().trim().default('openai/gpt-oss-120b'),
