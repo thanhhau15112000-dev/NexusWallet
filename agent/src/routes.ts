@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 import {
   AllowlistEntrySchema,
@@ -40,8 +39,7 @@ import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
 import { loadOrCreateMcpToken, mcpOwnerFor } from './mcp-token.js';
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+import { registerRemoteMcp, remoteMcpUrl } from './mcp-remote.js';
 
 function getMockWorkerKeypair(ctx: AppContext): Keypair {
   if (!ctx.mockWorker) throw new Error('mock worker keystore is not loaded');
@@ -156,8 +154,8 @@ function resolveUserContext(ctx: AppContext, req: FastifyRequest): AppContext {
   if (session?.owner && ctx.getUserContext) {
     return ctx.getUserContext(session.owner);
   }
-  // Local MCP server: a tenant token, accepted only for its read/propose routes.
-  const mcpOwner = ctx.config.authRequired ? null : mcpOwnerFor(ctx.config.usersDir, req);
+  // MCP clients (remote /mcp or the local stdio bundle): a tenant token, accepted only for its read/propose routes.
+  const mcpOwner = mcpOwnerFor(ctx.config.usersDir, req);
   if (mcpOwner && ctx.getUserContext) {
     return ctx.getUserContext(mcpOwner);
   }
@@ -168,24 +166,45 @@ function resolveUserContext(ctx: AppContext, req: FastifyRequest): AppContext {
   return ctx;
 }
 
-/** Ready-to-paste MCP client entries for one tenant; the bundle is started with plain node. */
+/**
+ * Ready-to-paste entries for the remote MCP endpoint: a URL plus the tenant token as a bearer
+ * header, so nothing has to be installed or cloned on the client's machine.
+ */
 function mcpClientConfig(ctx: AppContext, owner: string, rotate: boolean) {
   const token = loadOrCreateMcpToken(ctx.config.usersDir, owner, { rotate });
-  // Forward slashes work for node on Windows and need no escaping in JSON or TOML.
-  const bundlePath = resolve(REPO_ROOT, 'dist/mcp/nexuspay-mcp.mjs').replaceAll('\\', '/');
-  const env = {
-    NEXUS_API_URL: `http://127.0.0.1:${ctx.config.PORT}`,
-    NEXUS_AGENT_TOKEN: token,
+  const url = remoteMcpUrl(ctx.config);
+  const authorization = `Bearer ${token}`;
+  return {
+    owner,
+    url,
+    token,
+    claudeCode: `claude mcp add --transport http nexuspay ${url} --header "Authorization: ${authorization}"`,
+    codexToml: [
+      '[mcp_servers.nexuspay]',
+      `url = ${JSON.stringify(url)}`,
+      `http_headers = { Authorization = ${JSON.stringify(authorization)} }`,
+      'tool_timeout_sec = 90',
+    ].join('\n'),
+    antigravityJson: JSON.stringify(
+      { mcpServers: { nexuspay: { serverUrl: url, headers: { Authorization: authorization } } } },
+      null,
+      2,
+    ),
+    // Claude Desktop's config file only starts local processes, so the mcp-remote bridge carries the header.
+    claudeDesktopJson: JSON.stringify(
+      {
+        mcpServers: {
+          nexuspay: {
+            command: 'npx',
+            args: ['-y', 'mcp-remote', url, '--header', 'Authorization:${AUTH_HEADER}'],
+            env: { AUTH_HEADER: authorization },
+          },
+        },
+      },
+      null,
+      2,
+    ),
   };
-  const mcpServersJson = JSON.stringify({ mcpServers: { nexuspay: { command: 'node', args: [bundlePath], env } } }, null, 2);
-  const codexToml = [
-    '[mcp_servers.nexuspay]',
-    'command = "node"',
-    `args = [${JSON.stringify(bundlePath)}]`,
-    `env = { NEXUS_API_URL = ${JSON.stringify(env.NEXUS_API_URL)}, NEXUS_AGENT_TOKEN = ${JSON.stringify(token)} }`,
-    'tool_timeout_sec = 90',
-  ].join('\n');
-  return { owner, bundlePath, bundleBuilt: existsSync(bundlePath), buildCommand: 'pnpm mcp:build', env, mcpServersJson, codexToml };
 }
 
 function publicPolicy(policy: Policy) {
@@ -227,6 +246,7 @@ function actionResponseHeaders(reply: FastifyReply): FastifyReply {
 }
 
 export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+  registerRemoteMcp(app, ctx);
   app.get('/.well-known/actions.json', async (_req, reply) => {
     actionResponseHeaders(reply);
     return {
@@ -241,9 +261,6 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   app.get('/api/mcp/config', async (req, reply) => {
     const session = getSession(ctx, req);
     if (!session?.owner) return reply.status(401).send({ error: 'authentication_required' });
-    if (ctx.config.authRequired) {
-      return reply.status(409).send({ error: 'mcp_local_only', message: 'the MCP server connects to a local agent service only' });
-    }
     reply.header('cache-control', 'no-store');
     return mcpClientConfig(ctx, session.owner, false);
   });
@@ -251,9 +268,6 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   app.post('/api/mcp/token/rotate', async (req, reply) => {
     const session = getSession(ctx, req);
     if (!session?.owner) return reply.status(401).send({ error: 'authentication_required' });
-    if (ctx.config.authRequired) {
-      return reply.status(409).send({ error: 'mcp_local_only', message: 'the MCP server connects to a local agent service only' });
-    }
     reply.header('cache-control', 'no-store');
     return mcpClientConfig(ctx, session.owner, true);
   });

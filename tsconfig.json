@@ -17,7 +17,8 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@nexus/shared": ["shared/src/index.ts"]
+      "@nexus/shared": ["shared/src/index.ts"],
+      "@nexus/mcp/remote": ["mcp/src/remote.ts"]
     }
   },
   "include": ["shared/src", "agent/src", "agent/test", "agent/scripts", "mcp/src", "mcp/test", "web/src"]

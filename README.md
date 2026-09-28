@@ -195,25 +195,39 @@ owner's Phantom approval in the dashboard, and off-allowlist recipients are deni
 
 There is no tool to change the policy, bind an owner or approve a request.
 
-This build is **local only**: it accepts a loopback `NEXUS_API_URL` and authenticates with
+The stdio bundle is **local only**: it accepts a loopback `NEXUS_API_URL` and authenticates with
 `NEXUS_AGENT_TOKEN`, a per-owner token the agent service issues (`nxp_<owner>_<secret>`, stored in
 `agent/data/users/<owner>/mcp-token`). The MCP server sends it as `Authorization: Bearer`. The token
 only reaches four routes (status, request list, request detail, intents); policy, approvals, owner
-binding and funding still need the owner's wallet session. Hosted access is not implemented.
+binding and funding still need the owner's wallet session. To reach a hosted agent, connect by URL
+instead (below).
 
 **Security note on token storage:** The token is stored in plaintext on disk under
 `agent/data/users/<owner>/mcp-token`, sharing the same trust boundary as the agent's encrypted keystore.
 While POSIX permissions (`0600`) are applied on Unix systems, mode `0600` has no effect on Windows,
 where file access relies on Windows ACLs.
 
-### Connect an agent (Zero-Config)
+### Connect an agent by URL (no install)
+
+The agent service exposes a remote MCP endpoint at `/mcp` (Streamable HTTP, stateless). An AI client connects with that URL and the owner's MCP token as `Authorization: Bearer <token>`; nothing is cloned or installed on the client's machine. Sign in to the dashboard, open **Show my connection** in the **Connect an AI agent (MCP)** card on the Wallet tab, and copy the entry for your client:
+
+| Client | Entry |
+| --- | --- |
+| Claude Code | `claude mcp add --transport http nexuspay <url> --header "Authorization: Bearer <token>"` |
+| Codex | `[mcp_servers.nexuspay]` with `url` and `http_headers` in `~/.codex/config.toml` |
+| Antigravity | `serverUrl` and `headers` in `~/.gemini/config/mcp_config.json` |
+| Claude Desktop | `npx -y mcp-remote <url> --header Authorization:${AUTH_HEADER}` in `claude_desktop_config.json` (needs Node.js) |
+
+The URL is the dashboard origin in hosted mode (`WEB_ORIGIN` + `/mcp`) and `http://127.0.0.1:<PORT>/mcp` locally. The token reaches the same read/propose routes as before (status, requests, transfer proposals); policy, approvals, funding and Task Vault still need the wallet session. Rotating the token disconnects URL clients until their entry is copied again.
+
+### Connect an agent from the repository (Zero-Config)
 
 1. Start the stack: `pnpm dev` (this automatically runs `pnpm mcp:build`).
 2. Sign in to the dashboard (`http://localhost:5173`) with your Phantom wallet once to create the owner tenant and MCP token.
 3. Connect your AI agent:
    - **Claude Code or Cursor:** Open the client **in the repository root** (not a subfolder: the committed entry uses the relative path `dist/mcp/nexuspay-mcp.mjs`) and approve the project's `.mcp.json` / `.cursor/mcp.json`. No secrets or paths to copy. If you open it elsewhere, register the server with an absolute path instead: Claude Code `claude mcp add -s user nexuspay -- node <absolute path to dist/mcp/nexuspay-mcp.mjs>`, Cursor: paste the JSON from `pnpm mcp:config` into `~/.cursor/mcp.json`. (`pnpm mcp:install` covers Codex, Claude Desktop and Antigravity only.)
    - **Codex, Claude Desktop or Antigravity:** Run `pnpm mcp:install -- --client codex` (or `claude-desktop`, `antigravity`, or omit `--client` for all three) to register the server in the client's global configuration. `.codex/config.toml` is also committed, but Codex only reads project config for trusted projects and this has not been verified on every Codex build, so prefer the installer.
-   - **Fallback:** Copy the entry manually from the dashboard (agent card > **Connect an AI agent (MCP)**) or run `pnpm mcp:config`.
+   - **Fallback:** Run `pnpm mcp:config`; or use the URL entry above.
 
 Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to be on the client's PATH.
 
