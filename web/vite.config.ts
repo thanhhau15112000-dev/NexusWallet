@@ -1,5 +1,8 @@
+import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+const sharedRequire = createRequire(new URL('../shared/package.json', import.meta.url));
 
 // The dashboard calls /api on its own origin so the session cookie is first-party;
 // Vite forwards those calls to the agent service.
@@ -9,6 +12,10 @@ const agentProxy = {
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // Shared Solana instruction builders import the browser Buffer polyfill explicitly.
+    alias: { buffer: sharedRequire.resolve('buffer/') },
+  },
   server: {
     // 0.0.0.0 so the Codespaces port forwarder can reach the dev server.
     host: true,

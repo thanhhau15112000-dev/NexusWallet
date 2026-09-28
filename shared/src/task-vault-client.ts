@@ -3,6 +3,7 @@ import {
   SystemProgram,
   TransactionInstruction,
 } from '@solana/web3.js';
+import { Buffer } from 'buffer';
 import { TASK_VAULT_PROGRAM_ID, computeCanonicalSeed } from './task-vault.js';
 
 export const TASK_VAULT_PROGRAM_PUBKEY = new PublicKey(TASK_VAULT_PROGRAM_ID);
