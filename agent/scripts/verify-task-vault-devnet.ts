@@ -68,6 +68,7 @@ const agent = Keypair.generate();
 const worker = Keypair.generate();
 const SERVICE_ID = 'issue-6-devnet-verification';
 const signatures: string[] = [];
+const failedSignatures: string[] = [];
 type ProbeTask = {
   id: string;
   capability: PublicKey;
@@ -128,6 +129,13 @@ async function expectRejected(
   if (result.value.err === null || !logs.toLowerCase().includes(code.toLowerCase())) {
     throw new Error(`${operation} was not rejected with ${code}`);
   }
+
+  // Land the rejected transaction too, so the failure path has an explorer-verifiable signature.
+  const signature = await connection.sendRawTransaction(transaction.serialize(), { skipPreflight: true, maxRetries: 5 });
+  const confirmation = await connection.confirmTransaction({ signature, ...blockhash }, 'confirmed');
+  if (confirmation.value.err === null) throw new Error(`${operation} landed without an error`);
+  failedSignatures.push(signature);
+  console.log(`FAILTX ${operation}=${signature} err=${JSON.stringify(confirmation.value.err)}`);
 }
 
 function paymentIx(
@@ -403,10 +411,13 @@ try {
   cleanupOk = await returnBalance(agent, 'agent') && cleanupOk;
   cleanupOk = await returnBalance(worker, 'worker') && cleanupOk;
   if (!cleanupOk) result = 'FAIL';
-  console.log(`FINAL result=${result} cleanup=${cleanupOk} signatures=${signatures.length}`);
+  console.log(`FINAL result=${result} cleanup=${cleanupOk} signatures=${signatures.length} failedSignatures=${failedSignatures.length}`);
   for (const receipt of receipts) console.log(`RECEIPT_PDA=${receipt.toBase58()}`);
   for (const signature of signatures) {
     console.log(`EXPLORER https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+  }
+  for (const signature of failedSignatures) {
+    console.log(`EXPLORER_FAILED https://explorer.solana.com/tx/${signature}?cluster=devnet`);
   }
   if (result !== 'PASS') process.exitCode = 1;
 }
