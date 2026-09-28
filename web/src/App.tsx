@@ -78,12 +78,13 @@ function WalletOptions(props: {
   busy: boolean;
   onSelect: (choice: WalletChoice) => void;
 }) {
+  const { dict } = useI18n();
   if (!props.choices.length) {
-    return <p className="wallet-picker-empty">No compatible Solana wallet found. Install a wallet that supports message signing, then reload.</p>;
+    return <p className="wallet-picker-empty">{dict.walletModal.noWallet}</p>;
   }
 
   return (
-    <div className="wallet-picker-options" aria-label="Available Solana wallets">
+    <div className="wallet-picker-options" aria-label={dict.walletModal.availableWallets}>
       {props.choices.map((choice) => (
         <button
           key={choice.id}
@@ -98,7 +99,7 @@ function WalletOptions(props: {
             <span className="wallet-option-fallback"><WalletIcon size={17} aria-hidden="true" /></span>
           )}
           <span>{choice.name}</span>
-          <span className="wallet-option-action">Continue</span>
+          <span className="wallet-option-action">{dict.walletModal.continue}</span>
         </button>
       ))}
     </div>
@@ -161,12 +162,12 @@ export function App() {
         setState(null);
         setRequests([]);
         setAudit([]);
-        setOffline('Session expired. Sign in with your wallet again.');
+        setOffline(dict.walletModal.sessionExpired);
         return;
       }
       setOffline(errorText(err));
     }
-  }, []);
+  }, [dict.walletModal.sessionExpired]);
 
   useEffect(() => {
     let current = true;
@@ -550,7 +551,7 @@ export function App() {
         </div>
       </header>
 
-      {offline ? <div className="banner bad">Service unavailable: {offline}</div> : null}
+      {offline ? <div className="banner bad">{interpolate(dict.walletModal.serviceUnavailable, { offline })}</div> : null}
 
       <nav className="feature-tabs" role="tablist" aria-label="App features">
         {FEATURE_TABS.map((tab, index) => {
@@ -700,13 +701,13 @@ export function App() {
           <section className="wallet-dialog" role="dialog" aria-modal="true" aria-labelledby="wallet-dialog-title">
             <div className="wallet-dialog-head">
               <div>
-                <h2 id="wallet-dialog-title">Connect a wallet</h2>
-                <p>Choose a Solana wallet to connect as owner.</p>
+                <h2 id="wallet-dialog-title">{dict.walletModal.title}</h2>
+                <p>{dict.walletModal.desc}</p>
               </div>
               <button
                 className="icon-button"
                 type="button"
-                aria-label="Close wallet selection"
+                aria-label={dict.walletModal.close}
                 disabled={Boolean(busy.connect)}
                 onClick={() => setWalletPickerOpen(false)}
               >

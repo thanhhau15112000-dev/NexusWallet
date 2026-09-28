@@ -9,6 +9,8 @@ import {
   Search,
   TriangleAlert,
 } from './icons.js';
+import { useI18n } from '../i18n/context.js';
+import type { TranslationDictionary } from '../i18n/types.js';
 
 /** Dashboard tabs a docs page can link to. Kept in sync with FEATURE_TABS in App.tsx. */
 export type DocsLinkTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit';
@@ -30,6 +32,7 @@ type DocsContext = {
 };
 
 function CodeBlock(props: { code: string; label?: string }) {
+  const { dict } = useI18n();
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
   const timer = useRef<number | null>(null);
 
@@ -54,10 +57,10 @@ function CodeBlock(props: { code: string; label?: string }) {
   return (
     <div className="docs-code">
       <div className="docs-code-head">
-        <span>{props.label ?? 'Code'}</span>
-        <button type="button" className="docs-code-copy" onClick={() => void copy()} aria-label="Copy code">
+        <span>{props.label ?? dict.docs.code}</span>
+        <button type="button" className="docs-code-copy" onClick={() => void copy()} aria-label={dict.docs.copyCode}>
           {copied === 'copied' ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-          {copied === 'copied' ? 'Copied' : copied === 'failed' ? 'Copy failed' : 'Copy'}
+          {copied === 'copied' ? dict.docs.copied : copied === 'failed' ? dict.docs.copyFailed : dict.docs.copy}
         </button>
       </div>
       <pre>
@@ -85,9 +88,10 @@ function Steps(props: { children: ReactNode }) {
 }
 
 function TabLink(props: { tab: DocsLinkTab; label: string; ctx: DocsContext }) {
+  const { dict, interpolate } = useI18n();
   return (
     <button type="button" className="docs-tab-link" onClick={() => props.ctx.openTab(props.tab)}>
-      Open {props.label}
+      {interpolate(dict.docs.openTab, { label: props.label })}
       <ArrowUpRight size={13} aria-hidden="true" />
     </button>
   );
@@ -117,13 +121,13 @@ function Tabs(props: { items: Array<{ id: string; label: string; body: ReactNode
   );
 }
 
-function buildPages(ctx: DocsContext): DocPage[] {
+function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
   return [
     {
       id: 'overview',
-      group: 'Get started',
-      title: 'Overview',
-      summary: 'What nexusPay does and how a request moves from text to a Devnet transaction.',
+      group: dict.docs.overview.group,
+      title: dict.docs.overview.title,
+      summary: dict.docs.overview.summary,
       keywords: 'introduction pipeline model policy signer',
       sections: [
         {
@@ -877,13 +881,14 @@ function matches(page: DocPage, query: string): boolean {
 }
 
 export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
+  const { dict } = useI18n();
   const [pageId, setPageId] = useState('overview');
   const [query, setQuery] = useState('');
   const articleRef = useRef<HTMLElement | null>(null);
 
   const pages = useMemo(
-    () => buildPages({ openTab: props.onOpenTab }),
-    [props.onOpenTab],
+    () => buildPages({ openTab: props.onOpenTab }, dict),
+    [props.onOpenTab, dict],
   );
   const pageIndex = Math.max(0, pages.findIndex((page) => page.id === pageId));
   const page = pages[pageIndex]!;
@@ -912,13 +917,13 @@ export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
           <Search size={14} aria-hidden="true" />
           <input
             type="search"
-            aria-label="Search docs"
-            placeholder="Search docs"
+            aria-label={dict.docs.searchPlaceholder}
+            placeholder={dict.docs.searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        {groups.length === 0 ? <p className="empty">No matching pages</p> : null}
+        {groups.length === 0 ? <p className="empty">{dict.docs.empty}</p> : null}
         {groups.map((group) => (
           <div key={group.name} className="docs-nav-group">
             <p className="docs-nav-heading">{group.name}</p>
@@ -956,7 +961,7 @@ export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
           {prev ? (
             <button type="button" className="docs-pager-link" onClick={() => openPage(prev.id)}>
               <span>
-                <ChevronLeft size={14} aria-hidden="true" /> Previous
+                <ChevronLeft size={14} aria-hidden="true" /> {dict.docs.previous}
               </span>
               <strong>{prev.title}</strong>
             </button>
@@ -966,7 +971,7 @@ export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
           {next ? (
             <button type="button" className="docs-pager-link is-next" onClick={() => openPage(next.id)}>
               <span>
-                Next <ChevronRight size={14} aria-hidden="true" />
+                {dict.docs.next} <ChevronRight size={14} aria-hidden="true" />
               </span>
               <strong>{next.title}</strong>
             </button>
@@ -974,8 +979,8 @@ export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
         </footer>
       </article>
 
-      <aside className="docs-toc" aria-label="On this page">
-        <p className="docs-nav-heading">On this page</p>
+      <aside className="docs-toc" aria-label={dict.docs.onThisPage}>
+        <p className="docs-nav-heading">{dict.docs.onThisPage}</p>
         <ul>
           {page.sections.map((section) => (
             <li key={section.id}>

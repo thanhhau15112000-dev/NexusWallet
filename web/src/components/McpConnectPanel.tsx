@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plug } from './icons.js';
 import { api, ApiError, type McpClientConfig } from '../api.js';
+import { useI18n } from '../i18n/context.js';
 
 // The panel sits inside the dark agent card, so text inherits its light color and code
 // blocks get a translucent dark background instead of the global light pre style.
@@ -26,6 +27,7 @@ const buttonStyle = { color: 'inherit', textDecoration: 'underline', marginRight
  * AI agent can be connected without editing headers or config values by hand.
  */
 export function McpConnectPanel() {
+  const { dict, interpolate } = useI18n();
   const [config, setConfig] = useState<McpClientConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,7 +39,7 @@ export function McpConnectPanel() {
     try {
       setConfig(rotate ? await api.rotateMcpToken() : await api.mcpConfig());
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to load MCP config');
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.mcp.loadFailed);
     } finally {
       setBusy(false);
     }
@@ -49,44 +51,43 @@ export function McpConnectPanel() {
       setCopied(label);
       setTimeout(() => setCopied(null), 1500);
     } catch {
-      setError('Clipboard is not available; select the text and copy it manually');
+      setError(dict.mcp.clipboardUnavailable);
     }
   };
 
   return (
     <details className="mcp-connect" style={panelStyle} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open && !config) void load(false); }}>
       <summary style={{ cursor: 'pointer' }}>
-        <Plug size={14} /> Connect an AI agent (MCP)
+        <Plug size={14} /> {dict.mcp.title}
       </summary>
       {error ? <p style={warnStyle}>{error}</p> : null}
       {config ? (
         <div className="mcp-connect-body">
           {!config.bundleBuilt ? (
             <p style={warnStyle}>
-              MCP bundle not built yet. Run <code>{config.buildCommand}</code> in the repository, then paste the entry below.
+              {interpolate(dict.mcp.bundleNotBuilt, { command: config.buildCommand })}
             </p>
           ) : null}
           <p style={textStyle}>
-            Claude Desktop, Claude Code (<code>.mcp.json</code>), Cursor and Antigravity (<code>~/.gemini/config/mcp_config.json</code>):
+            {dict.mcp.claudeDesc}
           </p>
           <pre style={preStyle}>{config.mcpServersJson}</pre>
           <button type="button" className="link" style={buttonStyle} onClick={() => void copy('json', config.mcpServersJson)}>
-            {copied === 'json' ? 'Copied' : 'Copy JSON'}
+            {copied === 'json' ? dict.mcp.copied : dict.mcp.copyJson}
           </button>
-          <p style={textStyle}>Codex (<code>~/.codex/config.toml</code>):</p>
+          <p style={textStyle}>{dict.mcp.codexDesc}</p>
           <pre style={preStyle}>{config.codexToml}</pre>
           <button type="button" className="link" style={buttonStyle} onClick={() => void copy('toml', config.codexToml)}>
-            {copied === 'toml' ? 'Copied' : 'Copy TOML'}
+            {copied === 'toml' ? dict.mcp.copied : dict.mcp.copyToml}
           </button>
           <p style={textStyle}>
-            The token only lets the agent read status and requests and propose transfers; the policy and your approvals still decide.
-            Rotating it disconnects clients that use the old one.
+            {dict.mcp.securityNote}
           </p>
           <button type="button" className="link" style={buttonStyle} disabled={busy} onClick={() => void load(true)}>
-            {busy ? 'Rotating…' : 'Rotate token'}
+            {busy ? dict.mcp.rotating : dict.mcp.rotateToken}
           </button>
         </div>
-      ) : busy ? <p style={textStyle}>Loading…</p> : null}
+      ) : busy ? <p style={textStyle}>{dict.mcp.loading}</p> : null}
     </details>
   );
 }
