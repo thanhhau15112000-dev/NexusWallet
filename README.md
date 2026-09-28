@@ -139,6 +139,7 @@ Kết quả bị từ chối, thất bại hoặc chờ duyệt trả về `code
 | `INSUFFICIENT_FUNDS_INCLUDING_FEES` | Ví agent không đủ số dư kể cả phí mạng |
 | `IDEMPOTENCY_CONFLICT` | Key đã dùng cho một giao dịch khác |
 | `PENDING_APPROVAL_REQUIRED` | Chờ owner duyệt; `details.reason` là `AMOUNT_EXCEEDS_TRANSACTION_LIMIT` |
+| `AGENT_FROZEN` | Owner đã khóa agent |
 
 Số tiền SOL trong `details` có cả SOL và lamports dạng số nguyên. Giao dịch chờ duyệt trả thêm `pollIntervalMs` và `dashboardUrl` mở thẳng request đó trong tab Approvals. `nexuspay_get_status` trả `estimatedFeeSol` — phần phí cần giữ lại ngoài số tiền chuyển.
 

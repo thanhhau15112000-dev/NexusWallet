@@ -81,7 +81,8 @@ export type AgentErrorCode =
   | 'MODEL_PLAN_MISMATCH'
   | 'INSUFFICIENT_FUNDS_INCLUDING_FEES'
   | 'PENDING_APPROVAL_REQUIRED'
-  | 'IDEMPOTENCY_CONFLICT';
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'AGENT_FROZEN';
 
 export const AGENT_ERROR_REMEDIATION: Record<AgentErrorCode, string> = {
   RECIPIENT_NOT_IN_ALLOWLIST:
@@ -99,6 +100,8 @@ export const AGENT_ERROR_REMEDIATION: Record<AgentErrorCode, string> = {
     'Wait for the owner to approve at approval.dashboardUrl. Poll nexuspay_get_request every approval.pollIntervalMs until the status changes or approval.expiresAt passes. Do not resubmit or split the transfer.',
   IDEMPOTENCY_CONFLICT:
     'This idempotencyKey was already used for a different transfer. Omit idempotencyKey for a new transfer; reuse a key only to retry the identical transfer.',
+  AGENT_FROZEN:
+    'The owner has frozen this agent. Do not retry or change parameters; ask the owner to unfreeze the agent in the nexusPay dashboard.',
 };
 
 export type PolicyDecision = {

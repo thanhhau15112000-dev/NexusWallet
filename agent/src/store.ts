@@ -36,6 +36,7 @@ export type StoreData = {
   tasks?: Record<string, TaskCapabilityRecord>;
   payments?: Record<string, TaskPaymentRecord>;
   receipts?: Record<string, TaskReceiptRecord>;
+  frozen?: { at: string } | null;
 };
 
 /**
@@ -59,6 +60,10 @@ export class Store {
     try {
       const raw = JSON.parse(readFileSync(this.path, 'utf8')) as StoreData;
       const claimedInitialFunding = Boolean(raw.claimedInitialFunding);
+      const frozen =
+        raw.frozen && typeof raw.frozen === 'object' && typeof raw.frozen.at === 'string'
+          ? { at: raw.frozen.at }
+          : null;
       return {
         policy: PolicySchema.parse(raw.policy),
         ownerPubkey: raw.ownerPubkey ?? this.initialOwner ?? null,
@@ -72,6 +77,7 @@ export class Store {
         // Older state files keyed these by paymentId alone; re-key per task on load.
         payments: rekeyByTask(raw.payments ?? {}),
         receipts: rekeyByTask(raw.receipts ?? {}),
+        frozen,
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -92,6 +98,7 @@ export class Store {
         tasks: {},
         payments: {},
         receipts: {},
+        frozen: null,
       };
     }
   }
@@ -121,6 +128,31 @@ export class Store {
 
   getOwner(): string | null {
     return this.data.ownerPubkey;
+  }
+
+  isFrozen(): boolean {
+    return Boolean(this.data.frozen);
+  }
+
+  getFrozen(): { at: string } | null {
+    return this.data.frozen ?? null;
+  }
+
+  setFrozen(frozen: boolean, at?: string): { changed: boolean; frozen: { at: string } | null } {
+    if (frozen) {
+      if (this.data.frozen) {
+        return { changed: false, frozen: this.data.frozen };
+      }
+      this.data.frozen = { at: at ?? new Date().toISOString() };
+      this.flush();
+      return { changed: true, frozen: this.data.frozen };
+    }
+    if (!this.data.frozen) {
+      return { changed: false, frozen: null };
+    }
+    this.data.frozen = null;
+    this.flush();
+    return { changed: true, frozen: null };
   }
 
   hasClaimedInitialFunding(): boolean {

@@ -42,6 +42,8 @@ export const vi: TranslationDictionary = {
     policySaved: 'Đã lưu chính sách thành công',
     airdropRequested: 'Đã gửi yêu cầu nhận Airdrop',
     seedClaimed: 'Đã nhận 0.1 SOL vốn thử nghiệm thành công!',
+    agentFrozen: 'Đã khóa agent',
+    agentUnfrozen: 'Đã mở khóa agent',
   },
   agent: {
     title: 'Ví Agent',
@@ -61,6 +63,11 @@ export const vi: TranslationDictionary = {
     airdropRequesting: 'Đang yêu cầu...',
     airdropTitle: 'Yêu cầu airdrop trực tiếp từ Solana Devnet RPC',
     faucet: 'Trang vòi Solana chính thức',
+    frozenStatus: 'Đã khóa',
+    freezeBtn: 'Khóa agent',
+    unfreezeBtn: 'Mở khóa agent',
+    confirmFreezeBtn: 'Xác nhận khóa',
+    cancelFreezeBtn: 'Hủy',
   },
   wallet: {
     title: 'Ví chủ sở hữu',

@@ -582,10 +582,69 @@ describe('nexusPay MCP tools', () => {
 
     const status = parse(await client.callTool({ name: 'nexuspay_get_status', arguments: {} }));
 
+    expect(status.frozen).toBe(false);
     expect(status.wallet.balanceSol).toBe(0.25);
     expect(status.estimatedFeeSol).toBe(0.00001);
     expect(status.policy.recipients).toEqual([{ label: 'treasury', address: OWNER }]);
     expect(JSON.stringify(status)).not.toMatch(/masterFunder|isAdmin|rpcUrl/);
+  });
+
+  it('exposes frozen: true on nexuspay_get_status when agent is frozen', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          cluster: 'devnet',
+          agent: {
+            agentId: 'agent-001',
+            pubkey: OWNER,
+            lamports: 250_000_000,
+            rpcError: null,
+            explorerUrl: `https://explorer.solana.com/address/${OWNER}?cluster=devnet`,
+            frozen: true,
+            frozenAt: '2026-09-28T00:00:00.000Z',
+          },
+          policy: {
+            version: 1,
+            maxSolPerTx: 0.1,
+            allowedRecipients: [],
+            allowedMints: [],
+            maxTokenAmountByMint: {},
+          },
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const status = parse(await client.callTool({ name: 'nexuspay_get_status', arguments: {} }));
+    expect(status.frozen).toBe(true);
+  });
+
+  it('returns AGENT_FROZEN code in tool output when transfer is blocked by freeze', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          request: request({
+            status: 'denied',
+            error: {
+              code: 'AGENT_FROZEN',
+              message: 'agent is frozen by owner',
+              remediation:
+                'The owner has frozen this agent. Do not retry or change parameters; ask the owner to unfreeze the agent in the nexusPay dashboard.',
+              details: {},
+            },
+          }),
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const result = await client.callTool({
+      name: 'nexuspay_transfer_sol',
+      arguments: { recipient: 'treasury', amountSol: 0.05 },
+    });
+
+    const parsed = parse(result);
+    expect(parsed.status).toBe('denied');
+    expect(parsed.error.code).toBe('AGENT_FROZEN');
+    expect(parsed.error.remediation).toContain('unfreeze');
   });
 
   it('filters and limits the request list', async () => {

@@ -27,6 +27,7 @@ const INSTRUCTIONS = [
   'you cannot approve it and must not ask the user for keys or seed phrases.',
   'Recipients outside the allowlist are denied. Call nexuspay_get_status to see the allowlist labels.',
   'If a transfer returns outcome_unknown, call it again with the same idempotencyKey; do not change the amount.',
+  'If a transfer returns AGENT_FROZEN, the owner has locked the agent; stop proposing transfers and ask the owner to unfreeze it in the dashboard.',
 ].join(' ');
 
 type StateResponse = {
@@ -39,6 +40,8 @@ type StateResponse = {
     explorerUrl: string;
     /** Absent when the agent service predates it. */
     feeReserveLamports?: number;
+    frozen?: boolean;
+    frozenAt?: string | null;
   };
   policy: Policy & { maxSolPerTx: number };
 };
@@ -181,6 +184,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
         const state = await api.get<StateResponse>('/api/state');
         return ok({
           cluster: state.cluster,
+          frozen: Boolean(state.agent.frozen),
           wallet: {
             address: state.agent.pubkey,
             balanceSol: state.agent.lamports === null ? null : state.agent.lamports / LAMPORTS_PER_SOL,

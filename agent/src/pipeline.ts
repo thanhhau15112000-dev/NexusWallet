@@ -71,7 +71,7 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function agentError(code: AgentErrorCode, message: string, details: Record<string, unknown> = {}) {
+export function agentError(code: AgentErrorCode, message: string, details: Record<string, unknown> = {}) {
   return { code, message, remediation: AGENT_ERROR_REMEDIATION[code], details };
 }
 
@@ -148,6 +148,31 @@ function dispatchDecision(
   decision: PolicyDecision,
   currentPolicy: Policy,
 ): Promise<PaymentRequest> | PaymentRequest {
+  if (Boolean(ctx.store.isFrozen?.())) {
+    const isTransfer =
+      request.plan?.action.type === 'transfer_sol' ||
+      request.plan?.action.type === 'transfer_spl' ||
+      decision.resolved?.type === 'transfer_sol' ||
+      decision.resolved?.type === 'transfer_spl';
+    if (isTransfer) {
+      const frozenDecision: PolicyDecision = {
+        verdict: 'deny',
+        policyVersion: currentPolicy.version,
+        reasons: ['agent is frozen by owner'],
+        resolved: null,
+        code: 'AGENT_FROZEN',
+      };
+      request = ctx.store.putRequest({
+        ...request,
+        decision: frozenDecision,
+        status: 'denied',
+        error: agentError('AGENT_FROZEN', 'agent is frozen by owner'),
+      });
+      ctx.audit.record('tx.blocked', request.id, { reason: 'agent_frozen' });
+      return request;
+    }
+  }
+
   request = ctx.store.putRequest({ ...request, decision });
   ctx.audit.record('policy.decided', request.id, {
     verdict: decision.verdict,
@@ -399,6 +424,16 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
       ...request,
       status: 'denied',
       error: { code: 'policy_changed', message },
+    });
+  }
+
+  if (action.type !== 'get_balance' && Boolean(ctx.store.isFrozen?.())) {
+    const message = 'agent is frozen by owner';
+    ctx.audit.record('tx.blocked', request.id, { reason: 'agent_frozen' });
+    return ctx.store.putRequest({
+      ...request,
+      status: 'denied',
+      error: agentError('AGENT_FROZEN', message),
     });
   }
 

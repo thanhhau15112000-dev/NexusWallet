@@ -26,6 +26,8 @@ export type AgentState = {
     lamports: number | null;
     rpcError: string | null;
     explorerUrl: string;
+    frozen?: boolean;
+    frozenAt?: string | null;
   };
   policy: Policy & { maxSolPerTx: number };
 };
@@ -177,6 +179,18 @@ export const api = {
       '/api/agent/claim-seed',
       { method: 'POST', body: JSON.stringify({}) },
     ),
+
+  freeze: () =>
+    request<{ frozen: boolean; frozenAt: string | null }>('/api/agent/freeze', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  unfreeze: () =>
+    request<{ frozen: boolean; frozenAt: string | null }>('/api/agent/unfreeze', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 
   command: (prompt: string, idempotencyKey?: string) =>
     request<{ request: PaymentRequest }>('/api/commands', {

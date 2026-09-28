@@ -42,6 +42,8 @@ export type TranslationDictionary = {
     policySaved: string;
     airdropRequested: string;
     seedClaimed: string;
+    agentFrozen: string;
+    agentUnfrozen: string;
   };
   agent: {
     title: string;
@@ -61,6 +63,11 @@ export type TranslationDictionary = {
     airdropRequesting: string;
     airdropTitle: string;
     faucet: string;
+    frozenStatus: string;
+    freezeBtn: string;
+    unfreezeBtn: string;
+    confirmFreezeBtn: string;
+    cancelFreezeBtn: string;
   };
   wallet: {
     title: string;
