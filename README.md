@@ -1,79 +1,172 @@
 # nexusPay
 
-nexusPay is a payment guard for AI agents on Solana Devnet.
+**Ví có kiểm soát chi tiêu cho AI agent trên Solana.**
 
-An agent gets its own wallet and a spending policy. Transfers inside the policy are signed by the
-agent automatically. Anything outside it is held until the owner signs an approval in Phantom.
-A model decides *what* to attempt; it never decides *whether it is allowed*.
+AI agent (Claude, Cursor, Codex, Antigravity...) được cấp một ví Solana riêng và một chính sách chi tiêu do chủ sở hữu đặt. Agent tự đề xuất thanh toán qua MCP; chính sách quyết định. Giao dịch trong hạn mức được ký ngay, giao dịch vượt hạn mức chờ chủ sở hữu ký duyệt bằng ví, người nhận ngoài allowlist bị từ chối. Với nhiệm vụ nhiều bước, chủ sở hữu cấp một **Task Capability Vault** on-chain: ngân sách, thời hạn và worker được phép nằm trong smart contract, tiền đi qua escrow và phần dư được hoàn lại.
 
+> Model quyết định *làm gì*. Model không bao giờ quyết định *có được phép hay không*.
+
+- Demo hosted (Solana Devnet): https://nexuspay-56wn.onrender.com
+- MCP endpoint: `https://nexuspay-56wn.onrender.com/mcp`
+- Program Task Vault (Devnet): [`3N4GYuQXvqhDeFKLWh4GiXdD3pr3PWcNRtkUyxSYPaUK`](https://explorer.solana.com/address/3N4GYuQXvqhDeFKLWh4GiXdD3pr3PWcNRtkUyxSYPaUK?cluster=devnet)
+
+---
+
+## Vấn đề
+
+AI agent ngày càng tự thực hiện công việc có chi phí: gọi API trả phí, thuê agent/dịch vụ khác, mua tài nguyên. Hiện có hai lựa chọn đều không ổn:
+
+1. **Đưa private key cho agent** — một prompt injection là mất toàn bộ tài sản.
+2. **Bắt người duyệt từng giao dịch** — agent không còn tự chủ, mọi việc nhỏ đều phải chờ người.
+
+Thiếu một lớp ở giữa: cho agent tự chi trong phạm vi được cấp, và chặn cứng mọi thứ vượt phạm vi — bằng code và chữ ký, không bằng lời nhắc trong prompt.
+
+## Giải pháp
+
+nexusPay có hai lớp kiểm soát:
+
+| Lớp | Dùng cho | Cơ chế |
+| --- | --- | --- |
+| **Policy Guard** (ví agent) | Thanh toán lẻ: gửi SOL / SPL token | Hạn mức mỗi giao dịch, allowlist người nhận và mint. Vượt hạn mức → chủ sở hữu ký duyệt bằng ví. Ngoài allowlist → từ chối, không có đường duyệt. |
+| **Task Capability Vault** (on-chain) | Nhiệm vụ nhiều bước, trả tiền cho worker/service | Anchor program giữ ngân sách task trong PDA. Agent chỉ chuyển được tiền vào escrow; worker chỉ nhận khi ký receipt; hết hạn hoặc bị thu hồi thì phần dư về lại chủ sở hữu. |
+
+Agent kết nối qua **MCP (Model Context Protocol)** — chỉ cần một URL và token, không cài đặt gì trên máy agent.
+
+## Vì sao là Solana
+
+nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng Solana làm nơi chuyển tiền:
+
+- **Phí thấp, xác nhận nhanh → micro-payment cho agent khả thi.** Agent có thể trả nhiều khoản nhỏ trong một task mà phí mạng không lấn át giá trị giao dịch.
+- **PDA làm "hợp đồng quyền hạn".** Mỗi task là một capability PDA (`["capability", owner, task_id]`) kèm vault PDA và escrow/receipt PDA theo từng payment. Quyền của agent bị giới hạn bởi account on-chain, không bởi backend.
+- **Signer tách vai trò.** `create_and_fund_task` và `revoke_task` cần chữ ký owner; `execute_task_payment` cần chữ ký `agent_signer`; `settle_with_receipt` cần chữ ký worker. Không vai trò nào tự làm thay vai trò khác.
+- **Đóng account để thu hồi rent.** Capability, vault, escrow và receipt được đóng sau khi settle/refund; rent của task về owner, rent của receipt về worker đã trả nó — không để account rác trên chain.
+- **Refund không cần tin backend.** Sau khi task hết hạn hoặc bị thu hồi, bất kỳ ai cũng có thể gọi `refund_and_close`; escrow chưa settle thì ai cũng hoàn được sau expiry qua `refund_expired_escrow`. Tiền vẫn chỉ về owner. Backend chết thì tiền không bị kẹt.
+- **Chữ ký ed25519 của ví owner làm bằng chứng duyệt.** Thông điệp duyệt gắn chặt request, số tiền, người nhận, phiên bản policy, nonce và thời hạn; dùng một lần.
+- **SPL Token** cho thanh toán token, kiểm soát bằng allowlist mint.
+
+## Kiến trúc
+
+```text
+                 ┌─────────────────────────────┐
+ AI agent ──MCP──▶  /mcp  (Streamable HTTP)     │
+ (Claude, Cursor, │  Bearer token theo owner    │
+  Codex, ...)     └──────────────┬──────────────┘
+                                 │ structured action (transfer_sol / transfer_spl)
+ Dashboard ─ Console (phụ) ──────┤ text prompt → model → action JSON
+                                 ▼
+                      evaluatePolicy (shared/src/policy.ts)
+                   allow │ require_approval │ deny
+                         │         │
+                         │   owner ký duyệt bằng ví (ed25519)
+                         ▼         ▼
+                   Agent signer (agent/src/chain.ts)
+                                 │
+                                 ▼
+                          Solana Devnet
+            ┌──────────────────────────────────────────┐
+            │ nexus-task-vault (Anchor)                 │
+            │ capability PDA → vault PDA → escrow PDA   │
+            │            → worker (receipt) / refund    │
+            └──────────────────────────────────────────┘
 ```
-user text prompt
-  -> Gemini (extended thinking)   stage 1: context -> IntentEnvelope
-  -> Groq openai/gpt-oss-120b     stage 2: intent  -> ActionPlan (JSON, 4 actions only)
-  -> Policy engine                allow | require_approval | deny
-  -> Agent signer                 only reachable from allow, or a verified owner signature
-  -> Solana Devnet
-```
 
-## What is enforced
+- **MCP là luồng chính.** Agent bên ngoài tự lập kế hoạch và gửi action có cấu trúc tới `POST /api/agent/intents`, đi thẳng vào policy.
+- **Console trên dashboard là luồng phụ** để thử nhanh khi không có MCP client: prompt → model (Gemini + Groq, có fallback parser tất định) → action JSON → cùng một policy.
+- Dù vào từ đâu, chỉ `evaluatePolicy` hoặc một chữ ký duyệt hợp lệ của owner mới dẫn tới bước ký.
 
-| Guard | Where |
+## Bảo đảm an toàn
+
+| Bảo đảm | Vị trí |
 | --- | --- |
-| The model may only return 4 action types, schema-validated | [contract.ts](shared/src/contract.ts) |
-| Only `evaluatePolicy` can authorise a signature | [policy.ts](shared/src/policy.ts) |
-| Off-allowlist recipient is denied, not escalated | [policy.ts](shared/src/policy.ts) |
-| Approval is bound to request, amount, recipient, policy version, nonce, expiry | [contract.ts](shared/src/contract.ts) |
-| Approval must be signed by the bound owner wallet, single use | [approvals.ts](agent/src/approvals.ts) |
-| Hosted API requires an expiring session created by a connected Solana wallet signature | [sessions.ts](agent/src/sessions.ts) |
-| Agent private key is AES-256-GCM encrypted at rest, never logged, never in a prompt | [crypto.ts](agent/src/crypto.ts) |
-| Audit payloads sealed with AES-256-GCM, append-only | [audit.ts](agent/src/audit.ts) |
-| Only the official Solana Devnet RPC endpoint is accepted at startup | [config.ts](agent/src/config.ts) |
-| Local mode is loopback-only; hosted mode requires one HTTPS dashboard origin | [config.ts](agent/src/config.ts) |
+| Chỉ `evaluatePolicy` có quyền cho phép ký | [policy.ts](shared/src/policy.ts) |
+| Người nhận ngoài allowlist bị từ chối, không chuyển sang chờ duyệt | [policy.ts](shared/src/policy.ts) |
+| Model chỉ trả về 4 loại action, có schema validation; không thấy private key, signer hay RPC | [contract.ts](shared/src/contract.ts) |
+| Chữ ký duyệt gắn request, số tiền, người nhận, phiên bản policy, nonce, thời hạn; dùng một lần | [contract.ts](shared/src/contract.ts), [approvals.ts](agent/src/approvals.ts) |
+| MCP không có tool sửa policy, gắn owner hay duyệt request | [tools.ts](mcp/src/tools.ts) |
+| MCP token chỉ truy cập 4 route (status, danh sách request, chi tiết request, đề xuất giao dịch) | [mcp-token.ts](agent/src/mcp-token.ts) |
+| Retry cùng `idempotencyKey` không trả tiền hai lần; cùng key khác action → `409` | [pipeline.ts](agent/src/pipeline.ts) |
+| Private key agent mã hóa AES-256-GCM khi lưu, không log, không đưa vào prompt | [crypto.ts](agent/src/crypto.ts) |
+| Audit log append-only, payload mã hóa | [audit.ts](agent/src/audit.ts) |
+| Hosted: API cần session tạo từ chữ ký ví, có thời hạn | [sessions.ts](agent/src/sessions.ts) |
+| Chỉ chấp nhận RPC Devnet chính thức | [config.ts](agent/src/config.ts) |
 
-The model never sees a private key, a signer handle or an RPC endpoint. It receives the user's
-text plus the allowlist labels, and returns structured action JSON only. It cannot craft raw transactions
-or access RPC methods directly.
+## Task Capability Vault
 
-## Where things live
+Anchor program tại `programs/nexus-task-vault`.
 
-Four workspace packages, one file per job. `shared` exists because the dashboard
-has to rebuild the approval message and render policy verdicts itself.
+| Instruction | Người ký | Tác dụng |
+| --- | --- | --- |
+| `create_and_fund_task` | owner | Tạo capability PDA + vault PDA, nạp ngân sách, đặt `budget`, `per_payment_cap`, `expiry`, worker và service được phép |
+| `execute_task_payment` | agent_signer | Chuyển một khoản từ vault sang escrow PDA; kiểm tra budget, cap, expiry, worker/service |
+| `settle_with_receipt` | worker | Worker ký receipt (`request_hash`, `result_hash`), nhận tiền từ escrow |
+| `revoke_task` | owner | Dừng task, chặn mọi payment tiếp theo |
+| `refund_and_close` | owner, hoặc bất kỳ ai sau expiry / revoke | Hoàn phần dư và rent về owner, đóng account |
+| `refund_expired_escrow` | bất kỳ ai sau expiry | Hoàn escrow chưa settle về owner |
+| `close_receipt` | owner hoặc worker | Đóng receipt; rent về worker |
 
-```
-shared/src/contract.ts   units, the two model-stage schemas, approval message, request shape
-shared/src/policy.ts     evaluatePolicy - the one function that authorises a signature
+State machine: `active → completed | revoked | expired`. Một escrow chỉ settle hoặc refund một lần.
 
-agent/src/server.ts      entry point: Fastify, CORS, signed cookies, hosted dashboard
-agent/src/routes.ts      API endpoints and Phantom login challenge
-agent/src/sessions.ts    one-time login challenges and expiring server-side sessions
-agent/src/pipeline.ts    understand -> plan -> policy -> execute | hold | deny (or a structured action -> policy)
-agent/src/approvals.ts   owner signature verification
-agent/src/chain.ts       every Solana RPC call, including the signer
-agent/src/crypto.ts      keystore, AES-256-GCM sealing, ed25519 verification
-agent/src/store.ts       state.json (policy, owner, requests)
-agent/src/audit.ts       audit.jsonl (append-only, sealed payloads)
-agent/src/model/         prompts, the two providers, the deterministic fallback
+Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`; nó **không** chứng minh chất lượng kết quả ngoài chain.
 
-web/src/App.tsx          all dashboard state and actions
-web/src/api.ts           typed client, resolves the agent host
-web/src/phantom.ts       provider detection and signMessage
-web/src/components/      one file per panel
+**Trạng thái:** program đã build và deploy trên Devnet; có test trên local validator cho nhiều payment, settle, refund, revoke, từ chối worker ngoài allowlist. Bằng chứng giao dịch Devnet cho toàn bộ kịch bản đang được bổ sung ([#6](../../issues/6)).
 
-mcp/src/tools.ts         MCP tools for personal agents; they call the agent API, never the chain
-mcp/scripts/build.mjs    bundles the MCP server into dist/mcp/nexuspay-mcp.mjs
+## Kết nối AI agent (MCP)
 
-extension/               Manifest V3 popup, host settings, and Devnet health check
-scripts/build-extension.mjs  creates the unpacked Chrome build under dist/
+Đăng nhập dashboard bằng ví Phantom (Devnet) → tab **Wallet** → card **Connect an AI agent** → **Show my connection** → copy entry cho client của bạn.
 
-infra/                   Dockerfile + compose for the agent service
-```
+| Client | Cách thêm |
+| --- | --- |
+| Claude Code | `claude mcp add --transport http nexuspay <url> --header "Authorization: Bearer <token>"` |
+| Codex | `[mcp_servers.nexuspay]` với `url` và `http_headers` trong `~/.codex/config.toml` |
+| Antigravity | `serverUrl` và `headers` trong `~/.gemini/config/mcp_config.json` |
+| Claude Desktop | `npx -y mcp-remote <url> --header Authorization:${AUTH_HEADER}` trong `claude_desktop_config.json` |
 
-Change the rules -> `shared/src/policy.ts`. Change what the model may do ->
-`shared/src/contract.ts`. Change what the agent can reach -> `agent/src/chain.ts`.
+| Tool | Tác dụng |
+| --- | --- |
+| `nexuspay_get_status` | Địa chỉ ví, số dư SOL, hạn mức mỗi giao dịch, label allowlist |
+| `nexuspay_list_requests` / `nexuspay_get_request` | Trạng thái request, verdict, link Explorer |
+| `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | Đề xuất giao dịch; policy quyết định |
 
-## Run it
+Nếu transfer trả `outcome_unknown` (timeout), gọi lại với **cùng** `idempotencyKey`, không đổi số tiền. Dùng lại một key cho giao dịch khác trả `IDEMPOTENCY_CONFLICT`. Hai lần gọi với hai key khác nhau là hai giao dịch, chỉ policy giới hạn chúng. Rotate token trên dashboard sẽ ngắt các client đang dùng token cũ.
 
-Requires Node 22+ and pnpm 10.
+Kết quả bị từ chối, thất bại hoặc chờ duyệt trả về `code`, `message`, `remediation` và `details` để agent tự điều chỉnh thay vì retry cùng tham số:
+
+| `code` | Ý nghĩa |
+| --- | --- |
+| `RECIPIENT_NOT_IN_ALLOWLIST` | Người nhận không có trong allowlist |
+| `MINT_NOT_IN_ALLOWLIST` | Mint không có trong allowlist |
+| `INVALID_AMOUNT` | Số tiền không hợp lệ |
+| `INSUFFICIENT_FUNDS_INCLUDING_FEES` | Ví agent không đủ số dư kể cả phí mạng |
+| `IDEMPOTENCY_CONFLICT` | Key đã dùng cho một giao dịch khác |
+| `PENDING_APPROVAL_REQUIRED` | Chờ owner duyệt; `details.reason` là `AMOUNT_EXCEEDS_TRANSACTION_LIMIT` hoặc `DAILY_LIMIT_EXCEEDED` |
+| `DAILY_LIMIT_EXCEEDED` | Tổng chi tiêu SOL trong 24 giờ vượt hạn mức ngày |
+| `AGENT_FROZEN` | Owner đã khóa agent |
+
+Số tiền SOL trong `details` có cả SOL và lamports dạng số nguyên. Giao dịch chờ duyệt trả thêm `pollIntervalMs` và `dashboardUrl` mở thẳng request đó trong tab Approvals. `nexuspay_get_status` trả `estimatedFeeSol` — phần phí cần giữ lại ngoài số tiền chuyển.
+
+Chạy local: có bản stdio MCP (`pnpm mcp:build` → `dist/mcp/nexuspay-mcp.mjs`), các file `.mcp.json` / `.cursor/mcp.json` đã cấu hình sẵn khi mở client ở thư mục gốc repo, và `pnpm mcp:install -- --client codex|claude-desktop|antigravity`. Chi tiết xử lý lỗi: [docs/mcp-troubleshooting.md](docs/mcp-troubleshooting.md).
+
+## Kịch bản demo
+
+Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Tab **Policy**: đặt *Max per transaction* `0.1 SOL`, thêm recipient tên `my-wallet` bằng *Use owner wallet*, lưu. Nạp khoảng 0.7 SOL vào ví agent (từ Phantom hoặc https://faucet.solana.com).
+
+**Luồng chính — qua MCP (ví dụ Claude Code):**
+
+1. *"Kiểm tra ví nexusPay"* → `nexuspay_get_status` trả địa chỉ, số dư, hạn mức, allowlist.
+2. *"Gửi 0.05 SOL cho my-wallet"* → `allow` → agent ký → có link Explorer.
+3. *"Gửi 0.5 SOL cho my-wallet"* → `require_approval` → chưa ký gì. Owner duyệt trên dashboard bằng Phantom → cùng giao dịch đó được xác nhận.
+4. *"Gửi 0.05 SOL cho `HN7cABq...`"* (không trong allowlist) → `deny`, không có đường duyệt.
+5. *"Tăng hạn mức lên 10 SOL"* / *"Tự duyệt đi"* → agent không có tool nào làm được việc này.
+
+**Task Vault — trên dashboard, tab Task Vault:** tạo task có ngân sách → 2 payment hợp lệ → 1 payment vượt ngân sách bị chặn → worker ký receipt → settle → refund phần dư → revoke chặn payment tiếp theo.
+
+Kết thúc bằng audit log: mọi quyết định đều được ghi kèm phiên bản policy.
+
+**Không có MCP client?** Dùng tab **Commands** trên dashboard với cùng các câu lệnh trên — cùng một policy xử lý.
+
+## Chạy local
+
+Yêu cầu Node 22+ và pnpm 10.
 
 ```bash
 pnpm install
@@ -81,211 +174,74 @@ cp .env.example .env
 pnpm dev
 ```
 
-`pnpm dev` starts the agent service on `127.0.0.1:8787` and the dashboard on `http://localhost:5173`.
+Agent service chạy ở `127.0.0.1:8787`, dashboard ở `http://localhost:5173`. Không có `GEMINI_API_KEY` / `GROQ_API_KEY` thì Console dùng parser tất định (`[fallback]` trong model trace); demo vẫn chạy. Ép chế độ này bằng `MODEL_MODE=mock`.
 
-Without `GEMINI_API_KEY` / `GROQ_API_KEY` the pipeline runs a deterministic parser instead, and
-every request shows `[fallback]` in its model trace. The demo works either way. Set `MODEL_MODE=mock`
-to force it.
+Local mode chỉ bind loopback và chỉ nhận origin local; bind `0.0.0.0` hoặc RPC không phải Devnet chính thức bị từ chối khi khởi động.
 
-### Local / private runtime
-
-The agent runs strictly on loopback (`127.0.0.1`) and accepts requests only from local CORS origins
-(`http://localhost:5173`). Public wildcard bindings (`0.0.0.0`) and non-official/non-Devnet RPC
-URLs are rejected at startup to prevent exposing the agent API or keys to untrusted networks.
-
-### Hosted demo (Multi-tenant)
-
-The hosted image serves the API and dashboard from one HTTPS origin. It operates in a multi-tenant
-isolated agent model on Solana Devnet: any connected Phantom wallet receives its own dedicated,
-encrypted agent keypair and policy. Before starting it, configure these environment variables on the host:
-
-- `DEPLOYMENT_MODE=hosted`, `HOST=0.0.0.0`, and `AGENT_DATA_DIR=/data`.
-- `ADMIN_PUBKEY` (or `OWNER_PUBKEY`) to the administrator's Phantom public key.
-- `ALLOWED_OWNERS` (optional) comma-separated list of allowed Phantom public keys. Left empty, any Phantom wallet can connect.
-- `WEB_ORIGIN` to the dashboard's HTTPS origin, with no path or trailing slash.
-- `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, and
-  `AUDIT_ENCRYPTION_PASSPHRASE` as three distinct random values of at least 32 characters.
-- Mount a persistent disk to `/data` across restarts (e.g. Render Persistent Disk or Docker volume)
-  so user agent keys, policies, master funder state, and audit logs survive service redeploys.
-
-The container expects TLS to terminate at the hosting platform or a reverse proxy. Keep its
-8787 port private behind that HTTPS origin. Sessions and login challenges are held in memory,
-and the JSON store is for one replica; do not run multiple app instances. A private source repo
-does not make the running backend private: the HTTPS endpoint is reachable publicly, while API
-access is limited by a valid wallet signature and session cookie.
-
-Seed claims persist the exact signed transfer before submission and resume that same transaction
-after a restart. If the transaction expires and the RPC cannot establish its outcome, the claim stays
-pending rather than risking a second payment; an operator must reconcile it before clearing that state.
-
-`infra/docker-compose.yml` binds port 8787 to host loopback for a reverse proxy. Use the same
-hosted environment values when running it; the local `.env.example` passphrases are rejected in
-hosted mode.
-
-### Chrome extension Developer mode
+Build program (cần Anchor):
 
 ```bash
-pnpm extension:build
+anchor build
 ```
 
-In Chrome, open `chrome://extensions`, turn on Developer mode, choose **Load unpacked**, and select
-`dist/chrome-extension`. Open the extension's settings and enter the dashboard HTTPS origin. Chrome
-asks for access to that one host when saving. The popup checks the public health endpoint and opens
-the dashboard in a tab, where Phantom is injected by the normal HTTPS page. Sign-in uses a separate
-message that creates a session; it is not a transaction approval. This build is for Developer mode,
-not a Chrome Web Store submission.
+## Deploy hosted
 
-### Fund the agent wallet
+Image Docker phục vụ API, dashboard và `/mcp` trên cùng một origin HTTPS; mỗi ví Phantom kết nối vào có ví agent và policy riêng (multi-tenant).
 
-The agent starts with an empty wallet and its address is shown in the dashboard. The public devnet
-faucet is rate-limited per IP, so the in-app airdrop button often returns 429. Either:
+Biến môi trường bắt buộc:
 
-- send devnet SOL from your own Phantom wallet to the agent address, or
-- use <https://faucet.solana.com> with the agent address.
+- `DEPLOYMENT_MODE=hosted`, `HOST=0.0.0.0`, `AGENT_DATA_DIR=/data`
+- `WEB_ORIGIN` — origin HTTPS của dashboard, không có path hay dấu `/` cuối
+- `ADMIN_PUBKEY` — public key Phantom của admin
+- `ALLOWED_OWNERS` (tùy chọn) — danh sách ví được phép, để trống là cho tất cả
+- `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, `AUDIT_ENCRYPTION_PASSPHRASE` — ba giá trị ngẫu nhiên khác nhau, tối thiểu 32 ký tự
 
-Policy decisions work with a zero balance; only the on-chain transfer needs funds.
+Cần persistent disk cho `/data`; không có disk thì mỗi lần deploy lại sẽ sinh ví agent và MCP token mới. Chỉ chạy một instance (session và store JSON ở trong process). TLS kết thúc ở nền tảng hosting hoặc reverse proxy.
 
-## Demo script
-
-1. **Connect Phantom** (set to Devnet). The wallet is bound as the agent owner.
-2. **Set the policy**: per-transaction limit `0.1 SOL`, then *Allowlist my Phantom wallet* so the
-   agent has somewhere legitimate to send.
-3. **Fund the agent** with ~0.7 SOL.
-4. `Send 0.05 SOL to my-wallet` -> policy `allow` -> agent signs -> Explorer link appears.
-5. `Send 0.5 SOL to my-wallet` -> policy `require_approval` -> nothing is signed. Approve in
-   Phantom -> the same transfer now confirms, and the audit log shows who approved it.
-6. `Send 0.05 SOL to HN7cABq...` (not allowlisted) -> policy `deny` -> no transaction, no approval
-   offered.
-
-Point at the audit log at the end: every decision is recorded with its policy version.
-
-## Verify without a browser
-
-With the agent running:
+## Kiểm thử
 
 ```bash
-pnpm e2e
+pnpm test    # policy, approval, pipeline, task vault, MCP tools
+pnpm build   # web bundle + typecheck toàn workspace
+pnpm e2e     # 3 luồng demo + các case tấn công (khi agent đang chạy)
 ```
 
-Drives all three demo paths plus the attack cases: approval from a non-owner wallet, a signature
-over a tampered message, a replayed approval, and an approval issued under a stale policy version.
-It binds its own throwaway key as the owner, so reconnect Phantom afterwards.
+`pnpm e2e` chạy allow / approval / deny và các case: duyệt bằng ví không phải owner, chữ ký trên thông điệp bị sửa, replay chữ ký duyệt, duyệt dưới phiên bản policy cũ.
 
-```bash
-pnpm test        # policy, approval, pipeline and MCP tool tests
-pnpm build       # web bundle + workspace typecheck
+## Cấu trúc repo
+
+```text
+shared/src/policy.ts        evaluatePolicy — hàm duy nhất cho phép ký
+shared/src/contract.ts      schema action, thông điệp duyệt, đơn vị
+shared/src/task-vault.ts    schema và state machine của Task Vault
+
+agent/src/pipeline.ts       prompt/action → policy → ký | chờ duyệt | từ chối
+agent/src/approvals.ts      xác minh chữ ký duyệt của owner
+agent/src/chain.ts          mọi lời gọi RPC Solana và signer
+agent/src/task-vault-chain.ts  build/submit instruction Task Vault
+agent/src/mcp-remote.ts     endpoint /mcp (Streamable HTTP)
+agent/src/mcp-token.ts      bearer token theo owner, allowlist route
+
+programs/nexus-task-vault/  Anchor program
+mcp/src/tools.ts            5 tool MCP; chỉ gọi API agent, không gọi chain
+web/src/                    dashboard React (en / vi)
+extension/                  Chrome extension (Developer mode)
+infra/                      Dockerfile + compose
 ```
 
-One `tsconfig.json`, one lockfile, one `.env` at the root. There is no build step for the
-agent: `tsx` runs the TypeScript directly, and `pnpm build` is what proves it compiles.
+## Phạm vi và giới hạn
 
-## Use it from a personal agent (MCP)
+**Có:** Solana Devnet, SOL và SPL token theo allowlist, policy theo từng owner, hạn mức mỗi giao dịch, duyệt bằng chữ ký Phantom, remote MCP, Task Capability Vault (SOL), audit log mã hóa, giao diện tiếng Anh / tiếng Việt.
 
-`mcp/` is a stdio MCP server that lets Claude Desktop, Claude Code, Cursor or any MCP client use
-the agent wallet. The client is the planner: it sends a structured action to
-`POST /api/agent/intents`, which skips the two model stages and goes straight to `evaluatePolicy`.
-Nothing else changes. Inside the policy the agent signs, above the limit the request waits for the
-owner's Phantom approval in the dashboard, and off-allowlist recipients are denied.
+**Không có:** mainnet, swap/staking/NFT, gọi program tùy ý, ngân sách theo ngày, quy đổi fiat, xử lý seed phrase.
 
-| Tool | What it does |
-| --- | --- |
-| `nexuspay_get_status` | wallet address, SOL balance, per-transaction limit, allowlist labels |
-| `nexuspay_list_requests` / `nexuspay_get_request` | request status, verdict, Explorer link |
-| `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | propose a transfer; the policy decides |
+**Giới hạn đã biết:**
 
-There is no tool to change the policy, bind an owner or approve a request.
+- Ví agent của Policy Guard là **custodial**: key do agent service giữ (đã mã hóa). Tính chất non-custodial chỉ áp dụng cho tiền nằm trong Task Vault.
+- MCP token hiện lưu plaintext trên disk của agent service; lưu dạng hash nằm trong lộ trình.
+- Receipt không chứng minh chất lượng kết quả ngoài chain.
+- Không dùng cho tiền thật.
 
-The stdio bundle is **local only**: it accepts a loopback `NEXUS_API_URL` and authenticates with
-`NEXUS_AGENT_TOKEN`, a per-owner token the agent service issues (`nxp_<owner>_<secret>`, stored in
-`agent/data/users/<owner>/mcp-token`). The MCP server sends it as `Authorization: Bearer`. The token
-only reaches four routes (status, request list, request detail, intents); policy, approvals, owner
-binding and funding still need the owner's wallet session. To reach a hosted agent, connect by URL
-instead (below).
+## Lộ trình
 
-**Security note on token storage:** The token is stored in plaintext on disk under
-`agent/data/users/<owner>/mcp-token`, sharing the same trust boundary as the agent's encrypted keystore.
-While POSIX permissions (`0600`) are applied on Unix systems, mode `0600` has no effect on Windows,
-where file access relies on Windows ACLs.
-
-### Connect an agent by URL (no install)
-
-The agent service exposes a remote MCP endpoint at `/mcp` (Streamable HTTP, stateless). An AI client connects with that URL and the owner's MCP token as `Authorization: Bearer <token>`; nothing is cloned or installed on the client's machine. Sign in to the dashboard, open **Show my connection** in the **Connect an AI agent (MCP)** card on the Wallet tab, and copy the entry for your client:
-
-| Client | Entry |
-| --- | --- |
-| Claude Code | `claude mcp add --transport http nexuspay <url> --header "Authorization: Bearer <token>"` |
-| Codex | `[mcp_servers.nexuspay]` with `url` and `http_headers` in `~/.codex/config.toml` |
-| Antigravity | `serverUrl` and `headers` in `~/.gemini/config/mcp_config.json` |
-| Claude Desktop | `npx -y mcp-remote <url> --header Authorization:${AUTH_HEADER}` in `claude_desktop_config.json` (needs Node.js) |
-
-The URL is the dashboard origin in hosted mode (`WEB_ORIGIN` + `/mcp`) and `http://127.0.0.1:<PORT>/mcp` locally. The token reaches the same read/propose routes as before (status, requests, transfer proposals); policy, approvals, funding and Task Vault still need the wallet session. Rotating the token disconnects URL clients until their entry is copied again.
-
-### Connect an agent from the repository (Zero-Config)
-
-1. Start the stack: `pnpm dev` (this automatically runs `pnpm mcp:build`).
-2. Sign in to the dashboard (`http://localhost:5173`) with your Phantom wallet once to create the owner tenant and MCP token.
-3. Connect your AI agent:
-   - **Claude Code or Cursor:** Open the client **in the repository root** (not a subfolder: the committed entry uses the relative path `dist/mcp/nexuspay-mcp.mjs`) and approve the project's `.mcp.json` / `.cursor/mcp.json`. No secrets or paths to copy. If you open it elsewhere, register the server with an absolute path instead: Claude Code `claude mcp add -s user nexuspay -- node <absolute path to dist/mcp/nexuspay-mcp.mjs>`, Cursor: paste the JSON from `pnpm mcp:config` into `~/.cursor/mcp.json`. (`pnpm mcp:install` covers Codex, Claude Desktop and Antigravity only.)
-   - **Codex, Claude Desktop or Antigravity:** Run `pnpm mcp:install -- --client codex` (or `claude-desktop`, `antigravity`, or omit `--client` for all three) to register the server in the client's global configuration. `.codex/config.toml` is also committed, but Codex only reads project config for trusted projects and this has not been verified on every Codex build, so prefer the installer.
-   - **Fallback:** Run `pnpm mcp:config`; or use the URL entry above.
-
-Each client starts the bundle with plain `node`, so neither pnpm nor tsx has to be on the client's PATH.
-
-| Client | Where the entry goes | Configuration method |
-| --- | --- | --- |
-| Claude Code | `.mcp.json` in project root | Pre-configured in repo (approve on launch) |
-| Cursor | `.cursor/mcp.json` in project root | Pre-configured in repo |
-| Codex (CLI, app, extension) | `~/.codex/config.toml` | Run `pnpm mcp:install -- --client codex` (project `.codex/config.toml` also committed; trusted projects only) |
-| Claude Desktop | `claude_desktop_config.json` | Run `pnpm mcp:install -- --client claude-desktop` |
-| Antigravity (app, IDE, CLI) | `~/.gemini/config/mcp_config.json` | Run `pnpm mcp:install -- --client antigravity` |
-
-On Windows, paths in config files use forward slashes (`G:/nexus/dist/...`); node accepts them and they need
-no escaping in JSON or TOML. Tool input schemas avoid `exclusiveMinimum` and similar keywords, because
-Gemini function calling (Antigravity) rejects them.
-
-Optional: `NEXUS_DASHBOARD_URL` (default `http://localhost:5173`, shown in approval hints) and
-`NEXUS_TIMEOUT_MS` (default 45000, kept below Codex's default 60 s tool timeout). Each transfer carries an idempotency key. If a call times out or the agent
-answers with a server error, the tool returns `outcome_unknown` with that key, and retrying with the same key cannot pay twice.
-Reusing a key for a different transfer returns `idempotency_conflict`. Two separate calls with
-different keys are two transfers, and only the policy limits those.
-
-### Troubleshooting (for the agent setting this up)
-
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| Tool error `mcp_setup_required` with `no MCP token found` | Owner has not signed in to the dashboard on this machine | Sign in to the dashboard with your wallet once; the next tool call picks the token up, no client restart |
-| Tool error `mcp_setup_required` with `multiple owners with MCP tokens found` | More than one owner wallet has a token in the data directory | Set `NEXUS_OWNER_PUBKEY=<your_wallet_address>` in the client env |
-| Tool error `mcp_token_rejected` | Agent service is using a different data directory or token was rotated | Verify `NEXUS_AGENT_DATA_DIR` or sign in to the dashboard to refresh |
-| Server fails to start from `.mcp.json` (`Cannot find module`, "Connection closed", tool not available) | Client was started in a subfolder, so the relative bundle path does not resolve | Open the client in the repository root, or register an absolute path: `claude mcp add -s user nexuspay -- node <path from pnpm mcp:config>` (Claude Code) or the `pnpm mcp:config` JSON in `~/.cursor/mcp.json` (Cursor) |
-| Client cannot start the server: `Cannot find module .../nexuspay-mcp.mjs` | Bundle not built, or path points at another checkout | `pnpm mcp:build`; verify bundle in `dist/mcp/nexuspay-mcp.mjs` |
-| `node` not found | Node.js missing from the client's PATH | Install Node.js 22+, or put the absolute path of `node` in `command` |
-| Tool error `agent_unreachable` | Agent service not running or on another port | `pnpm dev` from the repository root; check `NEXUS_API_URL` |
-| Transfer returns `pending_approval` | Amount above the per-transaction limit | The owner approves in the dashboard; poll `nexuspay_get_request` |
-| Transfer returns `outcome_unknown` | Timeout or server error after submission | Retry with the same `idempotencyKey`; never change the amount |
-| Codex cuts the call at 60 s | Missing `tool_timeout_sec` | Keep `tool_timeout_sec = 90` in the TOML entry |
-| Antigravity rejects the tool schema | Old bundle | `pnpm mcp:build` and restart Antigravity |
-
-## Scope
-
-In: devnet, SOL, text-only input, multi-tenant isolated agent wallets, per-user spending policies, per-transaction limits, recipient/mint allowlists,
-Phantom approval, one-time master funder seed, encrypted audit log. SPL transfer is implemented and gated by the mint allowlist,
-but ships with an empty allowlist — configure a mint to enable it.
-
-Out: mainnet, voice / Gemini Live, swaps, staking, NFTs, arbitrary programs,
-seed-phrase handling, daily budgets, fiat conversion.
-
-## Security notes
-
-- The owner's seed phrase stays in Phantom. The service only ever sees a public key and a
-  signature over a message it issued itself.
-- The agent wallet is a separate keypair holding a small devnet budget. Compromising the service
-  cannot reach the owner's funds.
-- Approving is signing a message, not a transaction. The message states the exact amount,
-  recipient, policy version and expiry, and the dashboard refuses to sign if the server's copy of
-  the message does not match the payload it was derived from.
-- Hosted login is a separate signed message bound to the pinned wallet and dashboard origin. The
-  resulting HttpOnly cookie expires; it does not authorize a payment by itself.
-- The extension stores only the configured dashboard origin and checks `/api/health`; it does not
-  store wallet keys or session cookies.
-- `.env`, `data/` (keystore, state, audit log) are gitignored. Do not reuse these passphrases for
-  anything real.
+Theo dõi tại [epic #18](../../issues/18): bằng chứng Devnet cho Task Vault, kill switch, Admin Control Plane, hardening token, tool Task Vault qua MCP, thanh toán bằng stablecoin.

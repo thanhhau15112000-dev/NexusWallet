@@ -13,7 +13,7 @@ vi.mock('../src/chain.js', async (importOriginal) => {
   };
 });
 
-import { transferSol } from '../src/chain.js';
+import { InsufficientFundsError, transferSol } from '../src/chain.js';
 import { IdempotencyConflictError, runAction, runCommand } from '../src/pipeline.js';
 import { registerRoutes } from '../src/routes.js';
 import { Store } from '../src/store.js';
@@ -113,8 +113,80 @@ describe('runAction (structured agent actions)', () => {
 
     expect(request.status).toBe('denied');
     expect(request.approval).toBeNull();
-    expect(request.error).toMatchObject({ code: 'policy_denied' });
+    expect(request.error).toEqual({
+      code: 'RECIPIENT_NOT_IN_ALLOWLIST',
+      message: `recipient "${STRANGER}" is not on the allowlist`,
+      remediation: expect.stringContaining('details.allowedRecipients'),
+      details: { recipient: STRANGER, allowedRecipients: [{ label: 'treasury', address: TREASURY }] },
+    });
     expect(transferSol).not.toHaveBeenCalled();
+  });
+
+  it('denies an off-allowlist mint with MINT_NOT_IN_ALLOWLIST', async () => {
+    const ctx = makeContext();
+
+    const request = await runAction(ctx, {
+      action: { type: 'transfer_spl', recipient: 'treasury', mint: STRANGER, amount: 1 },
+    });
+
+    expect(request.status).toBe('denied');
+    expect(request.error).toMatchObject({
+      code: 'MINT_NOT_IN_ALLOWLIST',
+      details: { mint: STRANGER, allowedMints: [] },
+    });
+    expect(request.error?.remediation).toContain('details.allowedMints');
+  });
+
+  it('denies an amount that rounds to zero lamports with INVALID_AMOUNT', async () => {
+    const ctx = makeContext();
+
+    const request = await runAction(ctx, {
+      action: { type: 'transfer_sol', recipient: 'treasury', amountSol: 1e-10 },
+    });
+
+    expect(request.status).toBe('denied');
+    expect(request.error).toMatchObject({ code: 'INVALID_AMOUNT', details: { amountSol: 1e-10 } });
+    expect(transferSol).not.toHaveBeenCalled();
+  });
+
+  it('holds an over-limit transfer with the limit in SOL and integer lamports', async () => {
+    const ctx = makeContext();
+
+    const request = await runAction(ctx, {
+      action: { type: 'transfer_sol', recipient: 'treasury', amountSol: 0.100000001 },
+    });
+
+    expect(request.status).toBe('pending_approval');
+    expect(request.error).toBeNull();
+    expect(request.decision).toMatchObject({
+      code: 'AMOUNT_EXCEEDS_TRANSACTION_LIMIT',
+      reasons: ['amount 0.100000001 SOL exceeds the per-transaction limit of 0.1 SOL'],
+      details: { requestedSol: 0.100000001, requestedLamports: 100_000_001, limitSol: 0.1, limitLamports: 100_000_000 },
+    });
+  });
+
+  it('fails with INSUFFICIENT_FUNDS_INCLUDING_FEES when the balance cannot cover amount plus fee reserve', async () => {
+    const ctx = makeContext();
+    vi.mocked(transferSol).mockRejectedValueOnce(new InsufficientFundsError(15_000_000, 20_010_000));
+
+    const request = await runAction(ctx, {
+      action: { type: 'transfer_sol', recipient: 'treasury', amountSol: 0.02 },
+    });
+
+    expect(request.status).toBe('failed');
+    expect(request.execution).toBeNull();
+    expect(request.error).toMatchObject({
+      code: 'INSUFFICIENT_FUNDS_INCLUDING_FEES',
+      message: 'agent wallet holds 0.015 SOL, needs 0.02001 SOL including the fee reserve',
+      details: {
+        balanceLamports: 15_000_000,
+        requiredLamports: 20_010_000,
+        feeReserveLamports: 10_000,
+        maxSendableLamports: 14_990_000,
+        maxSendableSol: 0.01499,
+      },
+    });
+    expect(request.error?.remediation).toContain('details.maxSendableSol');
   });
 
   it('reads the balance through the same policy path', async () => {
@@ -216,7 +288,12 @@ describe('POST /api/agent/intents', () => {
     const conflict = await send(0.6);
 
     expect(conflict.statusCode).toBe(409);
-    expect(conflict.json().error).toBe('idempotency_conflict');
+    expect(conflict.json()).toEqual({
+      error: 'IDEMPOTENCY_CONFLICT',
+      message: 'idempotency key k was already used for a different request',
+      remediation: expect.stringContaining('Omit idempotencyKey'),
+      details: { idempotencyKey: 'k' },
+    });
   });
 
   it('rejects the non-executable manual approval action before creating a request', async () => {

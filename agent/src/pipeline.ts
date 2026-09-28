@@ -7,9 +7,14 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
+  AGENT_ERROR_REMEDIATION,
   buildApprovalMessage,
   evaluatePolicy,
+  formatSol,
+  lamportsToSol,
   solToLamports,
+  spentLamportsInWindow,
+  type AgentErrorCode,
   type ApprovalPayload,
   type ExecutionRecord,
   type ModelAction,
@@ -20,6 +25,8 @@ import {
   type ResolvedAction,
 } from '@nexus/shared';
 import {
+  FEE_BUFFER_LAMPORTS,
+  InsufficientFundsError,
   TransactionSimulationError,
   explorerTxUrl,
   getLamportBalance,
@@ -63,6 +70,10 @@ function newRequest(agentId: string, prompt: string, idempotencyKey: string | nu
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+export function agentError(code: AgentErrorCode, message: string, details: Record<string, unknown> = {}) {
+  return { code, message, remediation: AGENT_ERROR_REMEDIATION[code], details };
 }
 
 function planMatchesIntent(
@@ -138,6 +149,31 @@ function dispatchDecision(
   decision: PolicyDecision,
   currentPolicy: Policy,
 ): Promise<PaymentRequest> | PaymentRequest {
+  if (Boolean(ctx.store.isFrozen?.())) {
+    const isTransfer =
+      request.plan?.action.type === 'transfer_sol' ||
+      request.plan?.action.type === 'transfer_spl' ||
+      decision.resolved?.type === 'transfer_sol' ||
+      decision.resolved?.type === 'transfer_spl';
+    if (isTransfer) {
+      const frozenDecision: PolicyDecision = {
+        verdict: 'deny',
+        policyVersion: currentPolicy.version,
+        reasons: ['agent is frozen by owner'],
+        resolved: null,
+        code: 'AGENT_FROZEN',
+      };
+      request = ctx.store.putRequest({
+        ...request,
+        decision: frozenDecision,
+        status: 'denied',
+        error: agentError('AGENT_FROZEN', 'agent is frozen by owner'),
+      });
+      ctx.audit.record('tx.blocked', request.id, { reason: 'agent_frozen' });
+      return request;
+    }
+  }
+
   request = ctx.store.putRequest({ ...request, decision });
   ctx.audit.record('policy.decided', request.id, {
     verdict: decision.verdict,
@@ -149,7 +185,7 @@ function dispatchDecision(
     return ctx.store.putRequest({
       ...request,
       status: 'denied',
-      error: { code: 'policy_denied', message: decision.reasons.join('; ') },
+      error: agentError(decision.code ?? 'NO_EXECUTABLE_ACTION', decision.reasons.join('; '), decision.details),
     });
   }
 
@@ -159,7 +195,7 @@ function dispatchDecision(
       return ctx.store.putRequest({
         ...request,
         status: 'denied',
-        error: { code: 'policy_denied', message: 'action is not approvable' },
+        error: agentError('NO_EXECUTABLE_ACTION', 'action is not approvable'),
       });
     }
 
@@ -235,13 +271,15 @@ async function processCommand(
   // The model call can take long enough for the policy to change. Evaluate
   // against the latest policy, not the snapshot used to build the prompt.
   const currentPolicy = ctx.store.getPolicy();
+  const spentLamports24h = spentLamportsInWindow(ctx.store.listRequests());
   const baseDecision = planMatchesIntent(intent.value, plan.value.action, currentPolicy)
-    ? evaluatePolicy(currentPolicy, plan.value.action)
+    ? evaluatePolicy(currentPolicy, plan.value.action, { spentLamports24h })
     : {
         verdict: 'deny' as const,
         policyVersion: currentPolicy.version,
         reasons: ['model plan does not match the classified intent'],
         resolved: null,
+        code: 'MODEL_PLAN_MISMATCH' as const,
       };
   const decision =
     intent.value.requiresHuman &&
@@ -283,7 +321,8 @@ async function processAction(
   });
   ctx.audit.record('request.created', request.id, { source: 'agent_action', action });
 
-  return dispatchDecision(ctx, request, evaluatePolicy(policy, action), policy);
+  const spentLamports24h = spentLamportsInWindow(ctx.store.listRequests());
+  return dispatchDecision(ctx, request, evaluatePolicy(policy, action, { spentLamports24h }), policy);
 }
 
 function actionFingerprint(action: AgentAction): string {
@@ -391,6 +430,16 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
     });
   }
 
+  if (action.type !== 'get_balance' && Boolean(ctx.store.isFrozen?.())) {
+    const message = 'agent is frozen by owner';
+    ctx.audit.record('tx.blocked', request.id, { reason: 'agent_frozen' });
+    return ctx.store.putRequest({
+      ...request,
+      status: 'denied',
+      error: agentError('AGENT_FROZEN', message),
+    });
+  }
+
   try {
     if (action.type === 'get_balance') {
       const lamports = await getLamportBalance(ctx.connection, ctx.agentPubkey);
@@ -425,6 +474,27 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
 
     return ctx.store.putRequest({ ...request, status: 'confirmed', execution });
   } catch (err) {
+    if (err instanceof InsufficientFundsError) {
+      ctx.audit.record('tx.failed', request.id, { error: err.message });
+      const maxSendable = Math.max(0, err.balanceLamports - FEE_BUFFER_LAMPORTS);
+      return ctx.store.putRequest({
+        ...request,
+        status: 'failed',
+        error: agentError(
+          'INSUFFICIENT_FUNDS_INCLUDING_FEES',
+          `agent wallet holds ${formatSol(err.balanceLamports)}, needs ${formatSol(err.requiredLamports)} including the fee reserve`,
+          {
+            balanceSol: lamportsToSol(err.balanceLamports),
+            balanceLamports: err.balanceLamports,
+            requiredSol: lamportsToSol(err.requiredLamports),
+            requiredLamports: err.requiredLamports,
+            feeReserveLamports: FEE_BUFFER_LAMPORTS,
+            maxSendableSol: lamportsToSol(maxSendable),
+            maxSendableLamports: maxSendable,
+          },
+        ),
+      });
+    }
     if (err instanceof TransactionSimulationError) {
       ctx.audit.record('tx.simulation_failed', request.id, {
         error: err.simulationError,

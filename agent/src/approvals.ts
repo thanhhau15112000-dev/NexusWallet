@@ -39,6 +39,10 @@ async function approveRequestOnce(
     throw new ApprovalError(code, message);
   };
 
+  if (Boolean(ctx.store.isFrozen?.())) {
+    reject('agent_frozen', 'agent is frozen by owner');
+  }
+
   if (request.status !== 'pending_approval') {
     reject('bad_status', `request is ${request.status}, not pending_approval`);
   }

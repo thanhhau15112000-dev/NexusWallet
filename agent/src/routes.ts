@@ -3,10 +3,13 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import {
+  AGENT_ERROR_REMEDIATION,
   AllowlistEntrySchema,
+  lamportsToSol,
   ModelActionSchema,
   PubkeySchema,
   solToLamports,
+  spentLamportsInWindow,
   type Policy,
   validateTaskTransition,
   computeTaskHash,
@@ -26,7 +29,13 @@ import { Keypair, PublicKey, SystemProgram, type TransactionInstruction } from '
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { verifyMessageSignature } from './crypto.js';
-import { explorerAddressUrl, getLamportBalance, isValidAddress, requestAirdrop } from './chain.js';
+import {
+  FEE_BUFFER_LAMPORTS,
+  explorerAddressUrl,
+  getLamportBalance,
+  isValidAddress,
+  requestAirdrop,
+} from './chain.js';
 import { ApprovalError, approveRequest } from './approvals.js';
 import type { AppContext } from './context.js';
 import {
@@ -34,7 +43,7 @@ import {
   SeedTransferFailedError,
   SeedTransferOutcomeUnknownError,
 } from './funder.js';
-import { IdempotencyConflictError, runAction, runCommand, type AgentAction } from './pipeline.js';
+import { IdempotencyConflictError, agentError, runAction, runCommand, type AgentAction } from './pipeline.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
@@ -119,6 +128,7 @@ const OwnerBody = z.object({ pubkey: PubkeySchema });
 
 const PolicyBody = z.object({
   maxSolPerTx: z.number().nonnegative().max(1000),
+  maxSolPerDay: z.number().nonnegative().max(100000).nullable().optional(),
   allowedRecipients: z.array(AllowlistEntrySchema).max(32),
   allowedMints: z.array(AllowlistEntrySchema).max(16),
   maxTokenAmountByMint: z.record(z.string(), z.number().nonnegative()).default({}),
@@ -208,7 +218,11 @@ function mcpClientConfig(ctx: AppContext, owner: string, rotate: boolean) {
 }
 
 function publicPolicy(policy: Policy) {
-  return { ...policy, maxSolPerTx: policy.maxSolLamportsPerTx / 1_000_000_000 };
+  return {
+    ...policy,
+    maxSolPerTx: policy.maxSolLamportsPerTx / 1_000_000_000,
+    maxSolPerDay: policy.maxSolLamportsPerDay === null ? null : policy.maxSolLamportsPerDay / 1_000_000_000,
+  };
 }
 
 function isOriginAllowed(origin: string | undefined, ctx: AppContext): boolean {
@@ -436,6 +450,18 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       }
     }
 
+    const currentPolicy = userCtx.store.getPolicy();
+    const spentLamports = spentLamportsInWindow(userCtx.store.listRequests());
+    const remainingLamports =
+      currentPolicy.maxSolLamportsPerDay === null
+        ? null
+        : Math.max(0, currentPolicy.maxSolLamportsPerDay - spentLamports);
+
+    const usage = {
+      spentSol24h: lamportsToSol(spentLamports),
+      remainingSol24h: remainingLamports === null ? null : lamportsToSol(remainingLamports),
+    };
+
     return {
       cluster: userCtx.config.SOLANA_CLUSTER,
       rpcUrl: userCtx.config.SOLANA_RPC_URL,
@@ -457,8 +483,13 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
         lamports,
         rpcError,
         explorerUrl: explorerAddressUrl(userCtx.agentPubkey, userCtx.config.SOLANA_CLUSTER),
+        // Upper bound the pre-flight balance check reserves on top of a SOL transfer amount.
+        feeReserveLamports: FEE_BUFFER_LAMPORTS,
+        frozen: userCtx.store.isFrozen(),
+        frozenAt: userCtx.store.getFrozen()?.at ?? null,
       },
-      policy: publicPolicy(userCtx.store.getPolicy()),
+      policy: publicPolicy(currentPolicy),
+      usage,
     };
   });
 
@@ -550,14 +581,54 @@ const inFlightClaims = new Set<string>();
   app.put('/api/policy', async (req) => {
     const userCtx = resolveUserContext(ctx, req);
     const body = PolicyBody.parse(req.body);
+    const current = userCtx.store.getPolicy();
+    const maxSolLamportsPerDay =
+      body.maxSolPerDay !== undefined
+        ? (body.maxSolPerDay === null ? null : solToLamports(body.maxSolPerDay))
+        : current.maxSolLamportsPerDay;
     const policy = userCtx.store.setPolicy({
       maxSolLamportsPerTx: solToLamports(body.maxSolPerTx),
+      maxSolLamportsPerDay,
       allowedRecipients: body.allowedRecipients,
       allowedMints: body.allowedMints,
       maxTokenAmountByMint: body.maxTokenAmountByMint,
     });
     userCtx.audit.record('policy.updated', null, { policy });
     return { policy: publicPolicy(policy) };
+  });
+
+  app.post('/api/agent/freeze', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const currentFrozen = userCtx.store.getFrozen();
+    if (currentFrozen) {
+      return { frozen: true, frozenAt: currentFrozen.at };
+    }
+    const now = new Date().toISOString();
+    userCtx.store.setFrozen(true, now);
+    userCtx.audit.record('agent.frozen', null, { frozenAt: now });
+
+    const pending = userCtx.store.listRequests().filter((r) => r.status === 'pending_approval');
+    for (const r of pending) {
+      userCtx.store.putRequest({
+        ...r,
+        status: 'denied',
+        error: agentError('AGENT_FROZEN', 'agent was frozen by owner; pending approval cancelled'),
+      });
+      userCtx.audit.record('tx.blocked', r.id, { reason: 'agent_frozen' });
+    }
+
+    return { frozen: true, frozenAt: now };
+  });
+
+  app.post('/api/agent/unfreeze', async (req) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const currentFrozen = userCtx.store.getFrozen();
+    if (!currentFrozen) {
+      return { frozen: false, frozenAt: null };
+    }
+    userCtx.store.setFrozen(false);
+    userCtx.audit.record('agent.unfrozen', null, { unfrozenAt: new Date().toISOString() });
+    return { frozen: false, frozenAt: null };
   });
 
   app.post('/api/agent/airdrop', async (req, reply) => {
@@ -603,7 +674,12 @@ const inFlightClaims = new Set<string>();
       return { request };
     } catch (err) {
       if (err instanceof IdempotencyConflictError) {
-        return reply.status(409).send({ error: 'idempotency_conflict', message: err.message });
+        return reply.status(409).send({
+          error: 'IDEMPOTENCY_CONFLICT',
+          message: err.message,
+          remediation: AGENT_ERROR_REMEDIATION.IDEMPOTENCY_CONFLICT,
+          details: { idempotencyKey: body.idempotencyKey ?? null },
+        });
       }
       throw err;
     }
@@ -767,6 +843,15 @@ const inFlightClaims = new Set<string>();
   app.post('/api/tasks/:taskId/payments', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const { taskId } = req.params as { taskId: string };
+    if (userCtx.store.isFrozen()) {
+      userCtx.audit.record('tx.blocked', null, { reason: 'agent_frozen', taskId });
+      return reply.status(409).send({
+        error: 'AGENT_FROZEN',
+        code: 'AGENT_FROZEN',
+        message: 'agent is frozen by owner',
+        remediation: AGENT_ERROR_REMEDIATION.AGENT_FROZEN,
+      });
+    }
     const body = ExecutePaymentBody.parse(req.body);
 
     const task = userCtx.store.getTask(taskId);
@@ -887,6 +972,15 @@ const inFlightClaims = new Set<string>();
   app.post('/api/tasks/:taskId/payments/:paymentId/settle', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
+    if (userCtx.store.isFrozen()) {
+      userCtx.audit.record('tx.blocked', null, { reason: 'agent_frozen', taskId, paymentId });
+      return reply.status(409).send({
+        error: 'AGENT_FROZEN',
+        code: 'AGENT_FROZEN',
+        message: 'agent is frozen by owner',
+        remediation: AGENT_ERROR_REMEDIATION.AGENT_FROZEN,
+      });
+    }
     const body = SettlePaymentBody.parse(req.body);
 
     const task = userCtx.store.getTask(taskId);

@@ -262,8 +262,63 @@ describe('nexusPay MCP tools', () => {
     const summary = parse(result);
     expect(result.isError).toBeFalsy();
     expect(summary.status).toBe('pending_approval');
-    expect(summary.approval.nextStep).toContain('http://localhost:5173');
+    expect(summary.approval).toMatchObject({
+      code: 'PENDING_APPROVAL_REQUIRED',
+      pollIntervalMs: 5_000,
+      dashboardUrl: 'http://localhost:5173/?request=req_abc123',
+      expiresAt: '2026-09-27T00:05:00.000Z',
+    });
+    expect(summary.approval.remediation).toMatch(/Do not resubmit or split/);
     expect(JSON.stringify(summary)).not.toContain('secret-nonce');
+  });
+
+  it('carries the policy reason code and SOL/lamport details on a held transfer', async () => {
+    const held = request({
+      decision: {
+        verdict: 'require_approval',
+        policyVersion: 2,
+        reasons: ['amount 0.5 SOL exceeds the per-transaction limit of 0.1 SOL'],
+        resolved: null,
+        code: 'AMOUNT_EXCEEDS_TRANSACTION_LIMIT',
+        details: { requestedSol: 0.5, requestedLamports: 500_000_000, limitSol: 0.1, limitLamports: 100_000_000 },
+      },
+    });
+    const client = await connect(vi.fn(async () => json(200, { request: held })) as unknown as Fetch);
+
+    const summary = parse(
+      await client.callTool({ name: 'nexuspay_transfer_sol', arguments: { recipient: 'treasury', amountSol: 0.5 } }),
+    );
+
+    expect(summary.approval.message).toBe('amount 0.5 SOL exceeds the per-transaction limit of 0.1 SOL');
+    expect(summary.approval.details).toEqual({
+      reason: 'AMOUNT_EXCEEDS_TRANSACTION_LIMIT',
+      requestedSol: 0.5,
+      requestedLamports: 500_000_000,
+      limitSol: 0.1,
+      limitLamports: 100_000_000,
+    });
+  });
+
+  it('returns the structured error of a denied transfer as a normal result', async () => {
+    const denied = request({
+      status: 'denied',
+      approval: null,
+      error: {
+        code: 'RECIPIENT_NOT_IN_ALLOWLIST',
+        message: 'recipient "stranger" is not on the allowlist',
+        remediation: 'Use a label or address from details.allowedRecipients.',
+        details: { recipient: 'stranger', allowedRecipients: [{ label: 'treasury', address: OWNER }] },
+      },
+    });
+    const client = await connect(vi.fn(async () => json(200, { request: denied })) as unknown as Fetch);
+
+    const result = await client.callTool({
+      name: 'nexuspay_transfer_sol',
+      arguments: { recipient: 'stranger', amountSol: 0.01 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toMatchObject({ status: 'denied', approval: null, error: denied.error });
   });
 
   it('reports outcome_unknown with the key when the agent times out', async () => {
@@ -333,7 +388,14 @@ describe('nexusPay MCP tools', () => {
 
   it('passes API errors through as tool errors', async () => {
     const client = await connect(
-      vi.fn(async () => json(409, { error: 'idempotency_conflict', message: 'key reused' })) as unknown as Fetch,
+      vi.fn(async () =>
+        json(409, {
+          error: 'IDEMPOTENCY_CONFLICT',
+          message: 'key reused',
+          remediation: 'Omit idempotencyKey for a new transfer.',
+          details: { idempotencyKey: 'k1' },
+        }),
+      ) as unknown as Fetch,
     );
 
     const result = await client.callTool({
@@ -342,7 +404,14 @@ describe('nexusPay MCP tools', () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(parse(result)).toMatchObject({ error: 'idempotency_conflict', idempotencyKey: 'k1' });
+    expect(parse(result)).toEqual({
+      error: 'IDEMPOTENCY_CONFLICT',
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: 'key reused',
+      remediation: 'Omit idempotencyKey for a new transfer.',
+      details: { idempotencyKey: 'k1' },
+      idempotencyKey: 'k1',
+    });
   });
 
   it('reports an unreachable agent without claiming an unknown outcome', async () => {
@@ -492,7 +561,14 @@ describe('nexusPay MCP tools', () => {
           rpcUrl: 'https://api.devnet.solana.com',
           isAdmin: true,
           masterFunder: { pubkey: 'funder', lamports: 1 },
-          agent: { agentId: 'a', pubkey: OWNER, lamports: 250_000_000, rpcError: null, explorerUrl: 'x' },
+          agent: {
+            agentId: 'a',
+            pubkey: OWNER,
+            lamports: 250_000_000,
+            rpcError: null,
+            explorerUrl: 'x',
+            feeReserveLamports: 10_000,
+          },
           policy: {
             version: 3,
             maxSolPerTx: 0.1,
@@ -506,9 +582,144 @@ describe('nexusPay MCP tools', () => {
 
     const status = parse(await client.callTool({ name: 'nexuspay_get_status', arguments: {} }));
 
+    expect(status.frozen).toBe(false);
     expect(status.wallet.balanceSol).toBe(0.25);
+    expect(status.estimatedFeeSol).toBe(0.00001);
     expect(status.policy.recipients).toEqual([{ label: 'treasury', address: OWNER }]);
     expect(JSON.stringify(status)).not.toMatch(/masterFunder|isAdmin|rpcUrl/);
+  });
+
+  it('exposes frozen: true on nexuspay_get_status when agent is frozen', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          cluster: 'devnet',
+          agent: {
+            agentId: 'agent-001',
+            pubkey: OWNER,
+            lamports: 250_000_000,
+            rpcError: null,
+            explorerUrl: `https://explorer.solana.com/address/${OWNER}?cluster=devnet`,
+            frozen: true,
+            frozenAt: '2026-09-28T00:00:00.000Z',
+          },
+          policy: {
+            version: 1,
+            maxSolPerTx: 0.1,
+            allowedRecipients: [],
+            allowedMints: [],
+            maxTokenAmountByMint: {},
+          },
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const status = parse(await client.callTool({ name: 'nexuspay_get_status', arguments: {} }));
+    expect(status.frozen).toBe(true);
+  });
+
+  it('returns AGENT_FROZEN code in tool output when transfer is blocked by freeze', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          request: request({
+            status: 'denied',
+            error: {
+              code: 'AGENT_FROZEN',
+              message: 'agent is frozen by owner',
+              remediation:
+                'The owner has frozen this agent. Do not retry or change parameters; ask the owner to unfreeze the agent in the nexusPay dashboard.',
+              details: {},
+            },
+          }),
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const result = await client.callTool({
+      name: 'nexuspay_transfer_sol',
+      arguments: { recipient: 'treasury', amountSol: 0.05 },
+    });
+
+    const parsed = parse(result);
+    expect(parsed.status).toBe('denied');
+    expect(parsed.error.code).toBe('AGENT_FROZEN');
+    expect(parsed.error.remediation).toContain('unfreeze');
+  });
+
+  it('exposes maxSolPerDay and usage metrics on nexuspay_get_status', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          cluster: 'devnet',
+          agent: {
+            agentId: 'agent-001',
+            pubkey: OWNER,
+            lamports: 500_000_000,
+            rpcError: null,
+            explorerUrl: `https://explorer.solana.com/address/${OWNER}?cluster=devnet`,
+            feeReserveLamports: 10_000,
+          },
+          policy: {
+            version: 1,
+            maxSolPerTx: 0.1,
+            maxSolPerDay: 0.5,
+            allowedRecipients: [{ label: 'treasury', address: OWNER }],
+            allowedMints: [],
+            maxTokenAmountByMint: {},
+          },
+          usage: {
+            spentSol24h: 0.2,
+            remainingSol24h: 0.3,
+          },
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const status = parse(await client.callTool({ name: 'nexuspay_get_status', arguments: {} }));
+    expect(status.policy.maxSolPerDay).toBe(0.5);
+    expect(status.spentSol24h).toBe(0.2);
+    expect(status.remainingSol24h).toBe(0.3);
+  });
+
+  it('returns approval with reason code DAILY_LIMIT_EXCEEDED when transfer exceeds daily cap', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          request: request({
+            status: 'pending_approval',
+            decision: {
+              verdict: 'require_approval',
+              policyVersion: 2,
+              code: 'DAILY_LIMIT_EXCEEDED',
+              reasons: [
+                'amount 0.05 SOL exceeds the 24-hour limit (0.48 SOL spent of 0.5 SOL limit, 0.02 SOL remaining)',
+              ],
+              details: {
+                limitSol: 0.5,
+                limitLamports: 500_000_000,
+                spentSol: 0.48,
+                spentLamports: 480_000_000,
+                requestedSol: 0.05,
+                requestedLamports: 50_000_001,
+                remainingSol: 0.02,
+                remainingLamports: 20_000_000,
+              },
+            },
+          }),
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const result = await client.callTool({
+      name: 'nexuspay_transfer_sol',
+      arguments: { recipient: 'treasury', amountSol: 0.05 },
+    });
+
+    const parsed = parse(result);
+    expect(parsed.status).toBe('pending_approval');
+    expect(parsed.approval.details.reason).toBe('DAILY_LIMIT_EXCEEDED');
+    expect(parsed.approval.details.remainingSol).toBe(0.02);
   });
 
   it('filters and limits the request list', async () => {
@@ -568,4 +779,12 @@ describe('stdio entry point', () => {
     for (const line of lines) expect(JSON.parse(line).jsonrpc).toBe('2.0');
     expect(JSON.parse(lines[0]!).result.serverInfo.name).toBe('nexuspay');
   }, 20_000);
+});
+
+describe('requestDeepLink', () => {
+  it('adds the request id to the dashboard URL and falls back on a malformed origin', async () => {
+    const { requestDeepLink } = await import('../src/tools.js');
+    expect(requestDeepLink('https://nexus.example/app', 'req_1')).toBe('https://nexus.example/app?request=req_1');
+    expect(requestDeepLink('not a url', 'req_1')).toBe('not a url');
+  });
 });

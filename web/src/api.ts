@@ -26,8 +26,11 @@ export type AgentState = {
     lamports: number | null;
     rpcError: string | null;
     explorerUrl: string;
+    frozen?: boolean;
+    frozenAt?: string | null;
   };
-  policy: Policy & { maxSolPerTx: number };
+  policy: Policy & { maxSolPerTx: number; maxSolPerDay?: number | null };
+  usage?: { spentSol24h: number; remainingSol24h: number | null };
 };
 
 export type AgentHealth = {
@@ -157,6 +160,7 @@ export const api = {
 
   savePolicy: (input: {
     maxSolPerTx: number;
+    maxSolPerDay?: number | null;
     allowedRecipients: { label: string; address: string }[];
     allowedMints: { label: string; address: string }[];
     maxTokenAmountByMint: Record<string, number>;
@@ -177,6 +181,18 @@ export const api = {
       '/api/agent/claim-seed',
       { method: 'POST', body: JSON.stringify({}) },
     ),
+
+  freeze: () =>
+    request<{ frozen: boolean; frozenAt: string | null }>('/api/agent/freeze', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  unfreeze: () =>
+    request<{ frozen: boolean; frozenAt: string | null }>('/api/agent/unfreeze', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 
   command: (prompt: string, idempotencyKey?: string) =>
     request<{ request: PaymentRequest }>('/api/commands', {

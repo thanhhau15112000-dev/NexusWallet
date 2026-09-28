@@ -123,7 +123,9 @@ export function App() {
   const [signInError, setSignInError] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [offline, setOffline] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<FeatureTab>('wallet');
+  // An agent holding a transfer links the owner to ?request=<id>; open the approvals tab for it.
+  const [focusRequestId] = useState(() => new URLSearchParams(window.location.search).get('request'));
+  const [activeTab, setActiveTab] = useState<FeatureTab>(focusRequestId ? 'approvals' : 'wallet');
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const bindAttempt = useRef<string | null>(null);
@@ -593,6 +595,8 @@ export function App() {
             ownerWalletSettingsOpen={ownerWalletSettingsOpen}
             onToggleOwnerWalletSettings={() => setOwnerWalletSettingsOpen((open) => !open)}
             onCloseOwnerWalletSettings={() => setOwnerWalletSettingsOpen(false)}
+            onRefresh={refresh}
+            onToast={setToast}
             ownerWallet={
               <WalletPanel
                 state={state}
@@ -669,6 +673,7 @@ export function App() {
           wallet={wallet}
           owner={state.owner}
           busyId={approvingId}
+          focusId={focusRequestId}
           onApprove={(request) => void approve(request)}
         />
       </section>

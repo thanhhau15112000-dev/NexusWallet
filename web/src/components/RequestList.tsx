@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from './icons.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest, type RequestStatus } from '@nexus/shared';
 import { Card, Empty, Mono, Pill, shorten } from './ui.js';
@@ -44,6 +44,7 @@ function formatTrace(request: PaymentRequest): string {
 
 function RequestRow(props: {
   request: PaymentRequest;
+  focused: boolean;
   canApprove: boolean;
   busy: boolean;
   onApprove: (request: PaymentRequest) => void;
@@ -53,7 +54,7 @@ function RequestRow(props: {
   const decision = request.decision;
 
   return (
-    <li className="request">
+    <li id={`request-${request.id}`} className={props.focused ? 'request focused' : 'request'}>
       <div className="request-head">
         <Pill tone={TONE[request.status]}>{dict.requests.statuses[request.status]}</Pill>
         <span className="prompt">{request.prompt}</span>
@@ -141,10 +142,20 @@ export function RequestList(props: {
   wallet: string | null;
   owner: string | null;
   busyId: string | null;
+  /** Request named by the `?request=` deep link an agent receives for a held transfer. */
+  focusId?: string | null;
   onApprove: (request: PaymentRequest) => void;
 }) {
   const { dict, interpolate } = useI18n();
   const [showAll, setShowAll] = useState(false);
+  const scrolledTo = useRef<string | null>(null);
+  const focusLoaded = Boolean(props.focusId && props.requests.some((request) => request.id === props.focusId));
+
+  useEffect(() => {
+    if (!props.focusId || !focusLoaded || scrolledTo.current === props.focusId) return;
+    scrolledTo.current = props.focusId;
+    document.getElementById(`request-${props.focusId}`)?.scrollIntoView({ block: 'center' });
+  }, [props.focusId, focusLoaded]);
   const canApprove = Boolean(props.wallet && props.wallet === props.owner);
   const recentRequests = props.requests.slice(0, 6);
   const visibleRequests = showAll
@@ -153,7 +164,7 @@ export function RequestList(props: {
         ...recentRequests,
         ...props.requests.filter(
           (request) =>
-            request.status === 'pending_approval' &&
+            (request.status === 'pending_approval' || request.id === props.focusId) &&
             !recentRequests.some((recent) => recent.id === request.id),
         ),
       ];
@@ -172,6 +183,7 @@ export function RequestList(props: {
             <RequestRow
               key={request.id}
               request={request}
+              focused={request.id === props.focusId}
               canApprove={canApprove}
               busy={props.busyId === request.id}
               onApprove={props.onApprove}

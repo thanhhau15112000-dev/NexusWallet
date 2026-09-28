@@ -42,6 +42,8 @@ export const en: TranslationDictionary = {
     policySaved: 'Policy saved',
     airdropRequested: 'Airdrop requested',
     seedClaimed: '0.1 SOL demo seed claimed!',
+    agentFrozen: 'Agent frozen',
+    agentUnfrozen: 'Agent unfrozen',
   },
   agent: {
     title: 'Agent wallet',
@@ -61,6 +63,11 @@ export const en: TranslationDictionary = {
     airdropRequesting: 'Requesting...',
     airdropTitle: 'Request airdrop directly from Solana Devnet RPC',
     faucet: 'Solana Official Faucet',
+    frozenStatus: 'Frozen',
+    freezeBtn: 'Freeze agent',
+    unfreezeBtn: 'Unfreeze agent',
+    confirmFreezeBtn: 'Confirm freeze',
+    cancelFreezeBtn: 'Cancel',
   },
   wallet: {
     title: 'Owner wallet',
@@ -97,6 +104,8 @@ export const en: TranslationDictionary = {
   policy: {
     title: 'Policy',
     maxPerTx: 'Max per transaction',
+    maxPerDay: 'Max per day (SOL)',
+    unlimitedPlaceholder: 'Unlimited',
     recipients: 'Recipients',
     noRecipients: 'No recipients',
     remove: 'Remove',

@@ -29,6 +29,15 @@ export function lamportsToSol(lamports: number): number {
   return lamports / LAMPORTS_PER_SOL;
 }
 
+/** Exact decimal text for an integer lamport amount, e.g. 100000001 -> "0.100000001 SOL". */
+export function formatSol(lamports: number): string {
+  const sign = lamports < 0 ? '-' : '';
+  const abs = Math.abs(Math.trunc(lamports));
+  const whole = Math.floor(abs / LAMPORTS_PER_SOL);
+  const fraction = String(abs % LAMPORTS_PER_SOL).padStart(9, '0').replace(/0+$/, '');
+  return `${sign}${whole}${fraction ? `.${fraction}` : ''} SOL`;
+}
+
 // ---------------------------------------------------- stage 1: intent
 
 /**
@@ -227,7 +236,18 @@ export type PaymentRequest = {
   execution: ExecutionRecord | null;
   /** Result of a read-only action such as get_balance. */
   balanceLamports: number | null;
-  error: { code: string; message: string } | null;
+  error: RequestError | null;
+};
+
+/**
+ * `remediation` and `details` are set for the agent-facing codes in `AGENT_ERROR_REMEDIATION`;
+ * requests stored before they existed carry only `code` and `message`.
+ */
+export type RequestError = {
+  code: string;
+  message: string;
+  remediation?: string;
+  details?: Record<string, unknown>;
 };
 
 /** Declared in `policy.ts`; referenced here to keep the request shape in one place. */

@@ -797,7 +797,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 never change the amount on a retry.
               </li>
               <li>
-                Reusing a key for a different transfer returns <code>idempotency_conflict</code>. Two calls with
+                Reusing a key for a different transfer returns <code>IDEMPOTENCY_CONFLICT</code>. Two calls with
                 different keys are two transfers, limited only by the policy.
               </li>
             </ul>
@@ -824,6 +824,8 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 <tr><td><code>node</code> not found</td><td>Install Node.js 22+, or put the absolute path of <code>node</code> in <code>command</code>.</td></tr>
                 <tr><td>Codex cuts the call at 60 s</td><td>Keep <code>tool_timeout_sec = 90</code> in the Codex entry.</td></tr>
                 <tr><td>Antigravity rejects the tool schema</td><td>Run <code>pnpm mcp:build</code> and restart Antigravity.</td></tr>
+                <tr><td><code>AGENT_FROZEN</code></td><td>The owner has locked the agent. Ask the owner to unfreeze it on the dashboard; do not retry transfers while frozen.</td></tr>
+                <tr><td><code>DAILY_LIMIT_EXCEEDED</code></td><td>The 24-hour spending limit was exceeded. The owner must approve this transfer in the dashboard, or wait for capacity to reset.</td></tr>
               </tbody>
             </table>
           ),

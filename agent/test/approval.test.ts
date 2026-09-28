@@ -102,8 +102,9 @@ describe('approveRequest hard gates', () => {
   const ownerKey = nacl.sign.keyPair();
   const ownerPub = bs58.encode(ownerKey.publicKey);
 
-  function createMockContext(request: PaymentRequest, policyVersion = 3) {
+  function createMockContext(request: PaymentRequest, policyVersion = 3, frozen = false) {
     const store = {
+      isFrozen: vi.fn(() => frozen),
       getRequest: vi.fn((id: string) => (id === request.id ? request : undefined)),
       getOwner: vi.fn(() => ownerPub),
       getPolicy: vi.fn(() => ({
@@ -169,6 +170,14 @@ describe('approveRequest hard gates', () => {
     await expect(
       approveRequest(ctx, { requestId: 'req_missing', signature: 'sig', signerPubkey: ownerPub }),
     ).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('rejects agent_frozen when agent is frozen', async () => {
+    const req = validRequest();
+    const ctx = createMockContext(req, 3, true);
+    await expect(
+      approveRequest(ctx, { requestId: req.id, signature: 'sig', signerPubkey: ownerPub }),
+    ).rejects.toMatchObject({ code: 'agent_frozen' });
   });
 
   it('rejects bad_status if request is not pending_approval', async () => {

@@ -55,8 +55,25 @@ export class TransactionSimulationError extends Error {
   }
 }
 
-/** Upper bound for a single-signature transfer fee, used for pre-flight checks. */
-const FEE_BUFFER_LAMPORTS = 10_000;
+/**
+ * Upper bound for a SOL transfer fee, used for pre-flight checks: 5,000 lamports base fee plus
+ * the priority fee cap (50,000 compute units at 100,000 micro-lamports).
+ */
+export const FEE_BUFFER_LAMPORTS = 10_000;
+
+export class InsufficientFundsError extends Error {
+  constructor(
+    readonly balanceLamports: number,
+    readonly requiredLamports: number,
+  ) {
+    super(
+      `agent wallet has ${balanceLamports / LAMPORTS_PER_SOL} SOL, needs ${
+        requiredLamports / LAMPORTS_PER_SOL
+      } SOL including fees`,
+    );
+    this.name = 'InsufficientFundsError';
+  }
+}
 
 const RETRYABLE = [/429/, /rate limit/i, /503/, /502/, /timeout/i, /ECONNRESET/, /fetch failed/i];
 
@@ -187,11 +204,7 @@ export async function transferSol(params: {
 
   const balance = await getLamportBalance(connection, payer.publicKey.toBase58());
   if (balance < lamports + FEE_BUFFER_LAMPORTS) {
-    throw new Error(
-      `agent wallet has ${balance / LAMPORTS_PER_SOL} SOL, needs ${
-        (lamports + FEE_BUFFER_LAMPORTS) / LAMPORTS_PER_SOL
-      } SOL including fees`,
-    );
+    throw new InsufficientFundsError(balance, lamports + FEE_BUFFER_LAMPORTS);
   }
 
   const built = await buildVersionedTransaction({
