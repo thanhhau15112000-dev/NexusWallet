@@ -127,8 +127,20 @@ Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`
 | `nexuspay_list_requests` / `nexuspay_get_request` | Trạng thái request, verdict, link Explorer |
 | `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | Đề xuất giao dịch; policy quyết định |
 
-Nếu transfer trả `outcome_unknown` (timeout), gọi lại với **cùng** `idempotencyKey`, không đổi số tiền. Dùng lại một key cho giao dịch khác trả `idempotency_conflict`. Hai lần gọi với hai key khác nhau là hai giao dịch, chỉ policy giới hạn chúng. Rotate token trên dashboard sẽ ngắt các client đang dùng token cũ.
+Nếu transfer trả `outcome_unknown` (timeout), gọi lại với **cùng** `idempotencyKey`, không đổi số tiền. Dùng lại một key cho giao dịch khác trả `IDEMPOTENCY_CONFLICT`. Hai lần gọi với hai key khác nhau là hai giao dịch, chỉ policy giới hạn chúng. Rotate token trên dashboard sẽ ngắt các client đang dùng token cũ.
 
+Kết quả bị từ chối, thất bại hoặc chờ duyệt trả về `code`, `message`, `remediation` và `details` để agent tự điều chỉnh thay vì retry cùng tham số:
+
+| `code` | Ý nghĩa |
+| --- | --- |
+| `RECIPIENT_NOT_IN_ALLOWLIST` | Người nhận không có trong allowlist |
+| `MINT_NOT_IN_ALLOWLIST` | Mint không có trong allowlist |
+| `INVALID_AMOUNT` | Số tiền không hợp lệ |
+| `INSUFFICIENT_FUNDS_INCLUDING_FEES` | Ví agent không đủ số dư kể cả phí mạng |
+| `IDEMPOTENCY_CONFLICT` | Key đã dùng cho một giao dịch khác |
+| `PENDING_APPROVAL_REQUIRED` | Chờ owner duyệt; `details.reason` là `AMOUNT_EXCEEDS_TRANSACTION_LIMIT` |
+
+Số tiền SOL trong `details` có cả SOL và lamports dạng số nguyên. Giao dịch chờ duyệt trả thêm `pollIntervalMs` và `dashboardUrl` mở thẳng request đó trong tab Approvals. `nexuspay_get_status` trả `estimatedFeeSol` — phần phí cần giữ lại ngoài số tiền chuyển.
 
 Chạy local: có bản stdio MCP (`pnpm mcp:build` → `dist/mcp/nexuspay-mcp.mjs`), các file `.mcp.json` / `.cursor/mcp.json` đã cấu hình sẵn khi mở client ở thư mục gốc repo, và `pnpm mcp:install -- --client codex|claude-desktop|antigravity`. Chi tiết xử lý lỗi: [docs/mcp-troubleshooting.md](docs/mcp-troubleshooting.md).
 
@@ -230,4 +242,4 @@ infra/                      Dockerfile + compose
 
 ## Lộ trình
 
-Theo dõi tại [epic #18](../../issues/18): bằng chứng Devnet cho Task Vault, mã lỗi có hướng dẫn tự sửa cho agent, kill switch, Admin Control Plane, hardening token, tool Task Vault qua MCP, thanh toán bằng stablecoin.
+Theo dõi tại [epic #18](../../issues/18): bằng chứng Devnet cho Task Vault, kill switch, Admin Control Plane, hardening token, tool Task Vault qua MCP, thanh toán bằng stablecoin.

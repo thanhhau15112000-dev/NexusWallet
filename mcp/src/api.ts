@@ -15,6 +15,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly remediation?: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -119,10 +121,15 @@ export class NexusApi {
     }
 
     if (!response.ok) {
-      const fields = (payload ?? {}) as { error?: unknown; message?: unknown };
+      const fields = (payload ?? {}) as { error?: unknown; message?: unknown; remediation?: unknown; details?: unknown };
       const code = typeof fields.error === 'string' ? fields.error : `http_${response.status}`;
       const message = typeof fields.message === 'string' ? fields.message : code;
-      throw new ApiError(response.status, code, message);
+      const remediation = typeof fields.remediation === 'string' ? fields.remediation : undefined;
+      const details =
+        fields.details && typeof fields.details === 'object' && !Array.isArray(fields.details)
+          ? (fields.details as Record<string, unknown>)
+          : undefined;
+      throw new ApiError(response.status, code, message, remediation, details);
     }
     return payload as T;
   }

@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import type { PaymentRequest, Policy, RequestStatus } from '@nexus/shared';
+import { AGENT_ERROR_REMEDIATION, type PaymentRequest, type Policy, type RequestStatus } from '@nexus/shared';
 import { ApiError, ApiUnreachableError, McpSetupError, type NexusApi } from './api.js';
 import type { McpConfig } from './config.js';
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
+/** How often an agent should poll a held request; approvals need a human, so faster polling gains nothing. */
+export const APPROVAL_POLL_INTERVAL_MS = 5_000;
 const REQUEST_STATUSES = [
   'planned',
   'auto_approved',
@@ -29,7 +31,15 @@ const INSTRUCTIONS = [
 
 type StateResponse = {
   cluster: string;
-  agent: { agentId: string; pubkey: string; lamports: number | null; rpcError: string | null; explorerUrl: string };
+  agent: {
+    agentId: string;
+    pubkey: string;
+    lamports: number | null;
+    rpcError: string | null;
+    explorerUrl: string;
+    /** Absent when the agent service predates it. */
+    feeReserveLamports?: number;
+  };
   policy: Policy & { maxSolPerTx: number };
 };
 
@@ -37,10 +47,16 @@ function ok(value: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
 }
 
-function fail(code: string, message: string, extra: Record<string, unknown> = {}): CallToolResult {
+// `error` predates `code` and is kept for clients that already read it.
+function fail(
+  code: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+  structured: { remediation?: string; details?: Record<string, unknown> } = {},
+): CallToolResult {
   return {
     isError: true,
-    content: [{ type: 'text', text: JSON.stringify({ error: code, message, ...extra }, null, 2) }],
+    content: [{ type: 'text', text: JSON.stringify({ error: code, code, message, ...structured, ...extra }, null, 2) }],
   };
 }
 
@@ -56,7 +72,9 @@ function failFromError(err: unknown, config: McpConfig, extra: Record<string, un
           : `The nexusPay agent rejected the MCP token from ${config.tokenSource}. If the agent is using a different data directory, set NEXUS_AGENT_DATA_DIR to point to it, or sign in to the dashboard with the owner wallet once.`;
     return fail('mcp_token_rejected', message, extra);
   }
-  if (err instanceof ApiError) return fail(err.code, err.message, extra);
+  if (err instanceof ApiError) {
+    return fail(err.code, err.message, extra, { remediation: err.remediation, details: err.details });
+  }
   if (err instanceof ApiUnreachableError) {
     return fail(
       'agent_unreachable',
@@ -67,8 +85,20 @@ function failFromError(err: unknown, config: McpConfig, extra: Record<string, un
   throw err;
 }
 
+export function requestDeepLink(dashboardUrl: string, requestId: string): string {
+  // Hosted mode takes the dashboard origin from env config; a malformed one must not break the tool result.
+  try {
+    const url = new URL(dashboardUrl);
+    url.searchParams.set('request', requestId);
+    return url.toString();
+  } catch {
+    return dashboardUrl;
+  }
+}
+
 /** What an agent needs to act on a request. Prompt text, nonces and model traces stay out. */
 export function summarizeRequest(request: PaymentRequest, dashboardUrl: string) {
+  const held = request.status === 'pending_approval' && request.approval;
   return {
     requestId: request.id,
     status: request.status,
@@ -80,13 +110,18 @@ export function summarizeRequest(request: PaymentRequest, dashboardUrl: string) 
     execution: request.execution
       ? { signature: request.execution.signature, explorerUrl: request.execution.explorerUrl }
       : null,
-    approval:
-      request.status === 'pending_approval' && request.approval
-        ? {
-            expiresAt: request.approval.payload.expiresAt,
-            nextStep: `The owner must approve this request in the nexusPay dashboard (${dashboardUrl}) before it expires. Poll nexuspay_get_request for the outcome.`,
-          }
-        : null,
+    approval: held
+      ? {
+          code: 'PENDING_APPROVAL_REQUIRED',
+          message: (request.decision?.reasons ?? []).join('; '),
+          remediation: AGENT_ERROR_REMEDIATION.PENDING_APPROVAL_REQUIRED,
+          details: { reason: request.decision?.code ?? null, ...request.decision?.details },
+          expiresAt: held.payload.expiresAt,
+          pollIntervalMs: APPROVAL_POLL_INTERVAL_MS,
+          dashboardUrl: requestDeepLink(dashboardUrl, request.id),
+          nextStep: `The owner must approve this request in the nexusPay dashboard before it expires. Poll nexuspay_get_request for the outcome.`,
+        }
+      : null,
     balanceSol: request.balanceLamports === null ? null : request.balanceLamports / LAMPORTS_PER_SOL,
     error: request.error,
   };
@@ -138,7 +173,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
     {
       title: 'Get nexusPay wallet status',
       description:
-        'Agent wallet address and SOL balance on Devnet, plus the owner policy: per-transaction SOL limit and the allowlisted recipient and mint labels you may use.',
+        'Agent wallet address and SOL balance on Devnet, the fee reserve a SOL transfer needs on top of its amount (estimatedFeeSol), plus the owner policy: per-transaction SOL limit and the allowlisted recipient and mint labels you may use.',
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async () => {
@@ -152,6 +187,9 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
             balanceError: state.agent.rpcError,
             explorerUrl: state.agent.explorerUrl,
           },
+          // Fee reserve the agent checks on top of a SOL transfer amount; an upper bound, not the fee charged.
+          estimatedFeeSol:
+            state.agent.feeReserveLamports === undefined ? null : state.agent.feeReserveLamports / LAMPORTS_PER_SOL,
           policy: {
             version: state.policy.version,
             maxSolPerTransaction: state.policy.maxSolPerTx,

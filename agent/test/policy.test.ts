@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   defaultPolicy,
   evaluatePolicy,
+  formatSol,
   PolicySchema,
   solToLamports,
   type ModelAction,
@@ -46,6 +47,18 @@ describe('evaluatePolicy - SOL', () => {
     expect(decision.limit).toMatchObject({ limit: 100_000_000, requested: 100_000_001 });
     // The action still resolves, so the approval can be bound to concrete values.
     expect(decision.resolved).not.toBeNull();
+  });
+
+  it('states limits in SOL and keeps integer lamports in details', () => {
+    const decision = evaluatePolicy(policy(), transfer(TREASURY, 0.5));
+    expect(decision.reasons).toEqual(['amount 0.5 SOL exceeds the per-transaction limit of 0.1 SOL']);
+    expect(decision.details).toEqual({
+      requestedSol: 0.5,
+      requestedLamports: 500_000_000,
+      limitSol: 0.1,
+      limitLamports: 100_000_000,
+    });
+    expect(evaluatePolicy(policy(), transfer(TREASURY, 0.05)).reasons.join(' ')).not.toMatch(/lamports/);
   });
 
   it('escalates a transfer far over the limit', () => {
@@ -169,5 +182,15 @@ describe('PolicySchema - allowlist integrity', () => {
         ],
       }),
     ).toThrow(/duplicate address/i);
+  });
+});
+
+describe('formatSol', () => {
+  it('prints exact decimals without float artifacts', () => {
+    expect(formatSol(100_000_001)).toBe('0.100000001 SOL');
+    expect(formatSol(100_000_000)).toBe('0.1 SOL');
+    expect(formatSol(2_000_000_000)).toBe('2 SOL');
+    expect(formatSol(0)).toBe('0 SOL');
+    expect(formatSol(1)).toBe('0.000000001 SOL');
   });
 });

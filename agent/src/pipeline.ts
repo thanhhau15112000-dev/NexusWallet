@@ -7,9 +7,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
+  AGENT_ERROR_REMEDIATION,
   buildApprovalMessage,
   evaluatePolicy,
+  formatSol,
+  lamportsToSol,
   solToLamports,
+  type AgentErrorCode,
   type ApprovalPayload,
   type ExecutionRecord,
   type ModelAction,
@@ -20,6 +24,8 @@ import {
   type ResolvedAction,
 } from '@nexus/shared';
 import {
+  FEE_BUFFER_LAMPORTS,
+  InsufficientFundsError,
   TransactionSimulationError,
   explorerTxUrl,
   getLamportBalance,
@@ -63,6 +69,10 @@ function newRequest(agentId: string, prompt: string, idempotencyKey: string | nu
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function agentError(code: AgentErrorCode, message: string, details: Record<string, unknown> = {}) {
+  return { code, message, remediation: AGENT_ERROR_REMEDIATION[code], details };
 }
 
 function planMatchesIntent(
@@ -149,7 +159,7 @@ function dispatchDecision(
     return ctx.store.putRequest({
       ...request,
       status: 'denied',
-      error: { code: 'policy_denied', message: decision.reasons.join('; ') },
+      error: agentError(decision.code ?? 'NO_EXECUTABLE_ACTION', decision.reasons.join('; '), decision.details),
     });
   }
 
@@ -159,7 +169,7 @@ function dispatchDecision(
       return ctx.store.putRequest({
         ...request,
         status: 'denied',
-        error: { code: 'policy_denied', message: 'action is not approvable' },
+        error: agentError('NO_EXECUTABLE_ACTION', 'action is not approvable'),
       });
     }
 
@@ -242,6 +252,7 @@ async function processCommand(
         policyVersion: currentPolicy.version,
         reasons: ['model plan does not match the classified intent'],
         resolved: null,
+        code: 'MODEL_PLAN_MISMATCH' as const,
       };
   const decision =
     intent.value.requiresHuman &&
@@ -425,6 +436,27 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
 
     return ctx.store.putRequest({ ...request, status: 'confirmed', execution });
   } catch (err) {
+    if (err instanceof InsufficientFundsError) {
+      ctx.audit.record('tx.failed', request.id, { error: err.message });
+      const maxSendable = Math.max(0, err.balanceLamports - FEE_BUFFER_LAMPORTS);
+      return ctx.store.putRequest({
+        ...request,
+        status: 'failed',
+        error: agentError(
+          'INSUFFICIENT_FUNDS_INCLUDING_FEES',
+          `agent wallet holds ${formatSol(err.balanceLamports)}, needs ${formatSol(err.requiredLamports)} including the fee reserve`,
+          {
+            balanceSol: lamportsToSol(err.balanceLamports),
+            balanceLamports: err.balanceLamports,
+            requiredSol: lamportsToSol(err.requiredLamports),
+            requiredLamports: err.requiredLamports,
+            feeReserveLamports: FEE_BUFFER_LAMPORTS,
+            maxSendableSol: lamportsToSol(maxSendable),
+            maxSendableLamports: maxSendable,
+          },
+        ),
+      });
+    }
     if (err instanceof TransactionSimulationError) {
       ctx.audit.record('tx.simulation_failed', request.id, {
         error: err.simulationError,

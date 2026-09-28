@@ -7,9 +7,9 @@ Dành cho người (hoặc agent) đang cài nexusPay MCP vào client. Cách k�
 | Triệu chứng | Nguyên nhân | Cách sửa |
 | --- | --- | --- |
 | `401` / `mcp_token_rejected` | Token đã bị rotate hoặc copy sai | Mở dashboard → Wallet → **Connect an AI agent** → copy lại entry và cập nhật client |
-| Transfer trả `pending_approval` | Số tiền vượt hạn mức mỗi giao dịch | Owner duyệt trên dashboard; poll `nexuspay_get_request` |
+| Transfer trả `PENDING_APPROVAL_REQUIRED` | Số tiền vượt hạn mức mỗi giao dịch | Owner duyệt trên dashboard; poll `nexuspay_get_request` theo `pollIntervalMs` |
 | Transfer trả `outcome_unknown` | Timeout hoặc lỗi server sau khi đã gửi | Gọi lại với cùng `idempotencyKey`; không đổi số tiền |
-| Transfer trả `idempotency_conflict` | Dùng lại key cho giao dịch khác | Dùng key mới cho giao dịch mới |
+| Transfer trả `IDEMPOTENCY_CONFLICT` | Dùng lại key cho giao dịch khác | Dùng key mới cho giao dịch mới |
 
 ## Bản stdio chạy từ repo
 
@@ -24,6 +24,14 @@ Dành cho người (hoặc agent) đang cài nexusPay MCP vào client. Cách k�
 | `agent_unreachable` | Agent service chưa chạy hoặc chạy ở port khác | `pnpm dev` từ thư mục gốc repo; kiểm tra `NEXUS_API_URL` |
 | Codex cắt lời gọi ở 60 giây | Thiếu `tool_timeout_sec` | Giữ `tool_timeout_sec = 90` trong entry TOML |
 | Antigravity từ chối schema của tool | Bundle cũ | `pnpm mcp:build` rồi khởi động lại Antigravity |
+
+## Nạp SOL từ Phantom trên dashboard
+
+| Triệu chứng | Nguyên nhân | Cách sửa |
+| --- | --- | --- |
+| Popup Phantom báo **Không đủ SOL** ở dòng phí mạng lưới và chỉ còn nút **Xác nhận (không an toàn)**, dù ví có đủ SOL Devnet và Testnet Mode đã bật | Cảnh báo đến từ bước quét giao dịch của Phantom, không phải từ nexusPay. Giao dịch chỉ gồm compute budget và `transfer` của System Program; dashboard đã simulate thành công trên Devnet trước khi mở Phantom. Cảnh báo xuất hiện trên một số máy hoặc bản cài Phantom nhưng không có trên máy khác, kể cả cùng domain production. Nguyên nhân nằm trong Phantom (chưa xác định cụ thể: mức tin cậy domain theo từng profile, phiên bản extension, hoặc dịch vụ giả lập của Phantom lỗi tạm thời) | Kiểm tra `receiver` trong mục **Nâng cao** trùng địa chỉ Agent wallet trên dashboard, rồi bấm xác nhận. Đối chiếu kết quả bằng link Explorer (`?cluster=devnet`) hoặc số dư Agent wallet sau khi refresh |
+
+Nếu `receiver` không khớp Agent wallet, hoặc popup có instruction khác ngoài compute budget và `transfer`, bấm **Hủy**.
 
 ## Ghi chú cấu hình
 
