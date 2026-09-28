@@ -10,6 +10,7 @@ Dành cho người (hoặc agent) đang cài nexusPay MCP vào client. Cách k�
 | Transfer trả `PENDING_APPROVAL_REQUIRED` | Số tiền vượt hạn mức mỗi giao dịch | Owner duyệt trên dashboard; poll `nexuspay_get_request` theo `pollIntervalMs` |
 | Transfer trả `outcome_unknown` | Timeout hoặc lỗi server sau khi đã gửi | Gọi lại với cùng `idempotencyKey`; không đổi số tiền |
 | Transfer trả `IDEMPOTENCY_CONFLICT` | Dùng lại key cho giao dịch khác | Dùng key mới cho giao dịch mới |
+| Transfer trả `AGENT_FROZEN` | Owner đã khóa agent | Dừng đề xuất transfer; báo owner mở khóa trên dashboard |
 
 ## Bản stdio chạy từ repo
 

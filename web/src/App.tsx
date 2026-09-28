@@ -595,6 +595,8 @@ export function App() {
             ownerWalletSettingsOpen={ownerWalletSettingsOpen}
             onToggleOwnerWalletSettings={() => setOwnerWalletSettingsOpen((open) => !open)}
             onCloseOwnerWalletSettings={() => setOwnerWalletSettingsOpen(false)}
+            onRefresh={refresh}
+            onToast={setToast}
             ownerWallet={
               <WalletPanel
                 state={state}

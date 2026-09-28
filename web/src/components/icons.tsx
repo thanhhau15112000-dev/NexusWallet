@@ -286,3 +286,19 @@ export const ArrowUpRight = icon('ArrowUpRight', <path d="M7 17 17 7M8.5 7H17v8.
 export const ExternalLink = icon('ExternalLink', (
   <path d="M14 4h6v6M20 4l-8.5 8.5M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
 ));
+
+export const Lock = icon('Lock', (
+  <>
+    <rect x="5" y="11" width="14" height="10" rx="2" {...tint} />
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </>
+));
+
+export const Unlock = icon('Unlock', (
+  <>
+    <rect x="5" y="11" width="14" height="10" rx="2" {...tint} />
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0" />
+  </>
+));
