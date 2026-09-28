@@ -14,6 +14,8 @@ export const en: TranslationDictionary = {
     operate: 'Operate',
     control: 'Control',
     resources: 'Resources',
+    openMenu: 'Open menu',
+    closeMenu: 'Close menu',
   },
   pageDesc: {
     wallet: 'Balances, spending limits, pending approvals and the agent kill switch.',
