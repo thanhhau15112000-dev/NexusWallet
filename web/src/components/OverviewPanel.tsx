@@ -182,7 +182,7 @@ export function OverviewPanel(props: {
   return (
     <div className="page-stack">
       <div className="stat-grid">
-        <section className="stat">
+        <section className="stat stat-hero">
           <div className="stat-head">
             <span className="stat-title">
               <Bot size={15} aria-hidden="true" />

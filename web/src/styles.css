@@ -13,6 +13,13 @@
   --warn: #80652f;
   --bad: #b03a3a;
   --wallet-ink: #103f37;
+  /* Deep greens, darker than --accent: headings, emphasis surfaces and depth. */
+  --green-500: #235347;
+  --green-600: #1d463d;
+  --green-700: #163832;
+  --green-800: #0b2b26;
+  --green-900: #051f20;
+  --shadow-card: 0 1px 2px rgb(5 31 32 / 5%), 0 2px 6px rgb(5 31 32 / 4%);
   --radius: 8px;
   --sidebar-w: 236px;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -282,10 +289,22 @@ input[type="checkbox"] {
 }
 
 .brand-name {
-  color: var(--wallet-ink);
+  color: var(--green-800);
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.04em;
+}
+
+.nav-toggle {
+  display: none;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--line-strong);
+  padding: 0;
+  color: var(--green-700);
 }
 
 .brand-network-tag {
@@ -348,7 +367,8 @@ input[type="checkbox"] {
 .side-nav-item.is-active,
 .side-nav-item.is-active:hover {
   background: var(--accent-soft);
-  color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--green-500);
+  color: var(--green-700);
 }
 
 .side-nav-badge {
@@ -388,8 +408,8 @@ input[type="checkbox"] {
   flex: none;
   place-items: center;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--green-700);
+  color: #ffffff;
 }
 
 .owner-meta {
@@ -435,6 +455,7 @@ input[type="checkbox"] {
 
 .page-title h1 {
   margin: 0;
+  color: var(--green-900);
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -514,6 +535,7 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
+  box-shadow: var(--shadow-card);
 }
 
 .card-head {
@@ -530,6 +552,7 @@ input[type="checkbox"] {
   align-items: center;
   gap: 8px;
   margin: 0;
+  color: var(--green-800);
   font-size: 14px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -594,7 +617,46 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
+  box-shadow: var(--shadow-card);
   padding: 14px 16px;
+}
+
+/* Agent balance: the one dark tile, so the key number reads first. */
+.stat.stat-hero {
+  border-color: var(--green-700);
+  background: linear-gradient(135deg, var(--green-600) 0%, var(--green-800) 100%);
+  color: #ffffff;
+}
+
+.stat-hero .stat-title,
+.stat-hero .stat-unit,
+.stat-hero .stat-foot {
+  color: rgb(255 255 255 / 72%);
+}
+
+.stat-hero .stat-title svg {
+  color: rgb(255 255 255 / 85%);
+}
+
+.stat-hero .stat-foot a {
+  color: #ffffff;
+  text-decoration-color: rgb(255 255 255 / 40%);
+}
+
+.stat-hero .icon-button {
+  border-color: rgb(255 255 255 / 25%);
+  background: transparent;
+  color: rgb(255 255 255 / 85%);
+}
+
+.stat-hero .icon-button:hover:not(:disabled) {
+  border-color: rgb(255 255 255 / 50%);
+  background: rgb(255 255 255 / 10%);
+  color: #ffffff;
+}
+
+.stat-hero .copy-status {
+  color: #ffffff;
 }
 
 .stat.is-attention {
@@ -769,7 +831,7 @@ input[type="checkbox"] {
 
 .data-table th {
   background: #f8f9fa;
-  color: var(--muted);
+  color: var(--green-600);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -1398,42 +1460,35 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Mobile: the sidebar becomes a sticky top bar; pages and the owner wallet
+     open from the burger button. */
   .sidebar {
-    position: static;
+    z-index: 20;
     height: auto;
-    gap: 12px;
+    max-height: 100vh;
+    gap: 0;
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    padding: 12px 16px;
+    box-shadow: var(--shadow-card);
+    padding: 10px 16px;
   }
 
-  .side-nav {
-    flex-direction: row;
-    gap: 4px;
-    overflow-x: auto;
-    scrollbar-width: thin;
+  .nav-toggle {
+    display: inline-flex;
   }
 
-  .side-nav-group {
-    flex-direction: row;
-  }
-
-  .side-nav-heading {
+  .sidebar:not(.is-open) .side-nav,
+  .sidebar:not(.is-open) .sidebar-owner {
     display: none;
   }
 
-  .side-nav-item {
-    width: auto;
-    padding: 7px 10px;
-    font-size: 13px;
+  .sidebar.is-open .side-nav {
+    margin-top: 12px;
   }
 
-  .sidebar-owner {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    border-top: 0;
-    padding: 0;
+  .sidebar.is-open .sidebar-owner {
+    margin-top: 16px;
+    padding-bottom: 4px;
   }
 
   .main {
@@ -2342,7 +2397,7 @@ pre {
   gap: 10px;
   margin-top: 8px;
   border-radius: 6px;
-  background: var(--wallet-ink);
+  background: var(--green-800);
   padding: 6px 6px 6px 12px;
 }
 
@@ -2494,7 +2549,7 @@ pre {
   overflow: auto;
   border: 0;
   border-radius: 6px;
-  background: var(--wallet-ink);
+  background: var(--green-800);
   padding: 14px;
   color: #d8fbef;
   font-size: 12px;

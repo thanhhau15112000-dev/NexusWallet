@@ -14,6 +14,8 @@ export type TranslationDictionary = {
     operate: string;
     control: string;
     resources: string;
+    openMenu: string;
+    closeMenu: string;
   };
   pageDesc: {
     wallet: string;

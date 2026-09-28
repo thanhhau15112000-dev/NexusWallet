@@ -14,6 +14,8 @@ export const vi: TranslationDictionary = {
     operate: 'Vận hành',
     control: 'Kiểm soát',
     resources: 'Tài nguyên',
+    openMenu: 'Mở menu',
+    closeMenu: 'Đóng menu',
   },
   pageDesc: {
     wallet: 'Số dư, hạn mức chi tiêu, yêu cầu chờ duyệt và công tắc khóa agent.',
