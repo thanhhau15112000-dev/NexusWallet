@@ -12,7 +12,7 @@ import {
   RefreshCw,
   Shield,
   XCircle,
-} from 'lucide-react';
+} from './icons.js';
 import {
   LAMPORTS_PER_SOL,
   type TaskCapabilityRecord,
@@ -29,6 +29,7 @@ import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { getPhantom } from '../phantom.js';
 import { api, ApiError } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
+import { useI18n } from '../i18n/context.js';
 
 export function TaskVaultPanel(props: {
   owner: string | null;
@@ -37,6 +38,7 @@ export function TaskVaultPanel(props: {
   rpcUrl: string;
   onToast: (toast: { tone: 'ok' | 'warn' | 'bad'; text: string }) => void;
 }) {
+  const { dict, interpolate } = useI18n();
   const [tasks, setTasks] = useState<TaskCapabilityRecord[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [detail, setDetail] = useState<{
@@ -78,7 +80,7 @@ export function TaskVaultPanel(props: {
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : 'Failed to load task capabilities',
+        text: err instanceof ApiError ? err.message : dict.taskVault.toasts.loadFailed,
       });
     } finally {
       setLoading(false);
@@ -95,39 +97,39 @@ export function TaskVaultPanel(props: {
       const detailRes = await api.taskDetail(taskId);
       setDetail(detailRes);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: 'Failed to load task details' });
+      props.onToast({ tone: 'bad', text: dict.taskVault.toasts.detailFailed });
     }
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!props.owner) {
-      props.onToast({ tone: 'warn', text: 'Connect your owner wallet first' });
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.connectOwnerFirst });
       return;
     }
     const budgetSol = Number(newBudgetSol);
     const capSol = Number(newCapSol);
     const hours = Number(newHours);
     if (!budgetSol || budgetSol <= 0 || !capSol || capSol <= 0) {
-      props.onToast({ tone: 'warn', text: 'Enter valid positive SOL amounts' });
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.enterValidSol });
       return;
     }
     if (capSol > budgetSol) {
-      props.onToast({ tone: 'warn', text: 'Per-payment cap cannot exceed budget' });
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.capExceedsBudget });
       return;
     }
     if (submitOnchain && !newAllowedWorker.trim()) {
-      props.onToast({ tone: 'warn', text: 'On-chain tasks require an allowed worker' });
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.workerRequired });
       return;
     }
     if (submitOnchain) {
       try {
         if (new PublicKey(newAllowedWorker.trim()).toBase58() !== props.mockWorkerPubkey) {
-          props.onToast({ tone: 'warn', text: 'On-chain demo tasks currently use the configured mock worker' });
+          props.onToast({ tone: 'warn', text: dict.taskVault.toasts.useMockWorker });
           return;
         }
       } catch {
-        props.onToast({ tone: 'warn', text: 'Allowed worker must be a valid Solana address' });
+        props.onToast({ tone: 'warn', text: dict.taskVault.toasts.validWorkerAddress });
         return;
       }
     }
@@ -141,7 +143,7 @@ export function TaskVaultPanel(props: {
       if (submitOnchain) {
         const provider = getPhantom();
         if (!provider) {
-          props.onToast({ tone: 'warn', text: 'Phantom wallet not detected for on-chain submission' });
+          props.onToast({ tone: 'warn', text: dict.taskVault.toasts.phantomNotFound });
           setBusyAction(null);
           return;
         }
@@ -190,12 +192,12 @@ export function TaskVaultPanel(props: {
       if (txSignature) {
         props.onToast({
           tone: 'ok',
-          text: `Task Capability funded on Solana Devnet: ${shorten(txSignature, 4)}`,
+          text: interpolate(dict.taskVault.toasts.fundedDevnet, { sig: shorten(txSignature, 4) }),
         });
       } else {
         props.onToast({
           tone: 'ok',
-          text: `Task Capability "${res.task.taskId}" created in simulation mode`,
+          text: interpolate(dict.taskVault.toasts.createdSimulated, { taskId: res.task.taskId }),
         });
       }
 
@@ -204,7 +206,7 @@ export function TaskVaultPanel(props: {
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to create task vault',
+        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.createFailed,
       });
     } finally {
       setBusyAction(null);
@@ -216,7 +218,7 @@ export function TaskVaultPanel(props: {
     if (!detail) return;
     const amountSol = Number(paymentAmountSol);
     if (!amountSol || amountSol <= 0) {
-      props.onToast({ tone: 'warn', text: 'Enter a valid payment amount' });
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.enterValidAmount });
       return;
     }
     const worker = paymentWorker.trim() || props.owner || props.agentPubkey;
@@ -224,7 +226,10 @@ export function TaskVaultPanel(props: {
     if (detail.task.allowedWorker && worker !== detail.task.allowedWorker) {
       props.onToast({
         tone: 'warn',
-        text: `Worker ${shorten(worker, 4)} does not match allowed worker ${shorten(detail.task.allowedWorker, 4)}`,
+        text: interpolate(dict.taskVault.toasts.workerMismatch, {
+          worker: shorten(worker, 4),
+          allowed: shorten(detail.task.allowedWorker, 4),
+        }),
       });
       return;
     }
@@ -232,7 +237,10 @@ export function TaskVaultPanel(props: {
     if (detail.task.allowedServiceId && paymentService.trim() !== detail.task.allowedServiceId) {
       props.onToast({
         tone: 'warn',
-        text: `Service "${paymentService}" does not match allowed service "${detail.task.allowedServiceId}"`,
+        text: interpolate(dict.taskVault.toasts.serviceMismatch, {
+          service: paymentService,
+          allowed: detail.task.allowedServiceId,
+        }),
       });
       return;
     }
@@ -251,14 +259,14 @@ export function TaskVaultPanel(props: {
       props.onToast({
         tone: 'ok',
         text: result.payment.txSignature
-          ? `On-chain escrow ${paymentId}: ${shorten(result.payment.txSignature, 4)}`
-          : `Simulated escrow ${paymentId} locked in vault`,
+          ? interpolate(dict.taskVault.toasts.onchainEscrow, { paymentId, sig: shorten(result.payment.txSignature, 4) })
+          : interpolate(dict.taskVault.toasts.simulatedEscrow, { paymentId }),
       });
       await selectTask(detail.task.taskId);
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : 'Payment rejected by capability guard',
+        text: err instanceof ApiError ? err.message : dict.taskVault.toasts.paymentRejected,
       });
     } finally {
       setBusyAction(null);
@@ -285,14 +293,14 @@ export function TaskVaultPanel(props: {
       props.onToast({
         tone: 'ok',
         text: result.receipt.txSignature
-          ? `On-chain settlement ${paymentId}: ${shorten(result.receipt.txSignature, 4)}`
-          : `Simulated settlement ${paymentId} recorded with worker receipt`,
+          ? interpolate(dict.taskVault.toasts.onchainSettlement, { paymentId, sig: shorten(result.receipt.txSignature, 4) })
+          : interpolate(dict.taskVault.toasts.simulatedSettlement, { paymentId }),
       });
       await selectTask(detail.task.taskId);
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : 'Failed to settle escrow payment',
+        text: err instanceof ApiError ? err.message : dict.taskVault.toasts.settleFailed,
       });
     } finally {
       setBusyAction(null);
@@ -324,10 +332,16 @@ export function TaskVaultPanel(props: {
       const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
       if (confirmation.value.err) throw new Error('Receipt close transaction failed');
       await api.closeTaskReceipt(detail.task.taskId, paymentId, signature);
-      props.onToast({ tone: 'ok', text: `Receipt closed, rent returned to worker: ${shorten(signature, 4)}` });
+      props.onToast({
+        tone: 'ok',
+        text: interpolate(dict.taskVault.toasts.receiptClosedRentReturned, { sig: shorten(signature, 4) }),
+      });
       await selectTask(detail.task.taskId);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to close receipt' });
+      props.onToast({
+        tone: 'bad',
+        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.closeReceiptFailed,
+      });
     } finally {
       setBusyAction(null);
     }
@@ -355,10 +369,13 @@ export function TaskVaultPanel(props: {
         txSignature = signature;
       }
       await api.revokeTask(taskId, txSignature);
-      props.onToast({ tone: 'warn', text: `Task Capability "${taskId}" has been revoked` });
+      props.onToast({
+        tone: 'warn',
+        text: interpolate(dict.taskVault.toasts.taskRevoked, { taskId }),
+      });
       await selectTask(taskId);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : 'Revoke failed' });
+      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : dict.taskVault.toasts.revokeFailed });
     } finally {
       setBusyAction(null);
     }
@@ -392,11 +409,13 @@ export function TaskVaultPanel(props: {
       const res = await api.refundTask(taskId, txSignature);
       props.onToast({
         tone: 'ok',
-        text: `Vault closed: ${(res.refundedLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL refunded to owner`,
+        text: interpolate(dict.taskVault.toasts.vaultClosedRefunded, {
+          amount: (res.refundedLamports / LAMPORTS_PER_SOL).toFixed(4),
+        }),
       });
       await selectTask(taskId);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : 'Refund failed' });
+      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : dict.taskVault.toasts.refundFailed });
     } finally {
       setBusyAction(null);
     }
@@ -431,7 +450,7 @@ export function TaskVaultPanel(props: {
         </div>
         <div className="notice-content">
           <div className="notice-title">
-            <strong>Task Capability Vault — Programmable Agent Treasury</strong>
+            <strong>{dict.taskVault.notice.title}</strong>
             {detail?.task.txSignature ? (
               <a
                 href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
@@ -439,24 +458,21 @@ export function TaskVaultPanel(props: {
                 rel="noreferrer"
                 className="explorer-link-pill"
               >
-                <Pill tone="ok">On-Chain Devnet: {shorten(detail.task.txSignature, 4)}</Pill>
+                <Pill tone="ok">{interpolate(dict.taskVault.notice.onChainDevnet, { sig: shorten(detail.task.txSignature, 4) })}</Pill>
               </a>
             ) : detail?.task ? (
-              <Pill tone="neutral">Off-Chain State (Simulated)</Pill>
+              <Pill tone="neutral">{dict.taskVault.notice.offChainSimulated}</Pill>
             ) : (
-              <Pill tone="neutral">Task Capability Engine</Pill>
+              <Pill tone="neutral">{dict.taskVault.notice.engineTag}</Pill>
             )}
           </div>
           <p>
-            The agent never holds or withdraws the owner's funds. Instead, the owner grants a bounded{' '}
-            <strong>Task Capability</strong> locking funds in an on-chain Vault PDA. The agent can only execute
-            authorized payments into Escrow PDAs, which are released exclusively upon valid worker settlement
-            receipts. Unused balances are refunded automatically.
+            {dict.taskVault.notice.desc}
           </p>
           <div className="notice-comparison">
-            <span className="contrast-tag legacy">Legacy Direct-Key Mode: Off-chain encrypted key</span>
+            <span className="contrast-tag legacy">{dict.taskVault.notice.legacyTag}</span>
             <ArrowRight size={14} />
-            <span className="contrast-tag modern">Task Capability Vault: Non-custodial PDA Escrow</span>
+            <span className="contrast-tag modern">{dict.taskVault.notice.modernTag}</span>
           </div>
         </div>
       </div>
@@ -465,25 +481,25 @@ export function TaskVaultPanel(props: {
         {/* Left Column: Create Task & Task Selector */}
         <div className="vault-sidebar">
           <Card
-            title="Fund New Task Capability"
+            title={dict.taskVault.create.title}
             titleIcon={<Plus size={16} />}
             className="create-task-card"
           >
             <form onSubmit={handleCreateTask} className="task-form">
               <label>
-                <span>Task ID / Nonce</span>
+                <span>{dict.taskVault.create.taskId}</span>
                 <input
                   type="text"
                   value={newTaskId}
                   onChange={(e) => setNewTaskId(e.target.value)}
-                  placeholder="e.g. task-ai-market-eval"
+                  placeholder={dict.taskVault.create.taskIdPlaceholder}
                   required
                 />
               </label>
 
               <div className="form-row">
                 <label>
-                  <span>Total Budget (SOL)</span>
+                  <span>{dict.taskVault.create.totalBudget}</span>
                   <input
                     type="number"
                     step="0.05"
@@ -494,7 +510,7 @@ export function TaskVaultPanel(props: {
                   />
                 </label>
                 <label>
-                  <span>Per-Payment Cap (SOL)</span>
+                  <span>{dict.taskVault.create.perPaymentCap}</span>
                   <input
                     type="number"
                     step="0.05"
@@ -508,27 +524,27 @@ export function TaskVaultPanel(props: {
 
               <div className="form-row">
                 <label>
-                  <span>Allowed Worker (optional)</span>
+                  <span>{dict.taskVault.create.allowedWorker}</span>
                   <input
                     type="text"
                     value={newAllowedWorker}
                     onChange={(e) => setNewAllowedWorker(e.target.value)}
-                    placeholder="Leave blank for any"
+                    placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
                   />
                 </label>
                 <label>
-                  <span>Allowed Service (optional)</span>
+                  <span>{dict.taskVault.create.allowedService}</span>
                   <input
                     type="text"
                     value={newAllowedServiceId}
                     onChange={(e) => setNewAllowedServiceId(e.target.value)}
-                    placeholder="e.g. service-data-enrichment"
+                    placeholder={dict.taskVault.create.allowedServicePlaceholder}
                   />
                 </label>
               </div>
 
               <label>
-                <span>Expiry Duration (hours)</span>
+                <span>{dict.taskVault.create.expiryDuration}</span>
                 <input
                   type="number"
                   min="1"
@@ -545,7 +561,7 @@ export function TaskVaultPanel(props: {
                   checked={submitOnchain}
                   onChange={(e) => setSubmitOnchain(e.target.checked)}
                 />
-                <span style={{ fontSize: '0.82rem' }}>Broadcast on-chain to Solana Devnet via Phantom</span>
+                <span style={{ fontSize: '0.82rem' }}>{dict.taskVault.create.broadcastOnChain}</span>
               </label>
 
               <button
@@ -553,16 +569,16 @@ export function TaskVaultPanel(props: {
                 className="primary"
                 disabled={busyAction === 'create' || !props.owner}
               >
-                {busyAction === 'create' ? 'Funding Task Vault…' : 'Fund Task Capability Vault'}
+                {busyAction === 'create' ? dict.taskVault.create.submittingBtn : dict.taskVault.create.submitBtn}
               </button>
               {!props.owner ? (
-                <span className="hint-warn">Connect wallet above to fund task capabilities</span>
+                <span className="hint-warn">{dict.taskVault.create.connectHint}</span>
               ) : null}
             </form>
           </Card>
 
           <Card
-            title="Active Task Capabilities"
+            title={dict.taskVault.list.title}
             titleIcon={<Layers size={16} />}
             actions={
               <button
@@ -572,12 +588,12 @@ export function TaskVaultPanel(props: {
                 disabled={loading}
               >
                 <RefreshCw size={13} className={loading ? 'spinning' : ''} />
-                Refresh
+                {dict.taskVault.list.refresh}
               </button>
             }
           >
             {tasks.length === 0 ? (
-              <div className="empty-state">No task capabilities found. Fund one above!</div>
+              <div className="empty-state">{dict.taskVault.list.empty}</div>
             ) : (
               <ul className="task-list">
                 {tasks.map((t) => {
@@ -605,7 +621,7 @@ export function TaskVaultPanel(props: {
                           {spentSol.toFixed(3)} / {budgetSol.toFixed(3)} SOL
                         </span>
                         <span className="task-cap-info">
-                          cap {(t.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(3)}
+                          {dict.taskVault.list.cap} {(t.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(3)}
                         </span>
                       </div>
                     </li>
@@ -621,7 +637,7 @@ export function TaskVaultPanel(props: {
           {detail ? (
             <>
               <Card
-                title={`Task: ${detail.task.taskId}`}
+                title={interpolate(dict.taskVault.detail.taskTitle, { taskId: detail.task.taskId })}
                 titleIcon={<Coins size={16} />}
                 actions={
                   <div className="task-actions-group">
@@ -632,7 +648,7 @@ export function TaskVaultPanel(props: {
                         disabled={Boolean(busyAction)}
                         onClick={() => void handleRevoke(detail.task.taskId)}
                       >
-                        Revoke Task
+                        {dict.taskVault.detail.revoke}
                       </button>
                     ) : null}
                     {!detail.task.isClosed ? (
@@ -642,7 +658,7 @@ export function TaskVaultPanel(props: {
                         disabled={Boolean(busyAction)}
                         onClick={() => void handleRefund(detail.task.taskId)}
                       >
-                        Refund & Close
+                        {dict.taskVault.detail.refundAndClose}
                       </button>
                     ) : null}
                   </div>
@@ -650,11 +666,11 @@ export function TaskVaultPanel(props: {
               >
                 <div className="task-summary-grid">
                   <div className="summary-stat">
-                    <span className="stat-label">Status</span>
+                    <span className="stat-label">{dict.taskVault.detail.status}</span>
                     <Pill tone={statusTone(detail.task.status)}>{detail.task.status}</Pill>
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Execution Mode</span>
+                    <span className="stat-label">{dict.taskVault.detail.executionMode}</span>
                     {detail.task.txSignature ? (
                       <a
                         href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
@@ -662,23 +678,23 @@ export function TaskVaultPanel(props: {
                         rel="noreferrer"
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                       >
-                        <Pill tone="ok">Devnet Tx</Pill>
+                        <Pill tone="ok">{dict.taskVault.detail.devnetTx}</Pill>
                         <ExternalLink size={12} />
                       </a>
                     ) : (
-                      <Pill tone="neutral">Simulated</Pill>
+                      <Pill tone="neutral">{dict.taskVault.detail.simulated}</Pill>
                     )}
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Total Budget</span>
+                    <span className="stat-label">{dict.taskVault.detail.totalBudget}</span>
                     <strong>{(detail.task.budgetLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL</strong>
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Total Spent</span>
+                    <span className="stat-label">{dict.taskVault.detail.totalSpent}</span>
                     <strong>{(detail.task.spentLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL</strong>
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Remaining in Vault</span>
+                    <span className="stat-label">{dict.taskVault.detail.remaining}</span>
                     <strong className="ok-value">
                       {(
                         Math.max(0, detail.task.budgetLamports - detail.task.spentLamports) /
@@ -688,41 +704,41 @@ export function TaskVaultPanel(props: {
                     </strong>
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Per-Payment Cap</span>
+                    <span className="stat-label">{dict.taskVault.detail.perPaymentCap}</span>
                     <span>{(detail.task.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL</span>
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Allowed Worker</span>
-                    <span>{detail.task.allowedWorker ? shorten(detail.task.allowedWorker, 4) : 'Any'}</span>
+                    <span className="stat-label">{dict.taskVault.detail.allowedWorker}</span>
+                    <span>{detail.task.allowedWorker ? shorten(detail.task.allowedWorker, 4) : dict.taskVault.detail.any}</span>
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Allowed Service</span>
-                    <span>{detail.task.allowedServiceId || 'Any'}</span>
+                    <span className="stat-label">{dict.taskVault.detail.allowedService}</span>
+                    <span>{detail.task.allowedServiceId || dict.taskVault.detail.any}</span>
                   </div>
                   <div className="summary-stat">
-                    <span className="stat-label">Expires At</span>
+                    <span className="stat-label">{dict.taskVault.detail.expiresAt}</span>
                     <span>{new Date(detail.task.expiry * 1000).toLocaleString()}</span>
                   </div>
                 </div>
 
                 <div className="pda-bindings">
                   <div className="pda-item">
-                    <span className="pda-label">Capability PDA:</span>
+                    <span className="pda-label">{dict.taskVault.detail.capabilityPda}</span>
                     <Mono>{shorten(detail.task.pda ?? '—', 8)}</Mono>
                     {detail.task.pda ? (
-                      <CopyAddressButton value={detail.task.pda} label="Copy capability PDA" />
+                      <CopyAddressButton value={detail.task.pda} label={dict.taskVault.detail.copyCapPda} />
                     ) : null}
                   </div>
                   <div className="pda-item">
-                    <span className="pda-label">Vault PDA:</span>
+                    <span className="pda-label">{dict.taskVault.detail.vaultPda}</span>
                     <Mono>{shorten(detail.task.vaultPda ?? '—', 8)}</Mono>
                     {detail.task.vaultPda ? (
-                      <CopyAddressButton value={detail.task.vaultPda} label="Copy vault PDA" />
+                      <CopyAddressButton value={detail.task.vaultPda} label={dict.taskVault.detail.copyVaultPda} />
                     ) : null}
                   </div>
                   {detail.task.txSignature ? (
                     <div className="pda-item">
-                      <span className="pda-label">Devnet Tx:</span>
+                      <span className="pda-label">{dict.taskVault.detail.devnetTxLabel}</span>
                       <a
                         href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
                         target="_blank"
@@ -740,23 +756,23 @@ export function TaskVaultPanel(props: {
               {/* Multi-step Payment Simulator */}
               {detail.task.status === 'active' ? (
                 <Card
-                  title="Execute Payment into Escrow"
+                  title={dict.taskVault.payment.title}
                   titleIcon={<Play size={16} />}
                   className="execute-payment-card"
                 >
                   <form onSubmit={handleExecutePayment} className="payment-form">
                     <div className="form-row">
                       <label>
-                        <span>Worker Address</span>
+                        <span>{dict.taskVault.payment.workerAddress}</span>
                         <input
                           type="text"
                           value={paymentWorker}
                           onChange={(e) => setPaymentWorker(e.target.value)}
-                          placeholder="Defaults to owner/agent if empty"
+                          placeholder={dict.taskVault.payment.workerPlaceholder}
                         />
                       </label>
                       <label>
-                        <span>Service / Protocol ID</span>
+                        <span>{dict.taskVault.payment.serviceId}</span>
                         <input
                           type="text"
                           value={paymentService}
@@ -765,7 +781,7 @@ export function TaskVaultPanel(props: {
                         />
                       </label>
                       <label>
-                        <span>Amount (SOL)</span>
+                        <span>{dict.taskVault.payment.amount}</span>
                         <input
                           type="number"
                           step="0.01"
@@ -782,27 +798,27 @@ export function TaskVaultPanel(props: {
                       className="primary"
                       disabled={busyAction === 'execute_payment'}
                     >
-                      {busyAction === 'execute_payment' ? 'Locking Escrow…' : 'Execute Task Payment (Lock Escrow)'}
+                      {busyAction === 'execute_payment' ? dict.taskVault.payment.submittingBtn : dict.taskVault.payment.submitBtn}
                     </button>
                   </form>
                 </Card>
               ) : null}
 
               {/* Escrow & Payment List */}
-              <Card title="Escrow Payments & Receipt Proofs" titleIcon={<Clock size={16} />}>
+              <Card title={dict.taskVault.escrows.title} titleIcon={<Clock size={16} />}>
                 {detail.payments.length === 0 ? (
-                  <div className="empty-state">No payments executed under this task yet.</div>
+                  <div className="empty-state">{dict.taskVault.escrows.empty}</div>
                 ) : (
                   <div className="escrows-table-wrapper">
                     <table className="escrows-table">
                       <thead>
                         <tr>
-                          <th>Payment ID</th>
-                          <th>Service</th>
-                          <th>Worker</th>
-                          <th>Amount</th>
-                          <th>Status</th>
-                          <th>Settlement / Action</th>
+                          <th>{dict.taskVault.escrows.colPaymentId}</th>
+                          <th>{dict.taskVault.escrows.colService}</th>
+                          <th>{dict.taskVault.escrows.colWorker}</th>
+                          <th>{dict.taskVault.escrows.colAmount}</th>
+                          <th>{dict.taskVault.escrows.colStatus}</th>
+                          <th>{dict.taskVault.escrows.colAction}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -826,25 +842,25 @@ export function TaskVaultPanel(props: {
                                 </Pill>
                                 {p.txSignature ? (
                                   <a href={`https://explorer.solana.com/tx/${p.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
-                                    <Pill tone="ok">On-Chain Devnet</Pill>
+                                    <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
                                   </a>
-                                ) : <Pill tone="neutral">Simulated</Pill>}
+                                ) : <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>}
                               </td>
                               <td>
                                 {receipt ? (
                                   <div className="receipt-proof-badge">
                                     <CheckCircle2 size={14} className="ok-icon" />
                                     <Mono title={receipt.resultHash}>
-                                      proof {shorten(receipt.resultHash, 4)}
+                                      {dict.taskVault.escrows.proof} {shorten(receipt.resultHash, 4)}
                                     </Mono>
                                     {receipt.txSignature ? (
                                       <a href={`https://explorer.solana.com/tx/${receipt.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
-                                        <Pill tone="ok">On-Chain Devnet</Pill>
+                                        <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
                                       </a>
-                                    ) : <Pill tone="neutral">Simulated</Pill>}
+                                    ) : <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>}
                                     {receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
                                       <span title="On-chain receipts block payment-id replay until the task is revoked, completed or expired">
-                                        Receipt locked until task ends
+                                        {dict.taskVault.escrows.receiptLocked}
                                       </span>
                                     ) : receipt.isSimulated === false && !receipt.isClosed ? (
                                       <button
@@ -855,9 +871,9 @@ export function TaskVaultPanel(props: {
                                         onClick={() => void handleCloseReceipt(receipt.paymentId, receipt.worker)}
                                       >
                                         <XCircle size={14} />
-                                        {busyAction === `close-receipt-${receipt.paymentId}` ? 'Closing…' : 'Close receipt'}
+                                        {busyAction === `close-receipt-${receipt.paymentId}` ? dict.taskVault.escrows.closingReceipt : dict.taskVault.escrows.closeReceipt}
                                       </button>
-                                    ) : receipt.isClosed ? <span>Receipt closed</span> : null}
+                                    ) : receipt.isClosed ? <span>{dict.taskVault.escrows.receiptClosed}</span> : null}
                                   </div>
                                 ) : p.status === 'held' ? (
                                   <button
@@ -867,11 +883,11 @@ export function TaskVaultPanel(props: {
                                     onClick={() => void handleSettleMockPayment(p.paymentId, p.serviceId)}
                                   >
                                     {busyAction === `settle-${p.paymentId}`
-                                      ? 'Settling…'
-                                      : 'Settle with Receipt'}
+                                      ? dict.taskVault.escrows.settling
+                                      : dict.taskVault.escrows.settleWithReceipt}
                                   </button>
                                 ) : (
-                                  <span>Refunded</span>
+                                  <span>{dict.taskVault.escrows.refunded}</span>
                                 )}
                               </td>
                             </tr>
@@ -884,8 +900,8 @@ export function TaskVaultPanel(props: {
               </Card>
             </>
           ) : (
-            <Card title="Task Capability Details">
-              <div className="empty-state">Select or fund a Task Capability to view details and escrows.</div>
+            <Card title={dict.taskVault.detail.defaultTitle}>
+              <div className="empty-state">{dict.taskVault.detail.emptySelect}</div>
             </Card>
           )}
         </div>

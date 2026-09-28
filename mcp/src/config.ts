@@ -183,7 +183,7 @@ export function resolveAgentToken(
     const tokenMatch = AGENT_TOKEN.exec(rawToken);
     if (!tokenMatch) {
       throw new Error(
-        'NEXUS_AGENT_TOKEN is malformed; copy the MCP entry from the nexusPay dashboard (agent card > Connect an AI agent) or run pnpm mcp:config',
+        'NEXUS_AGENT_TOKEN is malformed; copy the MCP entry from the nexusPay dashboard (Wallet tab > Connect an AI agent) or run pnpm mcp:config',
       );
     }
     return { agentToken: rawToken, ownerPubkey: tokenMatch[1]!, tokenSource: 'env' };

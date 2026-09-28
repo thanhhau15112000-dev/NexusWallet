@@ -15,8 +15,8 @@ export const PUBLIC_ACTION_PATH_PREFIX = '/api/actions/';
 
 /**
  * Every /api route needs a wallet-signed session, in every deployment mode. The one
- * exception is the local MCP server: in local mode a per-tenant MCP token may call the
- * small read/propose route set listed in mcp-token.ts.
+ * exception is MCP: a per-tenant MCP token (sent by the remote /mcp endpoint or the local
+ * stdio bundle) may call the small read/propose route set listed in mcp-token.ts.
  */
 export function registerAuthHook(app: FastifyInstance, ctx: AppContext): void {
   const { config } = ctx;
@@ -40,7 +40,7 @@ export function registerAuthHook(app: FastifyInstance, ctx: AppContext): void {
     const unsigned = cookieValue ? req.unsignCookie(cookieValue) : null;
     const session = unsigned?.valid && unsigned.value ? ctx.sessions.getSession(unsigned.value) : null;
     if (session) return;
-    if (!config.authRequired && mcpOwnerFor(config.usersDir, req)) return;
+    if (mcpOwnerFor(config.usersDir, req)) return;
     return reply.status(401).send({ error: 'authentication_required' });
   });
 }

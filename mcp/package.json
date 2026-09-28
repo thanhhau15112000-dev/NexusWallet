@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "stdio MCP server that lets a personal agent use its nexusPay wallet through the policy gate",
+  "exports": {
+    "./remote": "./src/remote.ts"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
     "build": "node scripts/build.mjs",

@@ -1,35 +1,43 @@
 import { useState } from 'react';
-import { Plug } from 'lucide-react';
+import { Check, Copy, Plug, ShieldCheck, X } from './icons.js';
 import { api, ApiError, type McpClientConfig } from '../api.js';
+import { useI18n } from '../i18n/context.js';
+import type { TranslationDictionary } from '../i18n/types.js';
 
-// The panel sits inside the dark agent card, so text inherits its light color and code
-// blocks get a translucent dark background instead of the global light pre style.
-const panelStyle = { marginTop: 12, fontSize: 13 } as const;
-const textStyle = { color: 'inherit', opacity: 0.85, margin: '8px 0 4px' } as const;
-const warnStyle = { ...textStyle, opacity: 1, fontWeight: 600 } as const;
-const preStyle = {
-  background: 'rgba(0, 0, 0, 0.35)',
-  color: 'inherit',
-  border: '1px solid rgba(255, 255, 255, 0.15)',
-  borderRadius: 6,
-  padding: 8,
-  margin: '4px 0',
-  maxHeight: 160,
-  overflow: 'auto',
-  fontSize: 11,
-  whiteSpace: 'pre',
-} as const;
-const buttonStyle = { color: 'inherit', textDecoration: 'underline', marginRight: 12 } as const;
+type ClientId = 'claude-code' | 'codex' | 'antigravity' | 'claude-desktop';
+
+const CLIENTS: Array<{
+  id: ClientId;
+  name: string;
+  snippet: (config: McpClientConfig) => string;
+  hint: (mcp: TranslationDictionary['mcp']) => string;
+}> = [
+  { id: 'claude-code', name: 'Claude Code', snippet: (c) => c.claudeCode, hint: (m) => m.hintClaudeCode },
+  { id: 'codex', name: 'Codex', snippet: (c) => c.codexToml, hint: (m) => m.hintCodex },
+  { id: 'antigravity', name: 'Antigravity', snippet: (c) => c.antigravityJson, hint: (m) => m.hintAntigravity },
+  { id: 'claude-desktop', name: 'Claude Desktop', snippet: (c) => c.claudeDesktopJson, hint: (m) => m.hintClaudeDesktop },
+];
+
+type CopyTarget = 'url' | ClientId;
+
+const errorText = (err: unknown, fallback: string) =>
+  err instanceof ApiError || err instanceof Error ? err.message : fallback;
+
+// The token stays off the screen (screenshots, screen sharing); Copy still puts the full value on the clipboard.
+const maskToken = (text: string, token: string) =>
+  text.replaceAll(token, `${token.slice(0, token.lastIndexOf('_') + 5)}${'•'.repeat(12)}`);
 
 /**
- * Hands the owner a ready-to-paste MCP client entry (bundle path + tenant token), so an
- * AI agent can be connected without editing headers or config values by hand.
+ * The app's headline feature: connect an AI client to this wallet over the remote MCP
+ * endpoint. The client only needs the URL and the owner's MCP token; nothing is installed.
  */
 export function McpConnectPanel() {
+  const { dict } = useI18n();
   const [config, setConfig] = useState<McpClientConfig | null>(null);
+  const [client, setClient] = useState<ClientId>('claude-code');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [copied, setCopied] = useState<CopyTarget | null>(null);
 
   const load = async (rotate: boolean) => {
     setBusy(true);
@@ -37,56 +45,111 @@ export function McpConnectPanel() {
     try {
       setConfig(rotate ? await api.rotateMcpToken() : await api.mcpConfig());
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to load MCP config');
+      setError(errorText(err, dict.mcp.loadFailed));
     } finally {
       setBusy(false);
     }
   };
 
-  const copy = async (label: string, text: string) => {
+  const copy = async (target: CopyTarget, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(label);
+      setCopied(target);
       setTimeout(() => setCopied(null), 1500);
     } catch {
-      setError('Clipboard is not available; select the text and copy it manually');
+      setError(dict.mcp.clipboardUnavailable);
     }
   };
 
+  const copyButton = (target: CopyTarget, text: string) => (
+    <button type="button" className="mcp-copy-btn" onClick={() => void copy(target, text)}>
+      {copied === target ? <Check size={14} /> : <Copy size={14} />}
+      {copied === target ? dict.mcp.copied : dict.mcp.copy}
+    </button>
+  );
+
+  const selected = CLIENTS.find((item) => item.id === client) ?? CLIENTS[0]!;
+  const snippet = config ? selected.snippet(config) : '';
+  const localOnly = config ? /^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(config.url) : false;
+
   return (
-    <details className="mcp-connect" style={panelStyle} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open && !config) void load(false); }}>
-      <summary style={{ cursor: 'pointer' }}>
-        <Plug size={14} /> Connect an AI agent (MCP)
-      </summary>
-      {error ? <p style={warnStyle}>{error}</p> : null}
-      {config ? (
-        <div className="mcp-connect-body">
-          {!config.bundleBuilt ? (
-            <p style={warnStyle}>
-              MCP bundle not built yet. Run <code>{config.buildCommand}</code> in the repository, then paste the entry below.
-            </p>
-          ) : null}
-          <p style={textStyle}>
-            Claude Desktop, Claude Code (<code>.mcp.json</code>), Cursor and Antigravity (<code>~/.gemini/config/mcp_config.json</code>):
-          </p>
-          <pre style={preStyle}>{config.mcpServersJson}</pre>
-          <button type="button" className="link" style={buttonStyle} onClick={() => void copy('json', config.mcpServersJson)}>
-            {copied === 'json' ? 'Copied' : 'Copy JSON'}
+    <section className="mcp-card" aria-labelledby="mcp-card-title">
+      <div className="mcp-card-intro">
+        <img className="mcp-card-mascot" src="/brand/mascot-command.svg" alt="" width={104} height={104} />
+        <span className="mcp-eyebrow">
+          <Plug size={14} />
+          {dict.mcp.eyebrow}
+        </span>
+        <h2 id="mcp-card-title">{dict.mcp.title}</h2>
+        <p className="mcp-pitch">{dict.mcp.pitch}</p>
+
+        <ol className="mcp-steps">
+          <li>
+            <strong>{dict.mcp.step1Title}</strong>
+            <p>{dict.mcp.step1Desc}</p>
+            {config ? (
+              <>
+                <div className="mcp-command">
+                  <code>{config.url}</code>
+                  {copyButton('url', config.url)}
+                </div>
+                {localOnly ? <p className="mcp-warn">{dict.mcp.localOnlyNote}</p> : null}
+                <div className="mcp-format-switch" role="group" aria-label={dict.mcp.step1Title}>
+                  {CLIENTS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-pressed={client === item.id}
+                      onClick={() => setClient(item.id)}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                </div>
+                <p>{selected.hint(dict.mcp)}</p>
+                <div className="mcp-code">
+                  <pre>{maskToken(snippet, config.token)}</pre>
+                  {copyButton(client, snippet)}
+                </div>
+              </>
+            ) : (
+              <button type="button" className="mcp-reveal-btn" disabled={busy} onClick={() => void load(false)}>
+                {busy ? dict.mcp.loading : dict.mcp.reveal}
+              </button>
+            )}
+            {error ? <p className="mcp-warn">{error}</p> : null}
+          </li>
+          <li>
+            <strong>{dict.mcp.step2Title}</strong>
+            <p>{dict.mcp.step2Desc}</p>
+          </li>
+          <li>
+            <strong>{dict.mcp.step3Title}</strong>
+            <p className="mcp-prompt">&ldquo;{dict.mcp.step3Prompt}&rdquo;</p>
+          </li>
+        </ol>
+      </div>
+
+      <div className="mcp-card-manual">
+        <h3>{dict.mcp.scopeTitle}</h3>
+        <ul className="mcp-scope">
+          <li><Check size={15} />{dict.mcp.scopeStatus}</li>
+          <li><Check size={15} />{dict.mcp.scopeRequests}</li>
+          <li><Check size={15} />{dict.mcp.scopeTransfers}</li>
+          <li className="is-denied"><X size={15} />{dict.mcp.scopeDenied}</li>
+        </ul>
+
+        <h3 className="mcp-manual-title">{dict.mcp.tokenTitle}</h3>
+        <p className="mcp-note">
+          <ShieldCheck size={15} />
+          <span>{dict.mcp.securityNote}</span>
+        </p>
+        {config ? (
+          <button type="button" className="link" disabled={busy} onClick={() => void load(true)}>
+            {busy ? dict.mcp.rotating : dict.mcp.rotateToken}
           </button>
-          <p style={textStyle}>Codex (<code>~/.codex/config.toml</code>):</p>
-          <pre style={preStyle}>{config.codexToml}</pre>
-          <button type="button" className="link" style={buttonStyle} onClick={() => void copy('toml', config.codexToml)}>
-            {copied === 'toml' ? 'Copied' : 'Copy TOML'}
-          </button>
-          <p style={textStyle}>
-            The token only lets the agent read status and requests and propose transfers; the policy and your approvals still decide.
-            Rotating it disconnects clients that use the old one.
-          </p>
-          <button type="button" className="link" style={buttonStyle} disabled={busy} onClick={() => void load(true)}>
-            {busy ? 'Rotating…' : 'Rotate token'}
-          </button>
-        </div>
-      ) : busy ? <p style={textStyle}>Loading…</p> : null}
-    </details>
+        ) : null}
+      </div>
+    </section>
   );
 }

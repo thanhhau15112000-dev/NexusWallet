@@ -60,16 +60,19 @@ describe('MCP token authentication', () => {
       expect(configRes.statusCode).toBe(200);
       expect(configRes.headers['cache-control']).toBe('no-store');
       const mcp = JSON.parse(configRes.body);
-      expect(mcp.env.NEXUS_AGENT_TOKEN).toMatch(new RegExp(`^nxp_${ownerPubkey}_[A-Za-z0-9_-]{43}$`));
-      expect(mcp.mcpServersJson).toContain(mcp.env.NEXUS_AGENT_TOKEN);
+      expect(mcp.token).toMatch(new RegExp(`^nxp_${ownerPubkey}_[A-Za-z0-9_-]{43}$`));
+      expect(mcp.url).toBe(`http://127.0.0.1:${ctx.config.PORT}/mcp`);
+      for (const snippet of [mcp.claudeCode, mcp.codexToml, mcp.antigravityJson, mcp.claudeDesktopJson]) {
+        expect(snippet).toContain(mcp.url);
+        expect(snippet).toContain(`Bearer ${mcp.token}`);
+      }
       expect(mcp.codexToml).toContain('[mcp_servers.nexuspay]');
-      expect(mcp.bundlePath).toMatch(/dist\/mcp\/nexuspay-mcp\.mjs$/);
-      expect(mcp.bundlePath).not.toContain('\\');
+      expect(JSON.parse(mcp.antigravityJson).mcpServers.nexuspay.serverUrl).toBe(mcp.url);
       // Repeated reads return the same token so configured clients keep working.
       const again = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body);
-      expect(again.env.NEXUS_AGENT_TOKEN).toBe(mcp.env.NEXUS_AGENT_TOKEN);
+      expect(again.token).toBe(mcp.token);
 
-      const token = mcp.env.NEXUS_AGENT_TOKEN as string;
+      const token = mcp.token as string;
       const state = await app.inject({ method: 'GET', url: '/api/state', headers: bearer(token) });
       expect(state.statusCode).toBe(200);
       expect(JSON.parse(state.body).agent.pubkey).toBe(ctx.getUserContext!(ownerPubkey).agentPubkey);
@@ -103,22 +106,85 @@ describe('MCP token authentication', () => {
 
       // Rotation revokes the previous token.
       const rotated = JSON.parse((await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })).body);
-      expect(rotated.env.NEXUS_AGENT_TOKEN).not.toBe(token);
+      expect(rotated.token).not.toBe(token);
       expect((await app.inject({ method: 'GET', url: '/api/state', headers: bearer(token) })).statusCode).toBe(401);
-      expect((await app.inject({ method: 'GET', url: '/api/state', headers: bearer(rotated.env.NEXUS_AGENT_TOKEN) })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'GET', url: '/api/state', headers: bearer(rotated.token) })).statusCode).toBe(200);
     } finally {
       await app.close();
     }
   });
 
-  it('does not accept MCP tokens in hosted mode', async () => {
-    const { app } = await startApp({ authRequired: true });
+  it('accepts MCP tokens in hosted mode with the same route scope, on the dashboard origin', async () => {
+    const { app, ctx } = await startApp({ authRequired: true });
     try {
       const owner = Keypair.generate();
       const cookieHeader = await login(app, owner);
       const res = await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } });
-      expect(res.statusCode).toBe(409);
-      expect(JSON.parse(res.body).error).toBe('mcp_local_only');
+      expect(res.statusCode).toBe(200);
+      const mcp = JSON.parse(res.body);
+      expect(mcp.url).toBe(`${ctx.config.allowedOrigins[0]}/mcp`);
+      expect((await app.inject({ method: 'GET', url: '/api/state', headers: bearer(mcp.token) })).statusCode).toBe(200);
+      for (const [method, url] of [
+        ['GET', '/api/tasks'],
+        ['PUT', '/api/policy'],
+        ['GET', '/api/mcp/config'],
+        ['POST', '/api/mcp/token/rotate'],
+      ] as const) {
+        const denied = await app.inject({ method, url, headers: bearer(mcp.token), payload: method === 'GET' ? undefined : {} });
+        expect(denied.statusCode, `${method} ${url}`).toBe(401);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('serves the MCP tools over the remote /mcp endpoint to a bearer token only', async () => {
+    const { app, ctx } = await startApp();
+    try {
+      const owner = Keypair.generate();
+      const ownerPubkey = owner.publicKey.toBase58();
+      const cookieHeader = await login(app, owner);
+      const token = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body)
+        .token as string;
+      const rpc = (body: unknown, headers: Record<string, string> = bearer(token)) =>
+        app.inject({
+          method: 'POST',
+          url: '/mcp',
+          headers: { ...headers, accept: 'application/json, text/event-stream', 'content-type': 'application/json' },
+          payload: JSON.stringify(body),
+        });
+      const initialize = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } },
+      };
+
+      // Only the MCP token opens /mcp: not anonymous callers, not a wallet session, not a tampered token.
+      expect((await rpc(initialize, {})).statusCode).toBe(401);
+      expect((await rpc(initialize, { cookie: cookieHeader })).statusCode).toBe(401);
+      const tampered = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
+      expect((await rpc(initialize, bearer(tampered))).statusCode).toBe(401);
+      expect((await app.inject({ method: 'GET', url: '/mcp', headers: bearer(token) })).statusCode).toBe(405);
+
+      const init = await rpc(initialize);
+      expect(init.statusCode).toBe(200);
+      expect(JSON.parse(init.body).result.serverInfo.name).toBe('nexuspay');
+
+      const list = JSON.parse((await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })).body);
+      expect(list.result.tools.map((tool: { name: string }) => tool.name)).toContain('nexuspay_get_status');
+
+      // A tool call runs through the agent API as this owner.
+      const call = JSON.parse(
+        (await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'nexuspay_get_status', arguments: {} } })).body,
+      );
+      expect(call.result.isError).toBeFalsy();
+      const status = JSON.parse(call.result.content[0].text);
+      expect(JSON.stringify(status)).toContain(ctx.getUserContext!(ownerPubkey).agentPubkey);
+
+      // After rotation the old token no longer opens /mcp.
+      await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } });
+      expect((await rpc(initialize)).statusCode).toBe(401);
     } finally {
       await app.close();
     }

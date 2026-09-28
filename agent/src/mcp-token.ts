@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 /**
- * Per-tenant bearer token for the local MCP server, so an MCP client never has to
+ * Per-tenant bearer token for MCP clients (remote /mcp or the local stdio bundle), so an MCP client never has to
  * impersonate the owner with a header. Format: `nxp_<ownerPubkey>_<secret>`; the owner
  * part only selects the tenant file, the secret is what authenticates.
  */

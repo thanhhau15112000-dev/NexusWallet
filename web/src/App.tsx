@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Wallet as WalletIcon,
   X,
-} from 'lucide-react';
+} from './components/icons.js';
 import { getWallets } from '@wallet-standard/app';
 import {
   buildApprovalMessage,
@@ -29,6 +29,7 @@ import {
   type WalletChoice,
 } from './solanaWallets.js';
 import { AgentFundingPanel } from './components/AgentFundingPanel.js';
+import { McpConnectPanel } from './components/McpConnectPanel.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
@@ -37,6 +38,9 @@ import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { WalletPanel } from './components/WalletPanel.js';
+import { LanguageToggle, SettingsMenu } from './components/SettingsMenu.js';
+import { Mascot, type MascotPose } from './components/Mascot.js';
+import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
@@ -56,23 +60,18 @@ const FEATURE_TABS: Array<{
   { id: 'docs', label: 'Docs', icon: BookOpen },
 ];
 
+const TAB_POSE: Record<FeatureTab, MascotPose> = {
+  wallet: 'wallet',
+  tasks: 'tasks',
+  commands: 'command',
+  policy: 'policy',
+  approvals: 'approved',
+  audit: 'audit',
+  docs: 'docs',
+};
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function summarise(request: PaymentRequest): Toast {
-  switch (request.status) {
-    case 'confirmed':
-      return { tone: 'ok', text: 'Confirmed on devnet' };
-    case 'pending_approval':
-      return { tone: 'warn', text: 'Approval required' };
-    case 'denied':
-      return { tone: 'bad', text: 'Denied by policy' };
-    case 'failed':
-      return { tone: 'bad', text: 'Execution failed' };
-    default:
-      return { tone: 'warn', text: request.status.replace('_', ' ') };
-  }
 }
 
 function WalletOptions(props: {
@@ -80,12 +79,13 @@ function WalletOptions(props: {
   busy: boolean;
   onSelect: (choice: WalletChoice) => void;
 }) {
+  const { dict } = useI18n();
   if (!props.choices.length) {
-    return <p className="wallet-picker-empty">No compatible Solana wallet found. Install a wallet that supports message signing, then reload.</p>;
+    return <p className="wallet-picker-empty">{dict.walletModal.noWallet}</p>;
   }
 
   return (
-    <div className="wallet-picker-options" aria-label="Available Solana wallets">
+    <div className="wallet-picker-options" aria-label={dict.walletModal.availableWallets}>
       {props.choices.map((choice) => (
         <button
           key={choice.id}
@@ -100,14 +100,14 @@ function WalletOptions(props: {
             <span className="wallet-option-fallback"><WalletIcon size={17} aria-hidden="true" /></span>
           )}
           <span>{choice.name}</span>
-          <span className="wallet-option-action">Continue</span>
+          <span className="wallet-option-action">{dict.walletModal.continue}</span>
         </button>
       ))}
     </div>
   );
 }
-
 export function App() {
+  const { dict, interpolate } = useI18n();
   const [state, setState] = useState<AgentState | null>(null);
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [audit, setAudit] = useState<AuditEntryView[]>([]);
@@ -163,12 +163,12 @@ export function App() {
         setState(null);
         setRequests([]);
         setAudit([]);
-        setOffline('Session expired. Sign in with your wallet again.');
+        setOffline(dict.walletModal.sessionExpired);
         return;
       }
       setOffline(errorText(err));
     }
-  }, []);
+  }, [dict.walletModal.sessionExpired]);
 
   useEffect(() => {
     let current = true;
@@ -294,12 +294,30 @@ export function App() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const summarise = useCallback(
+    (request: PaymentRequest): Toast => {
+      switch (request.status) {
+        case 'confirmed':
+          return { tone: 'ok', text: dict.toasts.confirmed };
+        case 'pending_approval':
+          return { tone: 'warn', text: dict.toasts.approvalRequired };
+        case 'denied':
+          return { tone: 'bad', text: dict.toasts.denied };
+        case 'failed':
+          return { tone: 'bad', text: dict.toasts.executionFailed };
+        default:
+          return { tone: 'warn', text: request.status.replace('_', ' ') };
+      }
+    },
+    [dict.toasts],
+  );
+
   const claimSeed = async () => {
     setFlag('seed', true);
     try {
       await api.claimSeed();
       await refresh();
-      setToast({ tone: 'ok', text: '0.1 SOL demo seed claimed!' });
+      setToast({ tone: 'ok', text: dict.toasts.seedClaimed });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
@@ -318,7 +336,13 @@ export function App() {
         toPubkey: state.agent.pubkey,
         amountSol,
       });
-      setToast({ tone: 'ok', text: `Deposit of ${amountSol} SOL sent! Tx: ${signature.slice(0, 8)}…` });
+      setToast({
+        tone: 'ok',
+        text: interpolate(dict.toasts.depositSent, {
+          amount: amountSol,
+          tx: `${signature.slice(0, 8)}…`,
+        }),
+      });
       await refresh();
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
@@ -367,7 +391,7 @@ export function App() {
     try {
       await api.savePolicy(input);
       await refresh();
-      setToast({ tone: 'ok', text: 'Policy saved' });
+      setToast({ tone: 'ok', text: dict.toasts.policySaved });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
       throw err;
@@ -381,7 +405,7 @@ export function App() {
     try {
       await api.airdrop(1);
       await refresh();
-      setToast({ tone: 'ok', text: 'Airdrop requested' });
+      setToast({ tone: 'ok', text: dict.toasts.airdropRequested });
     } catch (err) {
       setToast({ tone: 'bad', text: errorText(err) });
     } finally {
@@ -454,8 +478,13 @@ export function App() {
     return (
       <main className="boot-page">
         <section className="boot" aria-labelledby="login-title">
+          <Mascot
+            className="boot-mascot"
+            pose={offline ? 'sleep' : needsSignIn ? 'wave' : 'think'}
+            caption={offline ? dict.mascot.offline : needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
+          />
           <h1 id="login-title">nexusPay</h1>
-          <p className="boot-status">{needsSignIn ? 'Sign in required' : offline ? 'Service unavailable' : 'Loading'}</p>
+          <p className="boot-status">{needsSignIn ? dict.boot.signInRequired : offline ? dict.boot.serviceUnavailable : dict.boot.loading}</p>
           {offline ? <p className="bad-text boot-error">{offline}</p> : null}
           {signInError ? <p className="bad-text boot-error">{signInError}</p> : null}
           {authReady && authRequired && !authenticated ? (
@@ -468,7 +497,7 @@ export function App() {
                 disabled={!walletChoices.length || Boolean(busy.connect)}
                 onClick={() => setWalletPickerOpen((open) => !open)}
               >
-                {busy.connect ? 'Connecting…' : 'Sign in with wallet'}
+                {busy.connect ? dict.boot.connecting : dict.boot.signInBtn}
               </button>
               {walletPickerOpen ? (
                 <div id="login-wallet-options" className="boot-wallet-picker">
@@ -481,7 +510,7 @@ export function App() {
               ) : null}
               {!walletChoices.length ? (
                 <p className="wallet-picker-empty boot-wallet-empty">
-                  No compatible Solana wallet found. Install a wallet that supports message signing, then reload.
+                  {dict.boot.installPhantom}
                 </p>
               ) : null}
             </>
@@ -491,22 +520,39 @@ export function App() {
     );
   }
 
+  // Mascot mirrors what is happening: service and action outcomes win over the open tab.
+  const working = Object.values(busy).some(Boolean) || approvingId !== null;
+  const [mascotPose, mascotCaption]: [MascotPose, string] = offline
+    ? ['sleep', dict.mascot.offline]
+    : toast?.tone === 'bad'
+      ? ['denied', dict.mascot.failed]
+      : toast?.tone === 'ok'
+        ? ['cheer', dict.mascot.success]
+        : working
+          ? ['think', dict.mascot.working]
+          : [TAB_POSE[activeTab], dict.mascot[activeTab]];
+
   return (
     <main className="app">
       <header className="topbar">
         <div className="brand">
+          <img className="brand-logo" src="/brand/logo.svg" alt="" width={44} height={44} />
           <div>
             <h1>nexusPay</h1>
           </div>
           <span className="brand-network-tag">{state.cluster}</span>
         </div>
-        <div className={`service-state ${offline ? 'is-offline' : ''}`}>
-          <Activity size={15} aria-hidden="true" />
-          {offline ? 'Offline' : 'Ready'}
+        <div className="topbar-right">
+          <div className={`service-state ${offline ? 'is-offline' : ''}`}>
+            <Activity size={15} aria-hidden="true" />
+            {offline ? dict.topbar.offline : dict.topbar.ready}
+          </div>
+          <LanguageToggle />
+          <SettingsMenu onLogout={() => void disconnect()} />
         </div>
       </header>
 
-      {offline ? <div className="banner bad">Service unavailable: {offline}</div> : null}
+      {offline ? <div className="banner bad">{interpolate(dict.walletModal.serviceUnavailable, { offline })}</div> : null}
 
       <nav className="feature-tabs" role="tablist" aria-label="App features">
         {FEATURE_TABS.map((tab, index) => {
@@ -527,7 +573,7 @@ export function App() {
               onKeyDown={(event) => selectTabWithKeyboard(event, index)}
             >
               <Icon size={15} aria-hidden="true" />
-              <span>{tab.label}</span>
+              <span>{dict.tabs[tab.id] ?? tab.label}</span>
               {count !== null ? <span className="feature-tab-count">{count}</span> : null}
             </button>
           );
@@ -559,6 +605,7 @@ export function App() {
               />
             }
           />
+          <McpConnectPanel />
           <AgentFundingPanel
             state={state}
             busy={Boolean(busy.airdrop || busy.seed || busy.deposit)}
@@ -656,13 +703,13 @@ export function App() {
           <section className="wallet-dialog" role="dialog" aria-modal="true" aria-labelledby="wallet-dialog-title">
             <div className="wallet-dialog-head">
               <div>
-                <h2 id="wallet-dialog-title">Connect a wallet</h2>
-                <p>Choose a Solana wallet to connect as owner.</p>
+                <h2 id="wallet-dialog-title">{dict.walletModal.title}</h2>
+                <p>{dict.walletModal.desc}</p>
               </div>
               <button
                 className="icon-button"
                 type="button"
-                aria-label="Close wallet selection"
+                aria-label={dict.walletModal.close}
                 disabled={Boolean(busy.connect)}
                 onClick={() => setWalletPickerOpen(false)}
               >
@@ -677,6 +724,8 @@ export function App() {
           </section>
         </div>
       ) : null}
+
+      <Mascot className="app-mascot" pose={mascotPose} caption={mascotCaption} />
 
       {toast ? <div className={`toast ${toast.tone}`}>{toast.text}</div> : null}
     </main>
