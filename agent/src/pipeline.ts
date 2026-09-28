@@ -13,6 +13,7 @@ import {
   formatSol,
   lamportsToSol,
   solToLamports,
+  spentLamportsInWindow,
   type AgentErrorCode,
   type ApprovalPayload,
   type ExecutionRecord,
@@ -270,8 +271,9 @@ async function processCommand(
   // The model call can take long enough for the policy to change. Evaluate
   // against the latest policy, not the snapshot used to build the prompt.
   const currentPolicy = ctx.store.getPolicy();
+  const spentLamports24h = spentLamportsInWindow(ctx.store.listRequests());
   const baseDecision = planMatchesIntent(intent.value, plan.value.action, currentPolicy)
-    ? evaluatePolicy(currentPolicy, plan.value.action)
+    ? evaluatePolicy(currentPolicy, plan.value.action, { spentLamports24h })
     : {
         verdict: 'deny' as const,
         policyVersion: currentPolicy.version,
@@ -319,7 +321,8 @@ async function processAction(
   });
   ctx.audit.record('request.created', request.id, { source: 'agent_action', action });
 
-  return dispatchDecision(ctx, request, evaluatePolicy(policy, action), policy);
+  const spentLamports24h = spentLamportsInWindow(ctx.store.listRequests());
+  return dispatchDecision(ctx, request, evaluatePolicy(policy, action, { spentLamports24h }), policy);
 }
 
 function actionFingerprint(action: AgentAction): string {

@@ -104,6 +104,8 @@ export const en: TranslationDictionary = {
   policy: {
     title: 'Policy',
     maxPerTx: 'Max per transaction',
+    maxPerDay: 'Max per day (SOL)',
+    unlimitedPlaceholder: 'Unlimited',
     recipients: 'Recipients',
     noRecipients: 'No recipients',
     remove: 'Remove',

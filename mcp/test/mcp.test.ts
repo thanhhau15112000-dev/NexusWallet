@@ -647,6 +647,81 @@ describe('nexusPay MCP tools', () => {
     expect(parsed.error.remediation).toContain('unfreeze');
   });
 
+  it('exposes maxSolPerDay and usage metrics on nexuspay_get_status', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          cluster: 'devnet',
+          agent: {
+            agentId: 'agent-001',
+            pubkey: OWNER,
+            lamports: 500_000_000,
+            rpcError: null,
+            explorerUrl: `https://explorer.solana.com/address/${OWNER}?cluster=devnet`,
+            feeReserveLamports: 10_000,
+          },
+          policy: {
+            version: 1,
+            maxSolPerTx: 0.1,
+            maxSolPerDay: 0.5,
+            allowedRecipients: [{ label: 'treasury', address: OWNER }],
+            allowedMints: [],
+            maxTokenAmountByMint: {},
+          },
+          usage: {
+            spentSol24h: 0.2,
+            remainingSol24h: 0.3,
+          },
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const status = parse(await client.callTool({ name: 'nexuspay_get_status', arguments: {} }));
+    expect(status.policy.maxSolPerDay).toBe(0.5);
+    expect(status.spentSol24h).toBe(0.2);
+    expect(status.remainingSol24h).toBe(0.3);
+  });
+
+  it('returns approval with reason code DAILY_LIMIT_EXCEEDED when transfer exceeds daily cap', async () => {
+    const client = await connect(
+      vi.fn(async () =>
+        json(200, {
+          request: request({
+            status: 'pending_approval',
+            decision: {
+              verdict: 'require_approval',
+              policyVersion: 2,
+              code: 'DAILY_LIMIT_EXCEEDED',
+              reasons: [
+                'amount 0.05 SOL exceeds the 24-hour limit (0.48 SOL spent of 0.5 SOL limit, 0.02 SOL remaining)',
+              ],
+              details: {
+                limitSol: 0.5,
+                limitLamports: 500_000_000,
+                spentSol: 0.48,
+                spentLamports: 480_000_000,
+                requestedSol: 0.05,
+                requestedLamports: 50_000_001,
+                remainingSol: 0.02,
+                remainingLamports: 20_000_000,
+              },
+            },
+          }),
+        }),
+      ) as unknown as Fetch,
+    );
+
+    const result = await client.callTool({
+      name: 'nexuspay_transfer_sol',
+      arguments: { recipient: 'treasury', amountSol: 0.05 },
+    });
+
+    const parsed = parse(result);
+    expect(parsed.status).toBe('pending_approval');
+    expect(parsed.approval.details.reason).toBe('DAILY_LIMIT_EXCEEDED');
+    expect(parsed.approval.details.remainingSol).toBe(0.02);
+  });
+
   it('filters and limits the request list', async () => {
     const client = await connect(
       vi.fn(async () =>

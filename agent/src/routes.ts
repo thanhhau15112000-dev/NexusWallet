@@ -5,9 +5,11 @@ import { z } from 'zod';
 import {
   AGENT_ERROR_REMEDIATION,
   AllowlistEntrySchema,
+  lamportsToSol,
   ModelActionSchema,
   PubkeySchema,
   solToLamports,
+  spentLamportsInWindow,
   type Policy,
   validateTaskTransition,
   computeTaskHash,
@@ -126,6 +128,7 @@ const OwnerBody = z.object({ pubkey: PubkeySchema });
 
 const PolicyBody = z.object({
   maxSolPerTx: z.number().nonnegative().max(1000),
+  maxSolPerDay: z.number().nonnegative().max(100000).nullable().optional(),
   allowedRecipients: z.array(AllowlistEntrySchema).max(32),
   allowedMints: z.array(AllowlistEntrySchema).max(16),
   maxTokenAmountByMint: z.record(z.string(), z.number().nonnegative()).default({}),
@@ -215,7 +218,11 @@ function mcpClientConfig(ctx: AppContext, owner: string, rotate: boolean) {
 }
 
 function publicPolicy(policy: Policy) {
-  return { ...policy, maxSolPerTx: policy.maxSolLamportsPerTx / 1_000_000_000 };
+  return {
+    ...policy,
+    maxSolPerTx: policy.maxSolLamportsPerTx / 1_000_000_000,
+    maxSolPerDay: policy.maxSolLamportsPerDay === null ? null : policy.maxSolLamportsPerDay / 1_000_000_000,
+  };
 }
 
 function isOriginAllowed(origin: string | undefined, ctx: AppContext): boolean {
@@ -443,6 +450,18 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       }
     }
 
+    const currentPolicy = userCtx.store.getPolicy();
+    const spentLamports = spentLamportsInWindow(userCtx.store.listRequests());
+    const remainingLamports =
+      currentPolicy.maxSolLamportsPerDay === null
+        ? null
+        : Math.max(0, currentPolicy.maxSolLamportsPerDay - spentLamports);
+
+    const usage = {
+      spentSol24h: lamportsToSol(spentLamports),
+      remainingSol24h: remainingLamports === null ? null : lamportsToSol(remainingLamports),
+    };
+
     return {
       cluster: userCtx.config.SOLANA_CLUSTER,
       rpcUrl: userCtx.config.SOLANA_RPC_URL,
@@ -469,7 +488,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
         frozen: userCtx.store.isFrozen(),
         frozenAt: userCtx.store.getFrozen()?.at ?? null,
       },
-      policy: publicPolicy(userCtx.store.getPolicy()),
+      policy: publicPolicy(currentPolicy),
+      usage,
     };
   });
 
@@ -561,8 +581,14 @@ const inFlightClaims = new Set<string>();
   app.put('/api/policy', async (req) => {
     const userCtx = resolveUserContext(ctx, req);
     const body = PolicyBody.parse(req.body);
+    const current = userCtx.store.getPolicy();
+    const maxSolLamportsPerDay =
+      body.maxSolPerDay !== undefined
+        ? (body.maxSolPerDay === null ? null : solToLamports(body.maxSolPerDay))
+        : current.maxSolLamportsPerDay;
     const policy = userCtx.store.setPolicy({
       maxSolLamportsPerTx: solToLamports(body.maxSolPerTx),
+      maxSolLamportsPerDay,
       allowedRecipients: body.allowedRecipients,
       allowedMints: body.allowedMints,
       maxTokenAmountByMint: body.maxTokenAmountByMint,

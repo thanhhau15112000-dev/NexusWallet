@@ -104,6 +104,8 @@ export type TranslationDictionary = {
   policy: {
     title: string;
     maxPerTx: string;
+    maxPerDay: string;
+    unlimitedPlaceholder: string;
     recipients: string;
     noRecipients: string;
     remove: string;

@@ -104,6 +104,8 @@ export const vi: TranslationDictionary = {
   policy: {
     title: 'Chính sách chi tiêu',
     maxPerTx: 'Hạn mức mỗi giao dịch',
+    maxPerDay: 'Trần mỗi ngày (SOL)',
+    unlimitedPlaceholder: 'Không giới hạn',
     recipients: 'Người nhận hợp lệ',
     noRecipients: 'Chưa có người nhận nào',
     remove: 'Xóa',

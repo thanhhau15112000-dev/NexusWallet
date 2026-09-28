@@ -11,6 +11,7 @@ import {
   lamportsToSol,
   solToLamports,
   type ModelAction,
+  type PaymentRequest,
   type ResolvedAction,
 } from './contract.js';
 
@@ -27,6 +28,8 @@ export const PolicySchema = z
     agentId: z.string().trim().min(1).max(64),
     /** Per-transaction ceiling the agent may sign for on its own. */
     maxSolLamportsPerTx: z.number().int().nonnegative(),
+    /** Daily ceiling across a 24-hour sliding window. null means unlimited. */
+    maxSolLamportsPerDay: z.number().int().nonnegative().nullable().default(null),
     allowedRecipients: z.array(AllowlistEntrySchema).max(32).default([]),
     allowedMints: z.array(AllowlistEntrySchema).max(16).default([]),
     /** Per-transaction ceiling per mint, in human token units, keyed by mint address. */
@@ -76,6 +79,7 @@ export type AgentErrorCode =
   | 'RECIPIENT_NOT_IN_ALLOWLIST'
   | 'MINT_NOT_IN_ALLOWLIST'
   | 'AMOUNT_EXCEEDS_TRANSACTION_LIMIT'
+  | 'DAILY_LIMIT_EXCEEDED'
   | 'INVALID_AMOUNT'
   | 'NO_EXECUTABLE_ACTION'
   | 'MODEL_PLAN_MISMATCH'
@@ -91,6 +95,8 @@ export const AGENT_ERROR_REMEDIATION: Record<AgentErrorCode, string> = {
     'Use a label or address from details.allowedMints. Only the owner can add mints, in the nexusPay dashboard.',
   AMOUNT_EXCEEDS_TRANSACTION_LIMIT:
     'The owner must approve this transfer in the nexusPay dashboard. Do not split it into smaller transfers to stay under the limit.',
+  DAILY_LIMIT_EXCEEDED:
+    'The owner must approve this transfer in the nexusPay dashboard, or wait until the 24-hour limit has remaining capacity (see details.remainingSol). Do not split it into smaller transfers to stay under the limit.',
   INVALID_AMOUNT: 'Send a positive amount. SOL amounts must be at least 0.000000001 SOL.',
   NO_EXECUTABLE_ACTION: 'Ask for a transfer or a balance check with an explicit recipient and amount.',
   MODEL_PLAN_MISMATCH: 'Restate the command with an explicit recipient label and amount.',
@@ -126,12 +132,50 @@ function findEntry(entries: AllowlistEntry[], value: string): AllowlistEntry | u
   return entries.find((e) => e.address === needle || e.label.toLowerCase() === lower);
 }
 
+export const DEFAULT_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function spentLamportsInWindow(
+  requests: readonly PaymentRequest[],
+  now: number | string | Date = Date.now(),
+  windowMs: number = DEFAULT_DAILY_WINDOW_MS,
+): number {
+  const nowMs = typeof now === 'number' ? now : new Date(now).getTime();
+  const cutoff = nowMs - windowMs;
+  let spent = 0;
+
+  for (const req of requests) {
+    const createdAtMs = new Date(req.createdAt).getTime();
+    if (Number.isNaN(createdAtMs) || createdAtMs < cutoff || createdAtMs > nowMs) {
+      continue;
+    }
+    const isCountedStatus =
+      req.status === 'auto_approved' ||
+      req.status === 'approved' ||
+      req.status === 'confirmed' ||
+      (req.status === 'failed' && req.error?.code === 'execution_failed');
+
+    if (!isCountedStatus) {
+      continue;
+    }
+
+    if (req.decision?.resolved?.type === 'transfer_sol') {
+      spent += req.decision.resolved.lamports;
+    }
+  }
+
+  return spent;
+}
+
 /**
  * Ordering matters: an allowlist violation is a DENY and is checked before the
  * amount ceiling, so "large transfer to an unknown address" is refused outright
  * instead of being escalated to the owner for approval.
  */
-export function evaluatePolicy(policy: Policy, action: ModelAction): PolicyDecision {
+export function evaluatePolicy(
+  policy: Policy,
+  action: ModelAction,
+  usage?: { spentLamports24h: number },
+): PolicyDecision {
   const version = policy.version;
 
   if (action.type === 'get_balance') {
@@ -218,6 +262,31 @@ export function evaluatePolicy(policy: Policy, action: ModelAction): PolicyDecis
       };
     }
 
+    const spentLamports = usage?.spentLamports24h ?? 0;
+    if (policy.maxSolLamportsPerDay !== null && spentLamports + lamports > policy.maxSolLamportsPerDay) {
+      const remainingLamports = Math.max(0, policy.maxSolLamportsPerDay - spentLamports);
+      return {
+        verdict: 'require_approval',
+        policyVersion: version,
+        reasons: [
+          `amount ${formatSol(lamports)} exceeds the 24-hour limit (${formatSol(spentLamports)} spent of ${formatSol(policy.maxSolLamportsPerDay)} limit, ${formatSol(remainingLamports)} remaining)`,
+        ],
+        resolved,
+        limit: { limit: policy.maxSolLamportsPerDay, requested: lamports, unit: 'lamports' },
+        code: 'DAILY_LIMIT_EXCEEDED',
+        details: {
+          limitSol: lamportsToSol(policy.maxSolLamportsPerDay),
+          limitLamports: policy.maxSolLamportsPerDay,
+          spentSol: lamportsToSol(spentLamports),
+          spentLamports,
+          requestedSol: lamportsToSol(lamports),
+          requestedLamports: lamports,
+          remainingSol: lamportsToSol(remainingLamports),
+          remainingLamports,
+        },
+      };
+    }
+
     return {
       verdict: 'allow',
       policyVersion: version,
@@ -288,6 +357,7 @@ export function defaultPolicy(agentId: string): Policy {
     version: 1,
     agentId,
     maxSolLamportsPerTx: solToLamports(0.1),
+    maxSolLamportsPerDay: null,
     allowedRecipients: [],
     allowedMints: [],
     maxTokenAmountByMint: {},
