@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import {
+  AGENT_ERROR_REMEDIATION,
   AllowlistEntrySchema,
   ModelActionSchema,
   PubkeySchema,
@@ -26,7 +27,13 @@ import { Keypair, PublicKey, SystemProgram, type TransactionInstruction } from '
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { verifyMessageSignature } from './crypto.js';
-import { explorerAddressUrl, getLamportBalance, isValidAddress, requestAirdrop } from './chain.js';
+import {
+  FEE_BUFFER_LAMPORTS,
+  explorerAddressUrl,
+  getLamportBalance,
+  isValidAddress,
+  requestAirdrop,
+} from './chain.js';
 import { ApprovalError, approveRequest } from './approvals.js';
 import type { AppContext } from './context.js';
 import {
@@ -457,6 +464,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
         lamports,
         rpcError,
         explorerUrl: explorerAddressUrl(userCtx.agentPubkey, userCtx.config.SOLANA_CLUSTER),
+        // Upper bound the pre-flight balance check reserves on top of a SOL transfer amount.
+        feeReserveLamports: FEE_BUFFER_LAMPORTS,
       },
       policy: publicPolicy(userCtx.store.getPolicy()),
     };
@@ -603,7 +612,12 @@ const inFlightClaims = new Set<string>();
       return { request };
     } catch (err) {
       if (err instanceof IdempotencyConflictError) {
-        return reply.status(409).send({ error: 'idempotency_conflict', message: err.message });
+        return reply.status(409).send({
+          error: 'IDEMPOTENCY_CONFLICT',
+          message: err.message,
+          remediation: AGENT_ERROR_REMEDIATION.IDEMPOTENCY_CONFLICT,
+          details: { idempotencyKey: body.idempotencyKey ?? null },
+        });
       }
       throw err;
     }

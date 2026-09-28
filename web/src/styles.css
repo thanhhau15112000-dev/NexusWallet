@@ -1561,6 +1561,12 @@ input::placeholder {
   padding: 14px 0;
 }
 
+/* Opened from an agent deep link (?request=<id>). */
+.request.focused {
+  box-shadow: inset 3px 0 0 var(--warn);
+  padding-left: 12px;
+}
+
 .request-head {
   display: flex;
   align-items: center;

@@ -797,7 +797,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 never change the amount on a retry.
               </li>
               <li>
-                Reusing a key for a different transfer returns <code>idempotency_conflict</code>. Two calls with
+                Reusing a key for a different transfer returns <code>IDEMPOTENCY_CONFLICT</code>. Two calls with
                 different keys are two transfers, limited only by the policy.
               </li>
             </ul>
