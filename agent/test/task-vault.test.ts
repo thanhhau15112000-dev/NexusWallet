@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -350,6 +350,26 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       expect(ix.data.length).toBe(8 + 32 + 8 + 8 + 8 + 32 + 32 + 32);
       expect(ix.data.subarray(96, 128)).toEqual(worker.toBuffer());
       expect(ix.data.subarray(128, 160)).toEqual(Buffer.from(to32ByteArray('service-allowlisted')));
+    });
+
+    it('builds a create_and_fund_task instruction without a global Buffer', () => {
+      vi.stubGlobal('Buffer', undefined);
+      try {
+        const ix = createAndFundTaskInstruction({
+          owner,
+          agentSigner: agent,
+          taskId,
+          budgetLamports: 10_000_000,
+          perPaymentCapLamports: 10_000_000,
+          allowedWorker: worker,
+          expirySeconds: 1750000000,
+        });
+
+        expect(ix.data.length).toBe(160);
+        expect(ix.keys[2]!.pubkey.toBase58()).toBe(owner.toBase58());
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
 
     it('builds valid execute_task_payment instruction', () => {
