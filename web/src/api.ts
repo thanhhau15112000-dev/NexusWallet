@@ -29,7 +29,8 @@ export type AgentState = {
     frozen?: boolean;
     frozenAt?: string | null;
   };
-  policy: Policy & { maxSolPerTx: number };
+  policy: Policy & { maxSolPerTx: number; maxSolPerDay?: number | null };
+  usage?: { spentSol24h: number; remainingSol24h: number | null };
 };
 
 export type AgentHealth = {
@@ -159,6 +160,7 @@ export const api = {
 
   savePolicy: (input: {
     maxSolPerTx: number;
+    maxSolPerDay?: number | null;
     allowedRecipients: { label: string; address: string }[];
     allowedMints: { label: string; address: string }[];
     maxTokenAmountByMint: Record<string, number>;
