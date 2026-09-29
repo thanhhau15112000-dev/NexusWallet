@@ -292,6 +292,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     cluster: ctx.config.SOLANA_CLUSTER,
     authRequired: true,
     models: ctx.model.describe(),
+    // Render injects RENDER_GIT_COMMIT; other hosts can set GIT_COMMIT. Lets QA tell which build is live.
+    commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? null,
   }));
 
   app.get('/api/actions/approve/:requestId', async (req, reply) => {
