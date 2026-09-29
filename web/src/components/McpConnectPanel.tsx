@@ -73,7 +73,7 @@ export function McpConnectPanel() {
   const localOnly = config ? /^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(config.url) : false;
 
   return (
-    <section className="mcp-card" aria-labelledby="mcp-card-title">
+    <section id="mcp-card" className="mcp-card" aria-labelledby="mcp-card-title">
       <div className="mcp-card-intro">
         <span className="mcp-eyebrow">
           <Plug size={14} />

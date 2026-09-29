@@ -35,6 +35,7 @@ import {
 } from './chain.js';
 import type { AppContext } from './context.js';
 import { randomNonce } from './crypto.js';
+import { mockPlan } from './model/mock.js';
 
 function modelContext(ctx: AppContext): ModelContext {
   const policy = ctx.store.getPolicy();
@@ -253,6 +254,28 @@ async function processCommand(
       status: 'failed',
       error: { code: 'model_error', message: errorMessage(err) },
     });
+  }
+
+  // A planner that gives up on a concrete transfer intent would deny a request the policy could allow.
+  // Use the deterministic plan for that intent instead; the policy engine still decides. A planner
+  // that returns a different transfer is not replaced and is denied by the intent check below.
+  if (
+    plan.value.action.type === 'request_manual_approval' &&
+    (intent.value.operation === 'transfer_sol' || intent.value.operation === 'transfer_spl')
+  ) {
+    const deterministic = mockPlan(intent.value, mctx);
+    if (deterministic.action.type !== 'request_manual_approval') {
+      plan = {
+        value: deterministic,
+        meta: {
+          name: 'mock',
+          model: 'deterministic',
+          fallback: true,
+          ms: plan.meta.ms,
+          error: `planner returned request_manual_approval for a ${intent.value.operation} intent`,
+        },
+      };
+    }
   }
 
   request = ctx.store.putRequest({

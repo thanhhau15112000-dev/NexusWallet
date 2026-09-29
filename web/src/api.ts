@@ -39,6 +39,7 @@ export type AgentHealth = {
   cluster: string;
   authRequired: boolean;
   models: { stage1: string; stage2: string; mode: string };
+  commit?: string | null;
 };
 
 export type AuthSession = {

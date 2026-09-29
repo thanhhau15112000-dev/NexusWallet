@@ -120,6 +120,7 @@ export function App() {
   // An agent holding a transfer links the owner to ?request=<id>; open the approvals tab for it.
   const [focusRequestId] = useState(() => new URLSearchParams(window.location.search).get('request'));
   const [activeTab, setActiveTab] = useState<FeatureTab>(focusRequestId ? 'approvals' : 'wallet');
+  const [scrollToMcp, setScrollToMcp] = useState(false);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const bindAttempt = useRef<string | null>(null);
@@ -535,6 +536,19 @@ export function App() {
     <Pill tone="warn">{dict.wallet.unbound}</Pill>
   );
 
+  // The panels stay mounted and only get `hidden`, so scroll after the commands tab is visible.
+  const openMcpCard = () => {
+    setActiveTab('commands');
+    setScrollToMcp(true);
+  };
+
+  useEffect(() => {
+    if (!scrollToMcp || activeTab !== 'commands') return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('mcp-card')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    setScrollToMcp(false);
+  }, [scrollToMcp, activeTab]);
+
   const panel = (tab: FeatureTab, content: React.ReactNode) => (
     <section
       id={`feature-panel-${tab}`}
@@ -669,6 +683,7 @@ export function App() {
             onRefresh={refresh}
             onToast={setToast}
             onOpenTab={setActiveTab}
+            onOpenMcp={openMcpCard}
           />,
         )}
 

@@ -311,3 +311,36 @@ describe('POST /api/agent/intents', () => {
     expect(ctx.store.listRequests()).toHaveLength(0);
   });
 });
+
+describe('API routes: approval expiry', () => {
+  it('marks expired requests terminal on reads and audits the transition once', async () => {
+    const ctx = makeContext();
+    const held = await runAction(ctx, {
+      action: { type: 'transfer_sol', recipient: 'treasury', amountSol: 0.5 },
+    });
+    ctx.store.putRequest({
+      ...held,
+      approval: {
+        ...held.approval!,
+        payload: { ...held.approval!.payload, expiresAt: '2020-01-01T00:00:00.000Z' },
+      },
+    });
+    vi.mocked(ctx.audit.record).mockClear();
+
+    const app = Fastify();
+    await registerRoutes(app, ctx);
+    const list = await app.inject({ method: 'GET', url: '/api/requests' });
+    const detail = await app.inject({ method: 'GET', url: `/api/requests/${held.id}` });
+
+    expect(list.json().requests[0].status).toBe('expired');
+    expect(list.json().requests[0].error).toMatchObject({ code: 'expired' });
+    expect(detail.json().request.status).toBe('expired');
+    expect(ctx.audit.record).toHaveBeenCalledTimes(1);
+    expect(ctx.audit.record).toHaveBeenCalledWith(
+      'approval.expired',
+      held.id,
+      { expiresAt: '2020-01-01T00:00:00.000Z' },
+    );
+    await app.close();
+  });
+});

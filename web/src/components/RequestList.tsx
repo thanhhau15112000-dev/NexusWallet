@@ -44,6 +44,7 @@ function formatTrace(request: PaymentRequest): string {
 
 function RequestRow(props: {
   request: PaymentRequest;
+  now: number;
   focused: boolean;
   canApprove: boolean;
   busy: boolean;
@@ -52,11 +53,17 @@ function RequestRow(props: {
   const { dict } = useI18n();
   const { request } = props;
   const decision = request.decision;
+  const approvalExpired = Boolean(
+    request.status === 'pending_approval'
+    && request.approval
+    && new Date(request.approval.payload.expiresAt).getTime() <= props.now,
+  );
+  const displayedStatus = approvalExpired ? 'expired' : request.status;
 
   return (
     <li id={`request-${request.id}`} className={props.focused ? 'request focused' : 'request'}>
       <div className="request-head">
-        <Pill tone={TONE[request.status]}>{dict.requests.statuses[request.status]}</Pill>
+        <Pill tone={TONE[displayedStatus]}>{dict.requests.statuses[displayedStatus]}</Pill>
         <span className="prompt">{request.prompt}</span>
         <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
       </div>
@@ -71,8 +78,9 @@ function RequestRow(props: {
       </div>
 
       {request.error ? <p className="request-error">{request.error.message}</p> : null}
+      {approvalExpired ? <p className="request-error">{dict.requests.expiredNotice}</p> : null}
 
-      {request.status === 'pending_approval' && request.approval ? (
+      {request.status === 'pending_approval' && request.approval && !approvalExpired ? (
         <div className="approval">
           <div className="approval-bar">
             <button
@@ -148,6 +156,7 @@ export function RequestList(props: {
 }) {
   const { dict, interpolate } = useI18n();
   const [showAll, setShowAll] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const scrolledTo = useRef<string | null>(null);
   const focusLoaded = Boolean(props.focusId && props.requests.some((request) => request.id === props.focusId));
 
@@ -156,6 +165,11 @@ export function RequestList(props: {
     scrolledTo.current = props.focusId;
     document.getElementById(`request-${props.focusId}`)?.scrollIntoView({ block: 'center' });
   }, [props.focusId, focusLoaded]);
+  useEffect(() => {
+    if (!props.requests.some((request) => request.status === 'pending_approval' && request.approval)) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [props.requests]);
   const canApprove = Boolean(props.wallet && props.wallet === props.owner);
   const recentRequests = props.requests.slice(0, 6);
   const visibleRequests = showAll
@@ -183,6 +197,7 @@ export function RequestList(props: {
             <RequestRow
               key={request.id}
               request={request}
+              now={now}
               focused={request.id === props.focusId}
               canApprove={canApprove}
               busy={props.busyId === request.id}
