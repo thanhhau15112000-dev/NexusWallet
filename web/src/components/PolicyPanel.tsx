@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AllowlistEntrySchema, PubkeySchema } from '@nexus/shared';
 import { ShieldCheck, Wallet } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card, Mono, shorten } from './ui.js';
@@ -31,6 +32,25 @@ export function PolicyPanel(props: {
   const [address, setAddress] = useState('');
   const [dirty, setDirty] = useState(false);
 
+  const parsedMaxSol = Number(maxSol);
+  const maxSolInvalid =
+    maxSol.trim() === '' || !Number.isFinite(parsedMaxSol) || parsedMaxSol <= 0 || parsedMaxSol > 1000;
+  const trimmedDay = maxSolDay.trim();
+  const parsedDay = trimmedDay === '' ? null : Number(trimmedDay);
+  const maxSolDayInvalid =
+    parsedDay !== null && (!Number.isFinite(parsedDay) || parsedDay < 0 || parsedDay > 100000);
+  const labelInvalid = label.length > 32;
+  const addressInvalid = address !== '' && !PubkeySchema.safeParse(address).success;
+  const duplicateEntry = Boolean(
+    address && recipients.some((entry) => entry.address === address),
+  );
+  const duplicateLabel = Boolean(
+    label && recipients.some((entry) => entry.label.toLowerCase() === label.toLowerCase()),
+  );
+  const existingRecipientInvalid = recipients.some(
+    (entry) => !AllowlistEntrySchema.safeParse(entry).success,
+  );
+
   // Re-sync when the agent reports a newer policy and nothing local is pending.
   useEffect(() => {
     if (dirty) return;
@@ -44,7 +64,7 @@ export function PolicyPanel(props: {
   }, [policy.version, policy.maxSolPerTx, policy.maxSolPerDay, policy.allowedRecipients, dirty]);
 
   const addEntry = (entry: Entry) => {
-    if (!entry.label || !entry.address) return;
+    if (!AllowlistEntrySchema.safeParse(entry).success) return;
     if (
       recipients.some(
         (r) => r.address === entry.address || r.label.toLowerCase() === entry.label.toLowerCase(),
@@ -57,18 +77,10 @@ export function PolicyPanel(props: {
   };
 
   const save = async () => {
-    const parsed = Number(maxSol);
-    if (!Number.isFinite(parsed) || parsed < 0) return;
-    const trimmedDay = maxSolDay.trim();
-    let parsedDay: number | null = null;
-    if (trimmedDay !== '') {
-      const num = Number(trimmedDay);
-      if (!Number.isFinite(num) || num < 0) return;
-      parsedDay = num;
-    }
+    if (maxSolInvalid || maxSolDayInvalid || existingRecipientInvalid) return;
     try {
       await props.onSave({
-        maxSolPerTx: parsed,
+        maxSolPerTx: parsedMaxSol,
         maxSolPerDay: parsedDay,
         allowedRecipients: recipients,
         allowedMints: policy.allowedMints,
@@ -94,8 +106,9 @@ export function PolicyPanel(props: {
             <div className="input-with-suffix">
               <input
                 type="number"
-                min="0"
-                step="0.01"
+                min="0.000000001"
+                max="1000"
+                step="any"
                 value={maxSol}
                 onChange={(e) => {
                   setMaxSol(e.target.value);
@@ -104,6 +117,7 @@ export function PolicyPanel(props: {
               />
               <span>SOL</span>
             </div>
+            {maxSolInvalid ? <span className="request-error">{dict.policy.invalidPerTx}</span> : null}
           </label>
 
           <label className="field">
@@ -112,6 +126,7 @@ export function PolicyPanel(props: {
               <input
                 type="number"
                 min="0"
+                max="100000"
                 step="0.01"
                 placeholder={dict.policy.unlimitedPlaceholder}
                 value={maxSolDay}
@@ -122,6 +137,7 @@ export function PolicyPanel(props: {
               />
               <span>SOL</span>
             </div>
+            {maxSolDayInvalid ? <span className="request-error">{dict.policy.invalidPerDay}</span> : null}
           </label>
         </Card>
 
@@ -170,7 +186,7 @@ export function PolicyPanel(props: {
             />
             <button
               type="button"
-              disabled={!label || !address}
+              disabled={!label || !address || labelInvalid || addressInvalid || duplicateEntry || duplicateLabel}
               onClick={() => {
                 addEntry({ label, address });
                 setLabel('');
@@ -180,6 +196,11 @@ export function PolicyPanel(props: {
               {dict.policy.addRecipient}
             </button>
           </div>
+          {labelInvalid ? <p className="request-error">{dict.policy.invalidLabel}</p> : null}
+          {addressInvalid ? <p className="request-error">{dict.policy.invalidAddress}</p> : null}
+          {duplicateEntry ? <p className="request-error">{dict.policy.duplicateAddress}</p> : null}
+          {duplicateLabel ? <p className="request-error">{dict.policy.duplicateLabel}</p> : null}
+          {existingRecipientInvalid ? <p className="request-error">{dict.policy.invalidSavedRecipient}</p> : null}
           <button
             type="button"
             className="link"
@@ -193,7 +214,12 @@ export function PolicyPanel(props: {
 
       <div className={dirty ? 'save-bar is-dirty' : 'save-bar'}>
         {dirty ? <span className="hint">{dict.policy.unsaved}</span> : null}
-        <button type="button" className="primary" disabled={props.busy || !dirty} onClick={save}>
+        <button
+          type="button"
+          className="primary"
+          disabled={props.busy || !dirty || maxSolInvalid || maxSolDayInvalid || existingRecipientInvalid}
+          onClick={save}
+        >
           {props.busy ? dict.policy.saving : dict.policy.save}
         </button>
       </div>

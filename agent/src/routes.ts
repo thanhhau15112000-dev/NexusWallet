@@ -36,7 +36,7 @@ import {
   isValidAddress,
   requestAirdrop,
 } from './chain.js';
-import { ApprovalError, approveRequest } from './approvals.js';
+import { ApprovalError, approveRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
 import {
   dispenseInitialSeed,
@@ -431,6 +431,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
 
   app.get('/api/state', async (req) => {
     const userCtx = resolveUserContext(ctx, req);
+    expirePendingApprovals(userCtx);
     const session = getSession(ctx, req);
     let lamports: number | null = null;
     let rpcError: string | null = null;
@@ -599,6 +600,7 @@ const inFlightClaims = new Set<string>();
 
   app.post('/api/agent/freeze', async (req) => {
     const userCtx = resolveUserContext(ctx, req);
+    expirePendingApprovals(userCtx);
     const currentFrozen = userCtx.store.getFrozen();
     if (currentFrozen) {
       return { frozen: true, frozenAt: currentFrozen.at };
@@ -687,11 +689,13 @@ const inFlightClaims = new Set<string>();
 
   app.get('/api/requests', async (req) => {
     const userCtx = resolveUserContext(ctx, req);
+    expirePendingApprovals(userCtx);
     return { requests: userCtx.store.listRequests() };
   });
 
   app.get('/api/requests/:id', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
+    expirePendingApprovals(userCtx);
     const { id } = req.params as { id: string };
     const request = userCtx.store.getRequest(id);
     if (!request) return reply.status(404).send({ error: 'not_found' });

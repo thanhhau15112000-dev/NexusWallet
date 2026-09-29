@@ -12,6 +12,33 @@ export class ApprovalError extends Error {
   }
 }
 
+function markApprovalExpired(ctx: AppContext, request: PaymentRequest): PaymentRequest {
+  if (request.status !== 'pending_approval' || !request.approval) return request;
+  const updated = ctx.store.putRequest({
+    ...request,
+    status: 'expired',
+    error: { code: 'expired', message: 'approval window closed' },
+  });
+  ctx.audit.record('approval.expired', request.id, {
+    expiresAt: request.approval.payload.expiresAt,
+  });
+  return updated;
+}
+
+/** Persist approval expirations as a terminal request state whenever requests are read. */
+export function expirePendingApprovals(ctx: AppContext, now = Date.now()): PaymentRequest[] {
+  const expired: PaymentRequest[] = [];
+  for (const request of ctx.store.listRequests()) {
+    if (
+      request.status !== 'pending_approval'
+      || !request.approval
+      || new Date(request.approval.payload.expiresAt).getTime() > now
+    ) continue;
+    expired.push(markApprovalExpired(ctx, request));
+  }
+  return expired;
+}
+
 const inFlightApprovals = new WeakMap<AppContext, Map<string, Promise<PaymentRequest>>>();
 
 /**
@@ -50,11 +77,7 @@ async function approveRequestOnce(
     reject('replay', 'this approval was already used');
   }
   if (new Date(request.approval.payload.expiresAt).getTime() <= Date.now()) {
-    ctx.store.putRequest({
-      ...request,
-      status: 'expired',
-      error: { code: 'expired', message: 'approval window closed' },
-    });
+    markApprovalExpired(ctx, request);
     reject('expired', 'approval expired; re-run the command to get a fresh one');
   }
 
