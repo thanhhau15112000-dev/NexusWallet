@@ -473,6 +473,19 @@ export function App() {
     }
   };
 
+  const cancelPending = async (request: PaymentRequest) => {
+    setApprovingId(request.id);
+    try {
+      await api.cancelRequest(request.id);
+      setToast({ tone: 'warn', text: dict.toasts.requestCancelled });
+    } catch (err) {
+      setToast({ tone: 'bad', text: errorText(err) });
+    } finally {
+      setApprovingId(null);
+      await refresh();
+    }
+  };
+
   const pendingApprovals = requests.filter((request) => request.status === 'pending_approval').length;
 
   const selectTabWithKeyboard = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -709,6 +722,7 @@ export function App() {
             busyId={approvingId}
             focusId={focusRequestId}
             onApprove={(request) => void approve(request)}
+            onCancel={(request) => void cancelPending(request)}
           />,
         )}
 

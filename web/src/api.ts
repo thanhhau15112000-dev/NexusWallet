@@ -229,6 +229,9 @@ export const api = {
     );
   },
 
+  cancelRequest: (id: string) =>
+    request<{ request: PaymentRequest }>(`/api/requests/${id}/cancel`, { method: 'POST', body: JSON.stringify({}) }),
+
   audit: (limit = 60) => request<{ entries: AuditEntryView[] }>(`/api/audit?limit=${limit}`),
   tasks: () => request<{ tasks: TaskCapabilityRecord[] }>('/api/tasks'),
   taskDetail: (taskId: string) =>
