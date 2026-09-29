@@ -62,16 +62,20 @@ export class TransactionSimulationError extends Error {
 export const FEE_BUFFER_LAMPORTS = 10_000;
 
 export class InsufficientFundsError extends Error {
+  readonly maxSendableLamports: number;
+
   constructor(
     readonly balanceLamports: number,
     readonly requiredLamports: number,
+    readonly rentReserveLamports = 0,
   ) {
     super(
       `agent wallet has ${balanceLamports / LAMPORTS_PER_SOL} SOL, needs ${
         requiredLamports / LAMPORTS_PER_SOL
-      } SOL including fees`,
+      } SOL including the fee and rent-exempt reserves`,
     );
     this.name = 'InsufficientFundsError';
+    this.maxSendableLamports = calculateMaxSendableLamports(balanceLamports, rentReserveLamports);
   }
 }
 
@@ -105,6 +109,14 @@ export async function withRpcRetry<T>(
 
 export function createConnection(rpcUrl: string): Connection {
   return new Connection(rpcUrl, 'confirmed');
+}
+
+export function calculateMaxSendableLamports(
+  balanceLamports: number,
+  rentReserveLamports: number,
+  feeReserveLamports = FEE_BUFFER_LAMPORTS,
+): number {
+  return Math.max(0, balanceLamports - feeReserveLamports - rentReserveLamports);
 }
 
 export function keypairFromSecret(secretKey: Uint8Array): Keypair {
@@ -266,9 +278,13 @@ export async function transferSol(params: {
 }): Promise<TransferResult> {
   const { connection, payer, recipient, lamports } = params;
 
-  const balance = await getLamportBalance(connection, payer.publicKey.toBase58());
-  if (balance < lamports + FEE_BUFFER_LAMPORTS) {
-    throw new InsufficientFundsError(balance, lamports + FEE_BUFFER_LAMPORTS);
+  const [balance, rentReserveLamports] = await Promise.all([
+    getLamportBalance(connection, payer.publicKey.toBase58()),
+    withRpcRetry(() => connection.getMinimumBalanceForRentExemption(0, 'confirmed')),
+  ]);
+  const requiredLamports = lamports + FEE_BUFFER_LAMPORTS + rentReserveLamports;
+  if (balance < requiredLamports) {
+    throw new InsufficientFundsError(balance, requiredLamports, rentReserveLamports);
   }
 
   const built = await buildVersionedTransaction({

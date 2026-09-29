@@ -13,7 +13,7 @@ vi.mock('../src/chain.js', async (importOriginal) => {
   };
 });
 
-import { InsufficientFundsError, transferSol } from '../src/chain.js';
+import { calculateMaxSendableLamports, InsufficientFundsError, transferSol } from '../src/chain.js';
 import { IdempotencyConflictError, runAction, runCommand } from '../src/pipeline.js';
 import { registerRoutes } from '../src/routes.js';
 import { Store } from '../src/store.js';
@@ -167,7 +167,7 @@ describe('runAction (structured agent actions)', () => {
 
   it('fails with INSUFFICIENT_FUNDS_INCLUDING_FEES when the balance cannot cover amount plus fee reserve', async () => {
     const ctx = makeContext();
-    vi.mocked(transferSol).mockRejectedValueOnce(new InsufficientFundsError(15_000_000, 20_010_000));
+    vi.mocked(transferSol).mockRejectedValueOnce(new InsufficientFundsError(15_000_000, 20_660_240, 650_240));
 
     const request = await runAction(ctx, {
       action: { type: 'transfer_sol', recipient: 'treasury', amountSol: 0.02 },
@@ -177,16 +177,21 @@ describe('runAction (structured agent actions)', () => {
     expect(request.execution).toBeNull();
     expect(request.error).toMatchObject({
       code: 'INSUFFICIENT_FUNDS_INCLUDING_FEES',
-      message: 'agent wallet holds 0.015 SOL, needs 0.02001 SOL including the fee reserve',
+      message: 'agent wallet holds 0.015 SOL, needs 0.02066024 SOL including the fee and rent-exempt reserves',
       details: {
         balanceLamports: 15_000_000,
-        requiredLamports: 20_010_000,
+        requiredLamports: 20_660_240,
         feeReserveLamports: 10_000,
-        maxSendableLamports: 14_990_000,
-        maxSendableSol: 0.01499,
+        rentReserveLamports: 650_240,
+        maxSendableLamports: 14_339_760,
+        maxSendableSol: 0.01433976,
       },
     });
     expect(request.error?.remediation).toContain('details.maxSendableSol');
+  });
+
+  it('calculates maxSendableSol with both fee and rent-exempt reserves', () => {
+    expect(calculateMaxSendableLamports(99_990_000, 650_240)).toBe(99_329_760);
   });
 
   it('reads the balance through the same policy path', async () => {

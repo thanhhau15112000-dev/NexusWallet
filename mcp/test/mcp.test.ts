@@ -321,6 +321,20 @@ describe('nexusPay MCP tools', () => {
     expect(parse(result)).toMatchObject({ status: 'denied', approval: null, error: denied.error });
   });
 
+  it('reads a pre-structured-error request that only stores code and message', async () => {
+    const legacy = request({
+      status: 'denied',
+      approval: null,
+      error: { code: 'RECIPIENT_NOT_IN_ALLOWLIST', message: 'recipient is not on the allowlist' },
+    });
+    const client = await connect(vi.fn(async () => json(200, { request: legacy })) as unknown as Fetch);
+    const result = parse(await client.callTool({ name: 'nexuspay_get_request', arguments: { requestId: 'req_abc123' } }));
+
+    expect(result.status).toBe('denied');
+    expect(result.error).toEqual(legacy.error);
+    expect(result.balanceSol).toBeNull();
+  });
+
   it('reports outcome_unknown with the key when the agent times out', async () => {
     const fetchImpl = vi.fn(async () => {
       throw new DOMException('timed out', 'TimeoutError');

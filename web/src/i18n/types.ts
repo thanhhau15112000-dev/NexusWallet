@@ -302,6 +302,7 @@ export type TranslationDictionary = {
       emptySelect: string;
       revoke: string;
       refundAndClose: string;
+      refundBlockedPending: string;
       status: string;
       executionMode: string;
       devnetTx: string;
@@ -309,6 +310,7 @@ export type TranslationDictionary = {
       totalBudget: string;
       totalSpent: string;
       remaining: string;
+      refunded: string;
       perPaymentCap: string;
       allowedWorker: string;
       allowedService: string;
@@ -340,6 +342,7 @@ export type TranslationDictionary = {
       colAction: string;
       proof: string;
       receiptLocked: string;
+      receiptWorkerOnly: string;
       receiptClosed: string;
       closeReceipt: string;
       closingReceipt: string;
