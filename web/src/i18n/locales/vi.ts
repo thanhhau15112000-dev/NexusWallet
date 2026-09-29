@@ -78,6 +78,7 @@ export const vi: TranslationDictionary = {
     seedClaimed: 'Đã nhận 0.1 SOL vốn thử nghiệm thành công!',
     agentFrozen: 'Đã khóa agent',
     agentUnfrozen: 'Đã mở khóa agent',
+    requestCancelled: 'Đã hủy yêu cầu',
   },
   agent: {
     title: 'Ví Agent',
@@ -169,6 +170,7 @@ export const vi: TranslationDictionary = {
     showAll: 'Xem tất cả {count}',
     showRecent: 'Xem gần đây',
     approve: 'Duyệt',
+    cancel: 'Hủy',
     waitingForWallet: 'Chờ ví...',
     connectOwnerWallet: 'Kết nối ví chủ sở hữu',
     expires: 'Hết hạn lúc',

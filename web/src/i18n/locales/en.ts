@@ -78,6 +78,7 @@ export const en: TranslationDictionary = {
     seedClaimed: '0.1 SOL demo seed claimed!',
     agentFrozen: 'Agent frozen',
     agentUnfrozen: 'Agent unfrozen',
+    requestCancelled: 'Request cancelled',
   },
   agent: {
     title: 'Agent wallet',
@@ -169,6 +170,7 @@ export const en: TranslationDictionary = {
     showAll: 'Show all {count}',
     showRecent: 'Show recent',
     approve: 'Approve',
+    cancel: 'Cancel',
     waitingForWallet: 'Waiting for wallet',
     connectOwnerWallet: 'Connect owner wallet',
     expires: 'Expires',

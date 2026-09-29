@@ -39,6 +39,25 @@ export function expirePendingApprovals(ctx: AppContext, now = Date.now()): Payme
   return expired;
 }
 
+/**
+ * Owner withdraws a transfer that is still waiting for approval. Nothing was signed, so this only
+ * closes the request; it can never be approved afterwards (approve requires `pending_approval`).
+ */
+export function cancelRequest(ctx: AppContext, requestId: string): PaymentRequest {
+  const request = ctx.store.getRequest(requestId);
+  if (!request) throw new ApprovalError('not_found', 'request not found');
+  if (request.status !== 'pending_approval' || !request.approval) {
+    throw new ApprovalError('bad_status', `request is ${request.status}, not pending_approval`);
+  }
+  const updated = ctx.store.putRequest({
+    ...request,
+    status: 'denied',
+    error: { code: 'cancelled', message: 'cancelled by owner' },
+  });
+  ctx.audit.record('approval.cancelled', request.id, {});
+  return updated;
+}
+
 const inFlightApprovals = new WeakMap<AppContext, Map<string, Promise<PaymentRequest>>>();
 
 /**

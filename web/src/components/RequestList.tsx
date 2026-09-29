@@ -49,6 +49,7 @@ function RequestRow(props: {
   canApprove: boolean;
   busy: boolean;
   onApprove: (request: PaymentRequest) => void;
+  onCancel: (request: PaymentRequest) => void;
 }) {
   const { dict } = useI18n();
   const { request } = props;
@@ -91,6 +92,9 @@ function RequestRow(props: {
             >
               {props.busy ? dict.requests.waitingForWallet : dict.requests.approve}
               <ShieldCheck size={15} aria-hidden="true" />
+            </button>
+            <button type="button" className="danger-outline" disabled={props.busy} onClick={() => props.onCancel(request)}>
+              {dict.requests.cancel}
             </button>
             <span className="hint">
               {dict.requests.expires} {new Date(request.approval.payload.expiresAt).toLocaleTimeString()}
@@ -153,6 +157,7 @@ export function RequestList(props: {
   /** Request named by the `?request=` deep link an agent receives for a held transfer. */
   focusId?: string | null;
   onApprove: (request: PaymentRequest) => void;
+  onCancel: (request: PaymentRequest) => void;
 }) {
   const { dict, interpolate } = useI18n();
   const [showAll, setShowAll] = useState(false);
@@ -202,6 +207,7 @@ export function RequestList(props: {
               canApprove={canApprove}
               busy={props.busyId === request.id}
               onApprove={props.onApprove}
+              onCancel={props.onCancel}
             />
           ))}
         </ul>

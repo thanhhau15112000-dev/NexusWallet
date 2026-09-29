@@ -36,7 +36,7 @@ import {
   isValidAddress,
   requestAirdrop,
 } from './chain.js';
-import { ApprovalError, approveRequest, expirePendingApprovals } from './approvals.js';
+import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
 import {
   dispenseInitialSeed,
@@ -718,6 +718,20 @@ const inFlightClaims = new Set<string>();
     } catch (err) {
       if (err instanceof ApprovalError) {
         const status = err.code === 'not_found' ? 404 : 403;
+        return reply.status(status).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.post('/api/requests/:id/cancel', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { id } = req.params as { id: string };
+    try {
+      return { request: cancelRequest(userCtx, id) };
+    } catch (err) {
+      if (err instanceof ApprovalError) {
+        const status = err.code === 'not_found' ? 404 : 409;
         return reply.status(status).send({ error: err.code, message: err.message });
       }
       throw err;
