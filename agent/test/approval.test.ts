@@ -5,7 +5,7 @@ import { buildApprovalMessage, type ApprovalPayload, type PaymentRequest } from 
 vi.mock('../src/pipeline.js', () => ({
   execute: vi.fn(async (_ctx: unknown, request: PaymentRequest) => request),
 }));
-import { approveRequest } from '../src/approvals.js';
+import { approveRequest, cancelRequest } from '../src/approvals.js';
 import { execute } from '../src/pipeline.js';
 import type { AppContext } from '../src/context.js';
 import { safeEqual, verifyMessageSignature } from '../src/crypto.js';
@@ -261,6 +261,39 @@ describe('approveRequest hard gates', () => {
     ).rejects.toMatchObject({ code: 'approval_mismatch' });
   });
 
+  it('cancels a pending request without executing it, and it can no longer be approved', async () => {
+    let stored = validRequest();
+    const audit = { record: vi.fn() };
+    const ctx = {
+      store: {
+        isFrozen: vi.fn(() => false),
+        getRequest: vi.fn((id: string) => (id === stored.id ? stored : undefined)),
+        getOwner: vi.fn(() => ownerPub),
+        putRequest: vi.fn((next: PaymentRequest) => (stored = next)),
+      },
+      audit,
+    } as unknown as AppContext;
+    vi.mocked(execute).mockClear();
+
+    const cancelled = cancelRequest(ctx, stored.id);
+
+    expect(cancelled.status).toBe('denied');
+    expect(cancelled.error).toMatchObject({ code: 'cancelled' });
+    expect(audit.record).toHaveBeenCalledWith('approval.cancelled', stored.id, {});
+    const signed = sign(payload && buildApprovalMessage(payload), ownerKey);
+    await expect(
+      approveRequest(ctx, { requestId: stored.id, signature: signed.signature, signerPubkey: signed.pubkey }),
+    ).rejects.toMatchObject({ code: 'bad_status' });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('refuses to cancel a request that is not waiting for approval, or that does not exist', () => {
+    const confirmed = validRequest({ status: 'confirmed' });
+    const ctx = createMockContext(confirmed);
+    expect(() => cancelRequest(ctx, confirmed.id)).toThrowError(expect.objectContaining({ code: 'bad_status' }));
+    expect(() => cancelRequest(ctx, 'req_missing')).toThrowError(expect.objectContaining({ code: 'not_found' }));
+    expect(ctx.store.putRequest).not.toHaveBeenCalled();
+  });
   it('serializes concurrent approval retries for one request', async () => {
     const req = validRequest();
     const ctx = createMockContext(req);

@@ -33,10 +33,11 @@ import {
   FEE_BUFFER_LAMPORTS,
   explorerAddressUrl,
   getLamportBalance,
+  getAgentHistory,
   isValidAddress,
   requestAirdrop,
 } from './chain.js';
-import { ApprovalError, approveRequest, expirePendingApprovals } from './approvals.js';
+import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
 import {
   dispenseInitialSeed,
@@ -689,6 +690,29 @@ const inFlightClaims = new Set<string>();
     }
   });
 
+  // Public devnet RPC rate-limits, so repeated polls of the same page share one read for a few seconds.
+  const historyCache = new Map<string, { at: number; page: Awaited<ReturnType<typeof getAgentHistory>> }>();
+  const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,90}$/;
+  app.get('/api/agent/history', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const query = req.query as { before?: string; limit?: string };
+    const before = query.before || undefined;
+    const limit = query.limit === undefined ? 10 : Number(query.limit);
+    if ((before !== undefined && !SIGNATURE.test(before)) || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+      return reply.status(400).send({ error: 'invalid_query', message: 'before must be a transaction signature and limit 1-50' });
+    }
+    const key = `${userCtx.agentPubkey}:${before ?? ''}:${limit}`;
+    const cached = historyCache.get(key);
+    if (cached && Date.now() - cached.at < 8_000) return cached.page;
+    try {
+      const page = await getAgentHistory(userCtx.connection, userCtx.agentPubkey, ctx.config.SOLANA_CLUSTER, { limit, before });
+      historyCache.set(key, { at: Date.now(), page });
+      return page;
+    } catch (err) {
+      return reply.status(502).send({ error: 'rpc_error', message: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   app.get('/api/requests', async (req) => {
     const userCtx = resolveUserContext(ctx, req);
     expirePendingApprovals(userCtx);
@@ -718,6 +742,20 @@ const inFlightClaims = new Set<string>();
     } catch (err) {
       if (err instanceof ApprovalError) {
         const status = err.code === 'not_found' ? 404 : 403;
+        return reply.status(status).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.post('/api/requests/:id/cancel', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { id } = req.params as { id: string };
+    try {
+      return { request: cancelRequest(userCtx, id) };
+    } catch (err) {
+      if (err instanceof ApprovalError) {
+        const status = err.code === 'not_found' ? 404 : 409;
         return reply.status(status).send({ error: err.code, message: err.message });
       }
       throw err;

@@ -5,7 +5,6 @@ import { ArrowRight, Bot, CheckCircle2, Lock, Plug, ShieldCheck, Unlock, Wallet 
 import { api, type AgentState } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { AgentFundingPanel } from './AgentFundingPanel.js';
-import { RecentRequests } from './RecentRequests.js';
 import { useI18n } from '../i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
@@ -78,10 +77,6 @@ function AgentControlCard(props: {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const { agent } = props.state;
-  const funderBalance =
-    props.state.masterFunder?.lamports !== null && props.state.masterFunder?.lamports !== undefined
-      ? props.state.masterFunder.lamports / LAMPORTS_PER_SOL
-      : null;
 
   const run = async (action: 'freeze' | 'unfreeze') => {
     setBusy(true);
@@ -141,20 +136,6 @@ function AgentControlCard(props: {
         )}
       </div>
 
-      <dl className="kv-list">
-        <div>
-          <dt>{dict.agent.agentId}</dt>
-          <dd>
-            <Mono title={agent.agentId}>{agent.agentId}</Mono>
-          </dd>
-        </div>
-        {props.state.isAdmin && funderBalance !== null ? (
-          <div>
-            <dt>{dict.agent.masterFunder}</dt>
-            <dd>{funderBalance.toFixed(4)} SOL</dd>
-          </div>
-        ) : null}
-      </dl>
     </Card>
   );
 }
@@ -279,38 +260,30 @@ export function OverviewPanel(props: {
         </section>
       </div>
 
-      <div className="split-grid">
+      <div className="split-grid is-equal">
         <AgentControlCard state={state} onRefresh={props.onRefresh} onToast={props.onToast} />
-        <div className="overview-side">
-          <AgentFundingPanel
-            state={state}
-            busy={props.fundingBusy}
-            onAirdrop={props.onAirdrop}
-            onClaimSeed={props.onClaimSeed}
-            onDeposit={props.onDeposit}
-          />
-          <section className="mcp-promo">
-            <span className="mcp-promo-icon" aria-hidden="true">
-              <Plug size={20} />
-            </span>
-            <div className="mcp-promo-text">
-              <h3>{dict.overview.mcpPromoTitle}</h3>
-              <p>{dict.overview.mcpPromoDesc}</p>
-            </div>
-            <button type="button" className="mcp-promo-cta button-with-icon" onClick={props.onOpenMcp}>
-              {dict.overview.mcpPromoCta}
-              <ArrowRight size={14} aria-hidden="true" />
-            </button>
-          </section>
-        </div>
+        <AgentFundingPanel
+          state={state}
+          busy={props.fundingBusy}
+          onAirdrop={props.onAirdrop}
+          onClaimSeed={props.onClaimSeed}
+          onDeposit={props.onDeposit}
+        />
       </div>
 
-      <RecentRequests
-        title={dict.overview.recentActivity}
-        requests={props.requests}
-        limit={5}
-        onViewAll={() => props.onOpenTab('approvals')}
-      />
+      <section className="mcp-promo">
+        <span className="mcp-promo-icon" aria-hidden="true">
+          <Plug size={20} />
+        </span>
+        <div className="mcp-promo-text">
+          <h3>{dict.overview.mcpPromoTitle}</h3>
+          <p>{dict.overview.mcpPromoDesc}</p>
+        </div>
+        <button type="button" className="mcp-promo-cta button-with-icon" onClick={props.onOpenMcp}>
+          {dict.overview.mcpPromoCta}
+          <ArrowRight size={14} aria-hidden="true" />
+        </button>
+      </section>
     </div>
   );
 }
