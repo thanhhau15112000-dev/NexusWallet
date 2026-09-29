@@ -88,6 +88,14 @@ export function TaskVaultPanel(props: {
     void loadTasks();
   }, [props.owner]);
 
+  // Follow the selected task's allowlist so the payment form does not start out mismatched.
+  const selectedWorker = detail?.task.allowedWorker;
+  const selectedService = detail?.task.allowedServiceId;
+  useEffect(() => {
+    if (selectedWorker) setPaymentWorker(selectedWorker);
+    if (selectedService) setPaymentService(selectedService);
+  }, [detail?.task.taskId, selectedWorker, selectedService]);
+
   const selectTask = async (taskId: string) => {
     setSelectedTaskId(taskId);
     try {
@@ -433,6 +441,9 @@ export function TaskVaultPanel(props: {
     }
   };
 
+  // Mirrors refund_and_close: it reverts with PendingEscrowsExist while any escrow is held.
+  const hasHeldEscrow = Boolean(detail?.payments.some((p) => p.status === 'held'));
+
   // Mirrors close_receipt: the capability must still exist and no longer accept payments.
   const receiptsClosable = Boolean(detail)
     && !detail!.task.isClosed
@@ -465,7 +476,7 @@ export function TaskVaultPanel(props: {
                   <span>{dict.taskVault.create.totalBudget}</span>
                   <input
                     type="number"
-                    step="0.05"
+                    step="any"
                     min="0.01"
                     value={newBudgetSol}
                     onChange={(e) => setNewBudgetSol(e.target.value)}
@@ -476,7 +487,7 @@ export function TaskVaultPanel(props: {
                   <span>{dict.taskVault.create.perPaymentCap}</span>
                   <input
                     type="number"
-                    step="0.05"
+                    step="any"
                     min="0.01"
                     value={newCapSol}
                     onChange={(e) => setNewCapSol(e.target.value)}
@@ -510,7 +521,8 @@ export function TaskVaultPanel(props: {
                 <span>{dict.taskVault.create.expiryDuration}</span>
                 <input
                   type="number"
-                  min="1"
+                  step="any"
+                  min="0.05"
                   max="168"
                   value={newHours}
                   onChange={(e) => setNewHours(e.target.value)}
@@ -618,7 +630,8 @@ export function TaskVaultPanel(props: {
                       <button
                         type="button"
                         className="secondary"
-                        disabled={Boolean(busyAction)}
+                        disabled={Boolean(busyAction) || hasHeldEscrow}
+                        title={hasHeldEscrow ? dict.taskVault.detail.refundBlockedPending : undefined}
                         onClick={() => void handleRefund(detail.task.taskId)}
                       >
                         {dict.taskVault.detail.refundAndClose}
@@ -747,7 +760,7 @@ export function TaskVaultPanel(props: {
                         <span>{dict.taskVault.payment.amount}</span>
                         <input
                           type="number"
-                          step="0.01"
+                          step="any"
                           min="0.001"
                           value={paymentAmountSol}
                           onChange={(e) => setPaymentAmountSol(e.target.value)}

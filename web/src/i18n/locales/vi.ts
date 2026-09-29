@@ -302,6 +302,7 @@ export const vi: TranslationDictionary = {
       emptySelect: 'Chọn hoặc cấp vốn cho một Task Capability để xem chi tiết và ký quỹ.',
       revoke: 'Thu hồi tác vụ',
       refundAndClose: 'Hoàn tiền & Đóng kho',
+      refundBlockedPending: 'Không thể đóng khi còn khoản ký quỹ đang giữ. Hãy quyết toán, hoặc chờ tác vụ hết hạn.',
       status: 'Trạng thái',
       executionMode: 'Chế độ thực thi',
       devnetTx: 'Giao dịch Devnet',
