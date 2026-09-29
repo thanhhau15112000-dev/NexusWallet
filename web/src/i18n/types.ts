@@ -135,6 +135,13 @@ export type TranslationDictionary = {
     addressPlaceholder: string;
     addRecipient: string;
     useOwnerWallet: string;
+    invalidLabel: string;
+    invalidPerTx: string;
+    invalidPerDay: string;
+    invalidAddress: string;
+    duplicateAddress: string;
+    duplicateLabel: string;
+    invalidSavedRecipient: string;
     save: string;
     saving: string;
     unsaved: string;
@@ -162,6 +169,7 @@ export type TranslationDictionary = {
     waitingForWallet: string;
     connectOwnerWallet: string;
     expires: string;
+    expiredNotice: string;
     approvedBy: string;
     message: string;
     details: string;
