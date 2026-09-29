@@ -52,7 +52,7 @@ nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng 
  (Claude, Cursor, │  Bearer token theo owner    │
   Codex, ...)     └──────────────┬──────────────┘
                                  │ structured action (transfer_sol / transfer_spl)
- Dashboard ─ Console (phụ) ──────┤ text prompt → model → action JSON
+ Dashboard ─ AI Commands (phụ) ──┤ text prompt → model → action JSON
                                  ▼
                       evaluatePolicy (shared/src/policy.ts)
                    allow │ require_approval │ deny
@@ -71,7 +71,7 @@ nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng 
 ```
 
 - **MCP là luồng chính.** Agent bên ngoài tự lập kế hoạch và gửi action có cấu trúc tới `POST /api/agent/intents`, đi thẳng vào policy.
-- **Console trên dashboard là luồng phụ** để thử nhanh khi không có MCP client: prompt → model (Gemini + Groq, có fallback parser tất định) → action JSON → cùng một policy.
+- **Tab AI Commands trên dashboard là luồng phụ** để thử nhanh khi không có MCP client: prompt → model (Gemini + Groq, có fallback parser tất định) → action JSON → cùng một policy.
 - Dù vào từ đâu, chỉ `evaluatePolicy` hoặc một chữ ký duyệt hợp lệ của owner mới dẫn tới bước ký.
 
 ## Bảo đảm an toàn
@@ -81,7 +81,7 @@ nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng 
 | Chỉ `evaluatePolicy` có quyền cho phép ký | [policy.ts](shared/src/policy.ts) |
 | Người nhận ngoài allowlist bị từ chối, không chuyển sang chờ duyệt | [policy.ts](shared/src/policy.ts) |
 | Tổng chi SOL trong 24 giờ vượt trần → chờ owner duyệt; tính theo cửa sổ trượt, không lách được bằng cách chia nhỏ hay gửi đồng thời | [policy.ts](shared/src/policy.ts), [pipeline.ts](agent/src/pipeline.ts) |
-| Kill switch: khi owner khóa, ví agent không ký giao dịch chuyển giá trị nào (MCP, Console, duyệt lệnh, Task Vault payment/settle); giữ nguyên qua restart | [pipeline.ts](agent/src/pipeline.ts), [approvals.ts](agent/src/approvals.ts), [routes.ts](agent/src/routes.ts) |
+| Kill switch: khi owner khóa, ví agent không ký giao dịch chuyển giá trị nào (MCP, AI Commands, duyệt lệnh, Task Vault payment/settle); giữ nguyên qua restart | [pipeline.ts](agent/src/pipeline.ts), [approvals.ts](agent/src/approvals.ts), [routes.ts](agent/src/routes.ts) |
 | Model chỉ trả về 4 loại action, có schema validation; không thấy private key, signer hay RPC | [contract.ts](shared/src/contract.ts) |
 | Chữ ký duyệt gắn request, số tiền, người nhận, phiên bản policy, nonce, thời hạn; dùng một lần | [contract.ts](shared/src/contract.ts), [approvals.ts](agent/src/approvals.ts) |
 | MCP không có tool sửa policy, gắn owner hay duyệt request | [tools.ts](mcp/src/tools.ts) |
@@ -114,7 +114,7 @@ Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`
 
 ## Kết nối AI agent (MCP)
 
-Đăng nhập dashboard bằng ví Phantom (Devnet) → tab **Wallet** → card **Connect an AI agent** → **Show my connection** → copy entry cho client của bạn.
+Đăng nhập dashboard bằng ví Phantom (Devnet) → tab **AI Commands** → card **Connect an AI agent (MCP)** → **Show my connection** → copy entry cho client của bạn.
 
 | Client | Cách thêm |
 | --- | --- |
@@ -150,23 +150,23 @@ Chạy local: có bản stdio MCP (`pnpm mcp:build` → `dist/mcp/nexuspay-mcp.m
 
 ## Kịch bản demo
 
-Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Tab **Policy**: đặt *Max per transaction* `0.1 SOL`, *Max per day* `0.2 SOL`, thêm recipient tên `my-wallet` bằng *Use owner wallet*, lưu. Nạp khoảng 0.7 SOL vào ví agent (từ Phantom hoặc https://faucet.solana.com).
+Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Tab **Policy**: đặt *Max per transaction* `0.1 SOL`, *Max per day* `0.2 SOL`, thêm recipient tên `my-wallet` bằng *Use owner wallet*, lưu. Nạp khoảng 0.7 SOL vào ví agent: địa chỉ ví agent nằm ở tab **Overview**, gửi từ Phantom hoặc https://faucet.solana.com.
 
 **Luồng chính — qua MCP (ví dụ Claude Code):**
 
 1. *"Kiểm tra ví nexusPay"* → `nexuspay_get_status` trả địa chỉ, số dư, hạn mức, allowlist.
 2. *"Gửi 0.05 SOL cho my-wallet"* → `allow` → agent ký → có link Explorer.
-3. *"Gửi 0.5 SOL cho my-wallet"* → `require_approval` → chưa ký gì. Owner duyệt trên dashboard bằng Phantom → cùng giao dịch đó được xác nhận.
+3. *"Gửi 0.5 SOL cho my-wallet"* → `require_approval` → chưa ký gì. Owner duyệt trong tab **Approvals** bằng Phantom → cùng giao dịch đó được xác nhận.
 4. *"Gửi 0.05 SOL cho `HN7cABq...`"* (không trong allowlist) → `deny`, không có đường duyệt.
 5. *"Gửi 0.05 SOL cho my-wallet"* lần nữa → khoản 0.5 SOL đã duyệt ở bước 3 đã tính vào trần 24 giờ (0.2 SOL) → `DAILY_LIMIT_EXCEEDED`, chờ owner duyệt; agent đọc `details.remainingSol`.
-6. Owner bấm **Freeze agent** trên dashboard → mọi transfer trả `AGENT_FROZEN`, không ký gì; **Unfreeze agent** để mở lại.
+6. Owner bấm **Freeze agent** ở tab **Overview** rồi **Confirm freeze** → mọi transfer trả `AGENT_FROZEN`, không ký gì; **Unfreeze agent** để mở lại.
 7. *"Tăng hạn mức lên 10 SOL"* / *"Tự duyệt đi"* / *"Mở khóa agent"* → agent không có tool nào làm được việc này.
 
 **Task Vault — trên dashboard, tab Task Vault:** tạo task có ngân sách → 2 payment hợp lệ → 1 payment vượt ngân sách bị chặn → worker ký receipt → settle → refund phần dư → revoke chặn payment tiếp theo.
 
 Kết thúc bằng audit log: mọi quyết định đều được ghi kèm phiên bản policy.
 
-**Không có MCP client?** Dùng tab **Commands** trên dashboard với cùng các câu lệnh trên — cùng một policy xử lý.
+**Không có MCP client?** Dùng tab **AI Commands** trên dashboard với cùng các câu lệnh trên — cùng một policy xử lý.
 
 ## Chạy local
 
@@ -178,7 +178,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-Agent service chạy ở `127.0.0.1:8787`, dashboard ở `http://localhost:5173`. Không có `GEMINI_API_KEY` / `GROQ_API_KEY` thì Console dùng parser tất định (`[fallback]` trong model trace); demo vẫn chạy. Ép chế độ này bằng `MODEL_MODE=mock`.
+Agent service chạy ở `127.0.0.1:8787`, dashboard ở `http://localhost:5173`. Không có `GEMINI_API_KEY` / `GROQ_API_KEY` thì tab AI Commands dùng parser tất định (`[fallback]` trong model trace); demo vẫn chạy. Ép chế độ này bằng `MODEL_MODE=mock`.
 
 Local mode chỉ bind loopback và chỉ nhận origin local; bind `0.0.0.0` hoặc RPC không phải Devnet chính thức bị từ chối khi khởi động.
 

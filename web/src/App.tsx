@@ -8,6 +8,7 @@ import {
   Layers,
   LayoutGrid,
   LogOut,
+  Menu,
   ShieldCheck,
   Wallet as WalletIcon,
   X,
@@ -107,6 +108,8 @@ export function App() {
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
   const [walletChoices, setWalletChoices] = useState<WalletChoice[]>([]);
   const [walletPickerOpen, setWalletPickerOpen] = useState(false);
+  // Mobile burger menu; the sidebar is always visible on wider screens.
+  const [navOpen, setNavOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -280,6 +283,15 @@ export function App() {
   }, [authRequired, authenticated, authOwner, wallet, logoutSession]);
 
   // In multi-tenant mode, the owner is bound to their session upon wallet login.
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNavOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [navOpen]);
 
   useEffect(() => {
     if (!toast) return;
@@ -537,14 +549,24 @@ export function App() {
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      <aside className={navOpen ? 'sidebar is-open' : 'sidebar'}>
         <div className="brand">
           <img className="brand-logo" src="/brand/logo.svg" alt="" width={32} height={32} />
           <span className="brand-name">nexusPay</span>
           <span className="brand-network-tag">{state.cluster}</span>
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-expanded={navOpen}
+            aria-controls="side-nav"
+            aria-label={navOpen ? dict.nav.closeMenu : dict.nav.openMenu}
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            {navOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
+          </button>
         </div>
 
-        <nav className="side-nav" role="tablist" aria-orientation="vertical" aria-label="App features">
+        <nav id="side-nav" className="side-nav" role="tablist" aria-orientation="vertical" aria-label="App features">
           {NAV_GROUPS.map((group) => (
             <div key={group} className="side-nav-group" role="presentation">
               <span className="side-nav-heading" role="presentation">{dict.nav[group]}</span>
@@ -562,7 +584,10 @@ export function App() {
                     aria-controls={`feature-panel-${tab.id}`}
                     tabIndex={selected ? 0 : -1}
                     className={`side-nav-item${selected ? ' is-active' : ''}`}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setNavOpen(false);
+                    }}
                     onKeyDown={(event) => selectTabWithKeyboard(event, index)}
                   >
                     <Icon size={16} aria-hidden="true" />
@@ -601,7 +626,10 @@ export function App() {
                 type="button"
                 className="primary"
                 disabled={!walletChoices.length || Boolean(busy.connect)}
-                onClick={() => setWalletPickerOpen(true)}
+                onClick={() => {
+                  setNavOpen(false);
+                  setWalletPickerOpen(true);
+                }}
               >
                 {busy.connect ? dict.wallet.connecting : dict.wallet.connectWallet}
               </button>
