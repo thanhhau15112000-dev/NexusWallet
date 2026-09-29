@@ -225,3 +225,24 @@ describe('MCP token authentication', () => {
     }
   });
 });
+
+describe('health build identity', () => {
+  it('reports the deployed commit from the host env, or null when none is set', async () => {
+    const { app } = await startApp();
+    const prevRender = process.env.RENDER_GIT_COMMIT;
+    const prevGit = process.env.GIT_COMMIT;
+    try {
+      delete process.env.RENDER_GIT_COMMIT;
+      delete process.env.GIT_COMMIT;
+      expect(JSON.parse((await app.inject({ method: 'GET', url: '/api/health' })).body).commit).toBeNull();
+      process.env.RENDER_GIT_COMMIT = 'abc1234';
+      expect(JSON.parse((await app.inject({ method: 'GET', url: '/api/health' })).body).commit).toBe('abc1234');
+    } finally {
+      if (prevRender === undefined) delete process.env.RENDER_GIT_COMMIT;
+      else process.env.RENDER_GIT_COMMIT = prevRender;
+      if (prevGit === undefined) delete process.env.GIT_COMMIT;
+      else process.env.GIT_COMMIT = prevGit;
+      await app.close();
+    }
+  });
+});
