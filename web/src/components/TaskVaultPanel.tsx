@@ -444,6 +444,11 @@ export function TaskVaultPanel(props: {
   // Mirrors refund_and_close: it reverts with PendingEscrowsExist while any escrow is held.
   const hasHeldEscrow = Boolean(detail?.payments.some((p) => p.status === 'held'));
 
+  // A closed task's vault is drained back to the owner, so nothing remains in it.
+  const unspentLamports = detail ? Math.max(0, detail.task.budgetLamports - detail.task.spentLamports) : 0;
+  const vaultRemainingLamports = detail?.task.isClosed ? 0 : unspentLamports;
+  const refundedLamports = detail?.task.isClosed ? unspentLamports : 0;
+
   // Mirrors close_receipt: the capability must still exist and no longer accept payments.
   const receiptsClosable = Boolean(detail)
     && !detail!.task.isClosed
@@ -672,12 +677,13 @@ export function TaskVaultPanel(props: {
                   <div className="summary-stat">
                     <span className="stat-label">{dict.taskVault.detail.remaining}</span>
                     <strong className="ok-value">
-                      {(
-                        Math.max(0, detail.task.budgetLamports - detail.task.spentLamports) /
-                        LAMPORTS_PER_SOL
-                      ).toFixed(4)}{' '}
-                      SOL
+                      {(vaultRemainingLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                     </strong>
+                    {detail.task.isClosed ? (
+                      <span className="stat-label">
+                        {dict.taskVault.detail.refunded}: {(refundedLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
+                      </span>
+                    ) : null}
                   </div>
                   <div className="summary-stat">
                     <span className="stat-label">{dict.taskVault.detail.perPaymentCap}</span>
@@ -834,7 +840,11 @@ export function TaskVaultPanel(props: {
                                         <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
                                       </a>
                                     ) : <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>}
-                                    {receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
+                                    {receipt.isSimulated === false && !receipt.isClosed && detail.task.isClosed ? (
+                                      <span title="Once the capability is closed, close_receipt only accepts the worker as authority">
+                                        {dict.taskVault.escrows.receiptWorkerOnly}
+                                      </span>
+                                    ) : receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
                                       <span title="On-chain receipts block payment-id replay until the task is revoked, completed or expired">
                                         {dict.taskVault.escrows.receiptLocked}
                                       </span>
