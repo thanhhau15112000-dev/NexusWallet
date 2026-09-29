@@ -78,6 +78,7 @@ export type TranslationDictionary = {
     seedClaimed: string;
     agentFrozen: string;
     agentUnfrozen: string;
+    requestCancelled: string;
   };
   agent: {
     title: string;
@@ -169,6 +170,7 @@ export type TranslationDictionary = {
     showAll: string;
     showRecent: string;
     approve: string;
+    cancel: string;
     waitingForWallet: string;
     connectOwnerWallet: string;
     expires: string;
