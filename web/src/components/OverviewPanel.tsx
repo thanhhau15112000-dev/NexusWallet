@@ -169,7 +169,8 @@ export function OverviewPanel(props: {
   onDeposit: (amountSol: number) => void;
   onRefresh: () => Promise<void>;
   onToast: (toast: Toast) => void;
-  onOpenTab: (tab: 'policy' | 'approvals' | 'commands') => void;
+  onOpenTab: (tab: 'policy' | 'approvals') => void;
+  onOpenMcp: () => void;
 }) {
   const { dict, interpolate } = useI18n();
   const { state, wallet } = props;
@@ -296,7 +297,7 @@ export function OverviewPanel(props: {
               <h3>{dict.overview.mcpPromoTitle}</h3>
               <p>{dict.overview.mcpPromoDesc}</p>
             </div>
-            <button type="button" className="mcp-promo-cta button-with-icon" onClick={() => props.onOpenTab('commands')}>
+            <button type="button" className="mcp-promo-cta button-with-icon" onClick={props.onOpenMcp}>
               {dict.overview.mcpPromoCta}
               <ArrowRight size={14} aria-hidden="true" />
             </button>
