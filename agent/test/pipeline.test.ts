@@ -131,6 +131,77 @@ describe('runCommand lifecycle guards', () => {
     expect(request.decision?.reasons).toContain('model plan does not match the classified intent');
   });
 
+  it('replaces a planner manual-approval answer with the deterministic plan for a concrete transfer', async () => {
+    const manualApproval = vi.fn().mockResolvedValue({
+      value: {
+        action: { type: 'request_manual_approval', reason: 'planner gave up' },
+        rationale: 'not sure',
+        confidence: 0.3,
+      },
+      meta: { name: 'groq', model: 'test-model', fallback: false, ms: 5 },
+    });
+    const ctx = makeContext({ plan: manualApproval });
+
+    const request = await runCommand(ctx, { prompt: 'send 0.01 SOL to treasury' });
+
+    expect(request.plan?.action).toMatchObject({ type: 'transfer_sol', recipient: 'treasury', amountSol: 0.01 });
+    expect(request.modelTrace?.stage2).toMatchObject({ name: 'mock', fallback: true });
+    expect(request.modelTrace?.stage2.error).toContain('request_manual_approval');
+    expect(request.decision?.verdict).not.toBe('deny');
+    expect(request.decision?.reasons).not.toContain('model plan does not match the classified intent');
+  });
+
+  it('still lets the policy deny the replaced plan when the recipient is not allowlisted', async () => {
+    const ctx = makeContext({
+      understand: vi.fn().mockResolvedValue({
+        value: {
+          goal: 'send SOL',
+          operation: 'transfer_sol',
+          entities: { recipient: 'stranger', amount: 0.01, asset: 'SOL' },
+          riskNotes: [],
+          confidence: 0.9,
+          requiresHuman: false,
+        },
+        meta: trace,
+      }),
+      plan: vi.fn().mockResolvedValue({
+        value: { action: { type: 'request_manual_approval', reason: 'unknown recipient' }, rationale: 'x', confidence: 0.3 },
+        meta: trace,
+      }),
+    });
+
+    const request = await runCommand(ctx, { prompt: 'send 0.01 SOL to stranger' });
+
+    expect(request.status).toBe('denied');
+    expect(request.decision?.code).toBe('RECIPIENT_NOT_IN_ALLOWLIST');
+  });
+
+  it('keeps manual approval when the intent is not a transfer', async () => {
+    const ctx = makeContext({
+      understand: vi.fn().mockResolvedValue({
+        value: {
+          goal: 'write a poem',
+          operation: 'unknown',
+          entities: {},
+          riskNotes: ['not a wallet request'],
+          confidence: 0.2,
+          requiresHuman: true,
+        },
+        meta: trace,
+      }),
+      plan: vi.fn().mockResolvedValue({
+        value: { action: { type: 'request_manual_approval', reason: 'not a wallet request' }, rationale: 'x', confidence: 0.3 },
+        meta: trace,
+      }),
+    });
+
+    const request = await runCommand(ctx, { prompt: 'write me a poem' });
+
+    expect(request.plan?.action.type).toBe('request_manual_approval');
+    expect(request.status).toBe('denied');
+    expect(request.decision?.code).toBe('NO_EXECUTABLE_ACTION');
+  });
+
   it('denies a planner recipient change even when both recipients are allowlisted', async () => {
     const backupAddress = '5FHwkrdxntdK24hgQU8qgBjn35Y1zwhz1GZwCkP2UJnM';
     const ctx = makeContext({
