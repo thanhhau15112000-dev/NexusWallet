@@ -196,6 +196,9 @@ export const en: TranslationDictionary = {
     requestsTitle: 'Agent requests',
     title: 'Agent wallet history',
     refresh: 'Refresh',
+    prev: 'Newer',
+    next: 'Older',
+    page: 'Page {page}',
     colTime: 'Time',
     colType: 'Type',
     colChange: 'Change',
@@ -207,7 +210,7 @@ export const en: TranslationDictionary = {
     loading: 'Loading history…',
     empty: 'No transactions on the agent wallet yet.',
     loadFailed: 'Could not read history from Devnet',
-    note: 'Read directly from Solana Devnet (latest 20 transactions). Changes include the network fee.',
+    note: 'Read directly from Solana Devnet (10 per page). Changes include the network fee.',
   },
   audit: {
     title: 'Audit',

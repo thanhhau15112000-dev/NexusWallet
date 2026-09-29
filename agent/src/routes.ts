@@ -690,16 +690,24 @@ const inFlightClaims = new Set<string>();
     }
   });
 
-  // Public devnet RPC rate-limits, so repeated polls of the same wallet share one read for a few seconds.
-  const historyCache = new Map<string, { at: number; items: Awaited<ReturnType<typeof getAgentHistory>> }>();
+  // Public devnet RPC rate-limits, so repeated polls of the same page share one read for a few seconds.
+  const historyCache = new Map<string, { at: number; page: Awaited<ReturnType<typeof getAgentHistory>> }>();
+  const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,90}$/;
   app.get('/api/agent/history', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
-    const cached = historyCache.get(userCtx.agentPubkey);
-    if (cached && Date.now() - cached.at < 8_000) return { items: cached.items };
+    const query = req.query as { before?: string; limit?: string };
+    const before = query.before || undefined;
+    const limit = query.limit === undefined ? 10 : Number(query.limit);
+    if ((before !== undefined && !SIGNATURE.test(before)) || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+      return reply.status(400).send({ error: 'invalid_query', message: 'before must be a transaction signature and limit 1-50' });
+    }
+    const key = `${userCtx.agentPubkey}:${before ?? ''}:${limit}`;
+    const cached = historyCache.get(key);
+    if (cached && Date.now() - cached.at < 8_000) return cached.page;
     try {
-      const items = await getAgentHistory(userCtx.connection, userCtx.agentPubkey, ctx.config.SOLANA_CLUSTER);
-      historyCache.set(userCtx.agentPubkey, { at: Date.now(), items });
-      return { items };
+      const page = await getAgentHistory(userCtx.connection, userCtx.agentPubkey, ctx.config.SOLANA_CLUSTER, { limit, before });
+      historyCache.set(key, { at: Date.now(), page });
+      return page;
     } catch (err) {
       return reply.status(502).send({ error: 'rpc_error', message: err instanceof Error ? err.message : String(err) });
     }

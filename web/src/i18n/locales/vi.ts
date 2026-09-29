@@ -196,6 +196,9 @@ export const vi: TranslationDictionary = {
     requestsTitle: 'Yêu cầu của agent',
     title: 'Lịch sử giao dịch ví agent',
     refresh: 'Làm mới',
+    prev: 'Mới hơn',
+    next: 'Cũ hơn',
+    page: 'Trang {page}',
     colTime: 'Thời gian',
     colType: 'Loại',
     colChange: 'Thay đổi',
@@ -207,7 +210,7 @@ export const vi: TranslationDictionary = {
     loading: 'Đang tải lịch sử…',
     empty: 'Ví agent chưa có giao dịch nào.',
     loadFailed: 'Không đọc được lịch sử từ Devnet',
-    note: 'Đọc trực tiếp từ Solana Devnet (20 giao dịch gần nhất). Thay đổi đã gồm phí mạng.',
+    note: 'Đọc trực tiếp từ Solana Devnet (10 giao dịch mỗi trang). Thay đổi đã gồm phí mạng.',
   },
   audit: {
     title: 'Kiểm toán',

@@ -219,7 +219,15 @@ export const api = {
       body: JSON.stringify({ signature, signerPubkey }),
     }),
 
-  agentHistory: () => request<{ items: AgentHistoryItem[] }>('/api/agent/history'),
+  agentHistory: (options: { before?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (options.before) query.set('before', options.before);
+    if (options.limit) query.set('limit', String(options.limit));
+    const suffix = query.toString();
+    return request<{ items: AgentHistoryItem[]; nextBefore: string | null }>(
+      `/api/agent/history${suffix ? `?${suffix}` : ''}`,
+    );
+  },
 
   audit: (limit = 60) => request<{ entries: AuditEntryView[] }>(`/api/audit?limit=${limit}`),
   tasks: () => request<{ tasks: TaskCapabilityRecord[] }>('/api/tasks'),

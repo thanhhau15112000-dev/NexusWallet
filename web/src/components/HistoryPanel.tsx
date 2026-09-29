@@ -7,6 +7,7 @@ import { RecentRequests } from './RecentRequests.js';
 import { useI18n } from '../i18n/context.js';
 
 const POLL_MS = 15_000;
+const PAGE_SIZE = 10;
 
 function formatSol(lamports: number, signed = false): string {
   const sol = lamports / LAMPORTS_PER_SOL;
@@ -18,30 +19,45 @@ function formatSol(lamports: number, signed = false): string {
 }
 
 function ChainHistory(props: { active: boolean }) {
-  const { dict } = useI18n();
+  const { dict, interpolate } = useI18n();
   const [items, setItems] = useState<AgentHistoryItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Pages are cursor-based (the RPC pages by signature), so remember where each visited page started.
+  const [cursors, setCursors] = useState<string[]>(['']);
+  const [page, setPage] = useState(0);
+  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  const before = cursors[page] ?? '';
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems((await api.agentHistory()).items);
+      const result = await api.agentHistory({ before: before || undefined, limit: PAGE_SIZE });
+      setItems(result.items);
+      setNextBefore(result.nextBefore);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [before]);
 
-  // The panels stay mounted, so only read the chain while this tab is showing.
+  // The panels stay mounted, so only read the chain while this tab is showing. Older pages do not
+  // change, so only the newest page is refreshed on a timer.
   useEffect(() => {
     if (!props.active) return;
     void load();
+    if (page !== 0) return;
     const timer = window.setInterval(() => void load(), POLL_MS);
     return () => window.clearInterval(timer);
-  }, [props.active, load]);
+  }, [props.active, page, load]);
+
+  const goOlder = () => {
+    if (!nextBefore) return;
+    setCursors([...cursors.slice(0, page + 1), nextBefore]);
+    setPage(page + 1);
+  };
 
   return (
     <Card
@@ -114,6 +130,17 @@ function ChainHistory(props: { active: boolean }) {
           </table>
         </div>
       )}
+      {items !== null && (page > 0 || nextBefore) ? (
+        <div className="pager">
+          <button type="button" disabled={loading || page === 0} onClick={() => setPage(page - 1)}>
+            {dict.history.prev}
+          </button>
+          <span className="hint">{interpolate(dict.history.page, { page: page + 1 })}</span>
+          <button type="button" disabled={loading || !nextBefore} onClick={goOlder}>
+            {dict.history.next}
+          </button>
+        </div>
+      ) : null}
       <p className="hint">{dict.history.note}</p>
     </Card>
   );

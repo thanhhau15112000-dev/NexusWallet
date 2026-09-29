@@ -80,8 +80,9 @@ describe('getAgentHistory', () => {
       ]),
     };
 
-    const items = await getAgentHistoryReal(connection as never, wallet.toBase58(), 'devnet');
+    const { items, nextBefore } = await getAgentHistoryReal(connection as never, wallet.toBase58(), 'devnet');
 
+    expect(nextBefore).toBeNull();
     expect(items.map((item) => item.signature)).toEqual(['sigReceived', 'sigSent', 'sigFailed']);
     expect(items[0]).toMatchObject({ status: 'confirmed', deltaLamports: 400_000_000, balanceAfterLamports: 500_000_000 });
     expect(items[1]).toMatchObject({ status: 'confirmed', deltaLamports: -50_005_000, balanceAfterLamports: 449_995_000 });
@@ -92,14 +93,38 @@ describe('getAgentHistory', () => {
   it('skips transactions where the wallet is not an account key and returns [] with no signatures', async () => {
     const getAgentHistoryReal = await real();
     const empty = { getSignaturesForAddress: vi.fn().mockResolvedValue([]), getParsedTransactions: vi.fn() };
-    expect(await getAgentHistoryReal(empty as never, wallet.toBase58(), 'devnet')).toEqual([]);
+    expect(await getAgentHistoryReal(empty as never, wallet.toBase58(), 'devnet')).toEqual({ items: [], nextBefore: null });
     expect(empty.getParsedTransactions).not.toHaveBeenCalled();
 
     const unrelated = {
       getSignaturesForAddress: vi.fn().mockResolvedValue([{ signature: 'sigX', blockTime: 1, err: null }]),
       getParsedTransactions: vi.fn().mockResolvedValue([parsedTx({ keys: [other], pre: [1], post: [1] })]),
     };
-    expect(await getAgentHistoryReal(unrelated as never, wallet.toBase58(), 'devnet')).toEqual([]);
+    expect((await getAgentHistoryReal(unrelated as never, wallet.toBase58(), 'devnet')).items).toEqual([]);
+  });
+
+  it('pages back in time: passes limit and before to the RPC and returns the last signature as nextBefore only for a full page', async () => {
+    const getAgentHistoryReal = await real();
+    const rows = [
+      { signature: 'sig1', blockTime: 2, err: null },
+      { signature: 'sig2', blockTime: 1, err: null },
+    ];
+    const connection = {
+      getSignaturesForAddress: vi.fn().mockResolvedValue(rows),
+      // The last row is not indexed yet: it is skipped, but still counts as part of the page.
+      getParsedTransactions: vi.fn().mockResolvedValue([
+        parsedTx({ keys: [wallet, other], pre: [10, 0], post: [9, 1] }),
+        null,
+      ]),
+    };
+
+    const full = await getAgentHistoryReal(connection as never, wallet.toBase58(), 'devnet', { limit: 2, before: 'sigPrev' });
+    expect(connection.getSignaturesForAddress).toHaveBeenCalledWith(expect.anything(), { limit: 2, before: 'sigPrev' }, 'confirmed');
+    expect(full.items.map((item) => item.signature)).toEqual(['sig1']);
+    expect(full.nextBefore).toBe('sig2');
+
+    const partial = await getAgentHistoryReal(connection as never, wallet.toBase58(), 'devnet', { limit: 3 });
+    expect(partial.nextBefore).toBeNull();
   });
 });
 
@@ -180,17 +205,39 @@ describe('GET /api/agent/history', () => {
     const { app, ctx } = await startApp();
     const owner = Keypair.generate();
     const cookieHeader = await login(app, owner);
-    vi.mocked(getAgentHistoryMock).mockResolvedValue([item]);
+    vi.mocked(getAgentHistoryMock).mockResolvedValue({ items: [item], nextBefore: null });
 
     const first = await app.inject({ method: 'GET', url: '/api/agent/history', headers: { cookie: cookieHeader } });
     const second = await app.inject({ method: 'GET', url: '/api/agent/history', headers: { cookie: cookieHeader } });
 
     expect(first.statusCode).toBe(200);
-    expect(JSON.parse(first.body)).toEqual({ items: [item] });
-    expect(JSON.parse(second.body)).toEqual({ items: [item] });
+    expect(JSON.parse(first.body)).toEqual({ items: [item], nextBefore: null });
+    expect(JSON.parse(second.body)).toEqual({ items: [item], nextBefore: null });
     expect(getAgentHistoryMock).toHaveBeenCalledTimes(1);
     const agentPubkey = ctx.getUserContext!(owner.publicKey.toBase58()).agentPubkey;
     expect(vi.mocked(getAgentHistoryMock).mock.calls[0]![1]).toBe(agentPubkey);
+  });
+
+  it('forwards before and limit, keeps a separate cached read per page, and rejects bad queries with 400', async () => {
+    const { app } = await startApp();
+    const cookieHeader = await login(app, Keypair.generate());
+    const signature = 'a'.repeat(88);
+    vi.mocked(getAgentHistoryMock).mockResolvedValue({ items: [], nextBefore: signature });
+    const get = (url: string) => app.inject({ method: 'GET', url, headers: { cookie: cookieHeader } });
+
+    const older = await get(`/api/agent/history?before=${signature}&limit=5`);
+    expect(older.statusCode).toBe(200);
+    expect(JSON.parse(older.body)).toEqual({ items: [], nextBefore: signature });
+    expect(vi.mocked(getAgentHistoryMock).mock.calls[0]![3]).toEqual({ limit: 5, before: signature });
+
+    await get('/api/agent/history');
+    expect(getAgentHistoryMock).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(getAgentHistoryMock).mock.calls[1]![3]).toEqual({ limit: 10, before: undefined });
+
+    for (const bad of ['?before=not-a-signature', '?limit=0', '?limit=51', '?limit=abc']) {
+      expect((await get(`/api/agent/history${bad}`)).statusCode).toBe(400);
+    }
+    expect(getAgentHistoryMock).toHaveBeenCalledTimes(2);
   });
 
   it('answers 502 with the RPC message when the chain read fails', async () => {

@@ -201,20 +201,31 @@ export type AgentHistoryItem = {
   explorerUrl: string;
 };
 
+export type AgentHistoryPage = {
+  items: AgentHistoryItem[];
+  /** Signature to pass as `before` for the next (older) page, or null when this page reached the end. */
+  nextBefore: string | null;
+};
+
 /**
- * Recent transactions that touched `address`, newest first, with the wallet's own SOL change and balance
- * after each one, read from the transaction's pre/post balances. Transactions the RPC has not indexed
- * yet are skipped.
+ * One page of transactions that touched `address`, newest first, with the wallet's own SOL change and
+ * balance after each one, read from the transaction's pre/post balances. Transactions the RPC has not
+ * indexed yet are skipped. Pass the previous page's `nextBefore` as `before` to go back in time.
  */
 export async function getAgentHistory(
   connection: Connection,
   address: string,
   cluster: Cluster,
-  limit = 20,
-): Promise<AgentHistoryItem[]> {
+  options: { limit?: number; before?: string } = {},
+): Promise<AgentHistoryPage> {
   const wallet = new PublicKey(address);
-  const signatures = await withRpcRetry(() => connection.getSignaturesForAddress(wallet, { limit }, 'confirmed'));
-  if (signatures.length === 0) return [];
+  const limit = options.limit ?? 10;
+  const signatures = await withRpcRetry(() =>
+    connection.getSignaturesForAddress(wallet, { limit, before: options.before }, 'confirmed'),
+  );
+  if (signatures.length === 0) return { items: [], nextBefore: null };
+  // A full page means older transactions may exist; skipped rows below still count toward the page.
+  const nextBefore = signatures.length === limit ? (signatures[signatures.length - 1]?.signature ?? null) : null;
   const transactions = await withRpcRetry(() =>
     connection.getParsedTransactions(
       signatures.map((entry) => entry.signature),
@@ -240,7 +251,7 @@ export async function getAgentHistory(
       explorerUrl: explorerTxUrl(entry.signature, cluster),
     });
   });
-  return items;
+  return { items, nextBefore };
 }
 
 export async function getLamportBalance(connection: Connection, address: string): Promise<number> {

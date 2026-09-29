@@ -2702,3 +2702,11 @@ a.explorer-cta:hover {
   border-color: var(--accent);
   background: #f2faf7;
 }
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}

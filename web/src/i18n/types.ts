@@ -196,6 +196,9 @@ export type TranslationDictionary = {
     requestsTitle: string;
     title: string;
     refresh: string;
+    prev: string;
+    next: string;
+    page: string;
     colTime: string;
     colType: string;
     colChange: string;
