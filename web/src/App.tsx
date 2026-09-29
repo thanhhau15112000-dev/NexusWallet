@@ -4,6 +4,7 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  Clock,
   Command,
   Layers,
   LayoutGrid,
@@ -30,13 +31,13 @@ import {
   type ConnectedWallet,
   type WalletChoice,
 } from './solanaWallets.js';
+import { HistoryPanel } from './components/HistoryPanel.js';
 import { McpConnectPanel } from './components/McpConnectPanel.js';
 import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
 import { DocsPanel } from './components/DocsPanel.js';
 import { OverviewPanel } from './components/OverviewPanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
-import { RecentRequests } from './components/RecentRequests.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { LanguageToggle } from './components/SettingsMenu.js';
@@ -46,7 +47,7 @@ import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
-type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit' | 'docs';
+type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'history' | 'audit' | 'docs';
 
 type NavGroup = 'operate' | 'control' | 'resources';
 
@@ -55,6 +56,7 @@ const FEATURE_TABS: Array<{ id: FeatureTab; group: NavGroup; icon: typeof Layout
   { id: 'wallet', group: 'operate', icon: LayoutGrid },
   { id: 'commands', group: 'operate', icon: Command },
   { id: 'approvals', group: 'operate', icon: CheckCircle2 },
+  { id: 'history', group: 'operate', icon: Clock },
   { id: 'policy', group: 'control', icon: ShieldCheck },
   { id: 'tasks', group: 'control', icon: Layers },
   { id: 'audit', group: 'control', icon: ClipboardList },
@@ -707,12 +709,6 @@ export function App() {
           'commands',
           <div className="page-stack">
             <ConsolePanel state={state} busy={Boolean(busy.command)} onRun={runCommand} />
-            <RecentRequests
-              title={dict.console.recentTitle}
-              requests={requests}
-              limit={5}
-              onViewAll={() => setActiveTab('approvals')}
-            />
             <McpConnectPanel />
           </div>,
         )}
@@ -747,6 +743,8 @@ export function App() {
         )}
 
         {panel('audit', <AuditPanel entries={audit} />)}
+
+        {panel('history', <HistoryPanel active={activeTab === 'history'} requests={requests} onViewAll={() => setActiveTab('approvals')} />)}
 
         {panel('docs', <DocsPanel onOpenTab={setActiveTab} />)}
       </main>

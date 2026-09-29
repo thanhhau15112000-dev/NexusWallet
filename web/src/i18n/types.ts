@@ -7,6 +7,7 @@ export type TranslationDictionary = {
     commands: string;
     policy: string;
     approvals: string;
+    history: string;
     audit: string;
     docs: string;
   };
@@ -23,6 +24,7 @@ export type TranslationDictionary = {
     commands: string;
     policy: string;
     approvals: string;
+    history: string;
     audit: string;
     docs: string;
   };
@@ -48,7 +50,6 @@ export type TranslationDictionary = {
     agentActive: string;
     activeDesc: string;
     frozenDesc: string;
-    recentActivity: string;
     viewAll: string;
     mcpPromoTitle: string;
     mcpPromoDesc: string;
@@ -160,7 +161,6 @@ export type TranslationDictionary = {
     noPresets: string;
     desc: string;
     presetsTitle: string;
-    recentTitle: string;
   };
   requests: {
     title: string;
@@ -191,6 +191,26 @@ export type TranslationDictionary = {
       denied: string;
       expired: string;
     };
+  };
+  history: {
+    requestsTitle: string;
+    title: string;
+    refresh: string;
+    prev: string;
+    next: string;
+    page: string;
+    colTime: string;
+    colType: string;
+    colChange: string;
+    colBalance: string;
+    received: string;
+    sent: string;
+    failed: string;
+    explorer: string;
+    loading: string;
+    empty: string;
+    loadFailed: string;
+    note: string;
   };
   audit: {
     title: string;

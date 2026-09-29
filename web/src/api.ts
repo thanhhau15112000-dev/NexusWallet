@@ -33,6 +33,16 @@ export type AgentState = {
   usage?: { spentSol24h: number; remainingSol24h: number | null };
 };
 
+export type AgentHistoryItem = {
+  signature: string;
+  blockTime: number | null;
+  status: 'confirmed' | 'failed';
+  deltaLamports: number;
+  balanceAfterLamports: number;
+  feeLamports: number;
+  explorerUrl: string;
+};
+
 export type AgentHealth = {
   ok: boolean;
   agentId: string;
@@ -208,6 +218,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ signature, signerPubkey }),
     }),
+
+  agentHistory: (options: { before?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (options.before) query.set('before', options.before);
+    if (options.limit) query.set('limit', String(options.limit));
+    const suffix = query.toString();
+    return request<{ items: AgentHistoryItem[]; nextBefore: string | null }>(
+      `/api/agent/history${suffix ? `?${suffix}` : ''}`,
+    );
+  },
 
   cancelRequest: (id: string) =>
     request<{ request: PaymentRequest }>(`/api/requests/${id}/cancel`, { method: 'POST', body: JSON.stringify({}) }),
