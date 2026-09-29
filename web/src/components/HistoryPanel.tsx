@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
-import { Clock, ExternalLink, RefreshCw } from './icons.js';
+import { ChevronLeft, ChevronRight, Clock, ExternalLink, RefreshCw } from './icons.js';
 import { api, type AgentHistoryItem } from '../api.js';
 import { Card, Empty, Pill } from './ui.js';
 import { RecentRequests } from './RecentRequests.js';
@@ -132,12 +132,26 @@ function ChainHistory(props: { active: boolean }) {
       )}
       {items !== null && (page > 0 || nextBefore) ? (
         <div className="pager">
-          <button type="button" disabled={loading || page === 0} onClick={() => setPage(page - 1)}>
-            {dict.history.prev}
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={dict.history.prev}
+            title={dict.history.prev}
+            disabled={loading || page === 0}
+            onClick={() => setPage(page - 1)}
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
           </button>
           <span className="hint">{interpolate(dict.history.page, { page: page + 1 })}</span>
-          <button type="button" disabled={loading || !nextBefore} onClick={goOlder}>
-            {dict.history.next}
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={dict.history.next}
+            title={dict.history.next}
+            disabled={loading || !nextBefore}
+            onClick={goOlder}
+          >
+            <ChevronRight size={16} aria-hidden="true" />
           </button>
         </div>
       ) : null}
