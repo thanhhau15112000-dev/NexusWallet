@@ -300,6 +300,15 @@ export function App() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // Runs after the commands tab is visible (panels stay mounted and only toggle `hidden`).
+  // Must stay above the early return below: hooks cannot be called conditionally.
+  useEffect(() => {
+    if (!scrollToMcp || activeTab !== 'commands') return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('mcp-card')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    setScrollToMcp(false);
+  }, [scrollToMcp, activeTab]);
+
   const summarise = useCallback(
     (request: PaymentRequest): Toast => {
       switch (request.status) {
@@ -542,12 +551,6 @@ export function App() {
     setScrollToMcp(true);
   };
 
-  useEffect(() => {
-    if (!scrollToMcp || activeTab !== 'commands') return;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    document.getElementById('mcp-card')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
-    setScrollToMcp(false);
-  }, [scrollToMcp, activeTab]);
 
   const panel = (tab: FeatureTab, content: React.ReactNode) => (
     <section
