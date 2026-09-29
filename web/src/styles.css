@@ -521,6 +521,68 @@ input[type="checkbox"] {
   gap: 18px;
 }
 
+.overview-side {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.mcp-promo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--green-800);
+  padding: 20px;
+  color: #e3fff4;
+  box-shadow: var(--shadow-card);
+}
+
+.mcp-promo-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #bff5e0;
+}
+
+.mcp-promo-text {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.mcp-promo-text h3 {
+  margin: 0 0 4px;
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.mcp-promo-text p {
+  margin: 0;
+  color: #bff5e0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+button.mcp-promo-cta {
+  flex: none;
+  border-color: transparent;
+  background: #e3fff4;
+  color: var(--green-800);
+  font-weight: 600;
+}
+
+button.mcp-promo-cta:hover:not(:disabled) {
+  border-color: transparent;
+  background: #ffffff;
+}
+
 .split-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
