@@ -150,12 +150,11 @@ function dispatchDecision(
   currentPolicy: Policy,
 ): Promise<PaymentRequest> | PaymentRequest {
   if (Boolean(ctx.store.isFrozen?.())) {
-    const isTransfer =
-      request.plan?.action.type === 'transfer_sol' ||
-      request.plan?.action.type === 'transfer_spl' ||
-      decision.resolved?.type === 'transfer_sol' ||
-      decision.resolved?.type === 'transfer_spl';
-    if (isTransfer) {
+    // Only a balance read passes a frozen agent, matching execute(). A model plan
+    // that fell back to manual approval must still report AGENT_FROZEN.
+    const isBalanceRead =
+      request.plan?.action.type === 'get_balance' || decision.resolved?.type === 'get_balance';
+    if (!isBalanceRead) {
       const frozenDecision: PolicyDecision = {
         verdict: 'deny',
         policyVersion: currentPolicy.version,

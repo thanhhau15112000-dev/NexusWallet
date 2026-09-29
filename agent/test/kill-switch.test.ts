@@ -314,6 +314,30 @@ describe('Agent Kill Switch (Freeze / Unfreeze)', () => {
     expect(cmdBody.request.status).toBe('denied');
     expect(cmdBody.request.error.code).toBe('AGENT_FROZEN');
     expect(transferSol).not.toHaveBeenCalled();
+
+    // A prompt the model cannot map to an action plans manual approval; frozen still wins.
+    const unknownRes = await app.inject({
+      method: 'POST',
+      url: '/api/commands',
+      headers: { cookie: cookieHeader },
+      payload: { prompt: 'write me a poem about the moon' },
+    });
+    const unknownBody = JSON.parse(unknownRes.body);
+    expect(unknownBody.request.plan.action.type).toBe('request_manual_approval');
+    expect(unknownBody.request.status).toBe('denied');
+    expect(unknownBody.request.error.code).toBe('AGENT_FROZEN');
+
+    // Reading the balance stays available while frozen.
+    const balanceRes = await app.inject({
+      method: 'POST',
+      url: '/api/commands',
+      headers: { cookie: cookieHeader },
+      payload: { prompt: 'what is my balance' },
+    });
+    const balanceBody = JSON.parse(balanceRes.body);
+    expect(balanceBody.request.plan.action.type).toBe('get_balance');
+    expect(balanceBody.request.status).toBe('confirmed');
+    expect(transferSol).not.toHaveBeenCalled();
   });
 
   it('cancels all pending_approval requests at freeze time, and rejects approval attempts while frozen and after unfreeze', async () => {
