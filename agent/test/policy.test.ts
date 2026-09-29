@@ -47,6 +47,8 @@ describe('evaluatePolicy - SOL', () => {
     const decision = evaluatePolicy(policy(), transfer(TREASURY, 0.100000001));
     expect(decision.verdict).toBe('require_approval');
     expect(decision.limit).toMatchObject({ limit: 100_000_000, requested: 100_000_001 });
+    expect(decision.reasons).toEqual(['amount 0.100000001 SOL exceeds the per-transaction limit of 0.1 SOL']);
+    expect(formatSol(100_000_001)).toBe('0.100000001 SOL');
     // The action still resolves, so the approval can be bound to concrete values.
     expect(decision.resolved).not.toBeNull();
   });

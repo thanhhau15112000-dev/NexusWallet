@@ -1270,12 +1270,19 @@ button.mcp-promo-cta:hover:not(:disabled) {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  min-width: 0;
   text-align: left;
+}
+
+.preset > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .preset .pill {
   min-width: 76px;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .panel-command .row .button-with-icon {

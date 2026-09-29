@@ -86,6 +86,23 @@ describe('Store', () => {
     expect(byIdem?.id).toBe('req_pending_1');
   });
 
+  it('loads a request written before error remediation and details were added', () => {
+    const store = new Store(statePath, 'agent-001', 50);
+    store.putRequest(makeRequest({
+      id: 'req_legacy_error',
+      status: 'denied',
+      approval: null,
+      error: { code: 'RECIPIENT_NOT_IN_ALLOWLIST', message: 'recipient is not on the allowlist' },
+    }));
+
+    const reloaded = new Store(statePath, 'agent-001', 50).getRequest('req_legacy_error');
+    expect(reloaded?.status).toBe('denied');
+    expect(reloaded?.error).toEqual({
+      code: 'RECIPIENT_NOT_IN_ALLOWLIST',
+      message: 'recipient is not on the allowlist',
+    });
+  });
+
   it('persists pending seed transfer and clears it only when marked claimed', () => {
     const store1 = new Store(statePath, 'agent-001', 50);
     const pending = {
