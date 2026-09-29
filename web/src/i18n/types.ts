@@ -50,6 +50,9 @@ export type TranslationDictionary = {
     frozenDesc: string;
     recentActivity: string;
     viewAll: string;
+    mcpPromoTitle: string;
+    mcpPromoDesc: string;
+    mcpPromoCta: string;
     colStatus: string;
     colCommand: string;
     colAction: string;

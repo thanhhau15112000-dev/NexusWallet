@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
-import { Bot, CheckCircle2, Lock, ShieldCheck, Unlock, Wallet } from './icons.js';
+import { ArrowRight, Bot, CheckCircle2, Lock, Plug, ShieldCheck, Unlock, Wallet } from './icons.js';
 import { api, type AgentState } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { AgentFundingPanel } from './AgentFundingPanel.js';
@@ -170,6 +170,7 @@ export function OverviewPanel(props: {
   onRefresh: () => Promise<void>;
   onToast: (toast: Toast) => void;
   onOpenTab: (tab: 'policy' | 'approvals') => void;
+  onOpenMcp: () => void;
 }) {
   const { dict, interpolate } = useI18n();
   const { state, wallet } = props;
@@ -280,13 +281,28 @@ export function OverviewPanel(props: {
 
       <div className="split-grid">
         <AgentControlCard state={state} onRefresh={props.onRefresh} onToast={props.onToast} />
-        <AgentFundingPanel
-          state={state}
-          busy={props.fundingBusy}
-          onAirdrop={props.onAirdrop}
-          onClaimSeed={props.onClaimSeed}
-          onDeposit={props.onDeposit}
-        />
+        <div className="overview-side">
+          <AgentFundingPanel
+            state={state}
+            busy={props.fundingBusy}
+            onAirdrop={props.onAirdrop}
+            onClaimSeed={props.onClaimSeed}
+            onDeposit={props.onDeposit}
+          />
+          <section className="mcp-promo">
+            <span className="mcp-promo-icon" aria-hidden="true">
+              <Plug size={20} />
+            </span>
+            <div className="mcp-promo-text">
+              <h3>{dict.overview.mcpPromoTitle}</h3>
+              <p>{dict.overview.mcpPromoDesc}</p>
+            </div>
+            <button type="button" className="mcp-promo-cta button-with-icon" onClick={props.onOpenMcp}>
+              {dict.overview.mcpPromoCta}
+              <ArrowRight size={14} aria-hidden="true" />
+            </button>
+          </section>
+        </div>
       </div>
 
       <RecentRequests
