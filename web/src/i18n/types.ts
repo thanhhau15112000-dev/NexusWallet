@@ -302,6 +302,7 @@ export type TranslationDictionary = {
       emptySelect: string;
       revoke: string;
       refundAndClose: string;
+      refundBlockedPending: string;
       status: string;
       executionMode: string;
       devnetTx: string;

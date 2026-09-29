@@ -302,6 +302,7 @@ export const en: TranslationDictionary = {
       emptySelect: 'Select or fund a Task Capability to view details and escrows.',
       revoke: 'Revoke Task',
       refundAndClose: 'Refund & Close',
+      refundBlockedPending: 'Cannot close while an escrow is still held. Settle it, or wait for the task to expire.',
       status: 'Status',
       executionMode: 'Execution Mode',
       devnetTx: 'Devnet Tx',
