@@ -85,9 +85,7 @@ export type TranslationDictionary = {
     availableBalance: string;
     dedicatedAddress: string;
     copyAddress: string;
-    agentId: string;
     rpcError: string;
-    masterFunder: string;
     frozenStatus: string;
     freezeBtn: string;
     unfreezeBtn: string;
