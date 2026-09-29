@@ -498,21 +498,21 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
       ctx.audit.record('tx.failed', request.id, { error: err.message });
-      const maxSendable = Math.max(0, err.balanceLamports - FEE_BUFFER_LAMPORTS);
       return ctx.store.putRequest({
         ...request,
         status: 'failed',
         error: agentError(
           'INSUFFICIENT_FUNDS_INCLUDING_FEES',
-          `agent wallet holds ${formatSol(err.balanceLamports)}, needs ${formatSol(err.requiredLamports)} including the fee reserve`,
+          `agent wallet holds ${formatSol(err.balanceLamports)}, needs ${formatSol(err.requiredLamports)} including the fee and rent-exempt reserves`,
           {
             balanceSol: lamportsToSol(err.balanceLamports),
             balanceLamports: err.balanceLamports,
             requiredSol: lamportsToSol(err.requiredLamports),
             requiredLamports: err.requiredLamports,
             feeReserveLamports: FEE_BUFFER_LAMPORTS,
-            maxSendableSol: lamportsToSol(maxSendable),
-            maxSendableLamports: maxSendable,
+            rentReserveLamports: err.rentReserveLamports,
+            maxSendableSol: lamportsToSol(err.maxSendableLamports),
+            maxSendableLamports: err.maxSendableLamports,
           },
         ),
       });
