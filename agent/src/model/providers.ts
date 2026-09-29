@@ -1,10 +1,9 @@
 /**
- * The two provider calls. Both are plain HTTPS requests constrained to JSON
- * output; neither is given a key, a signer handle or an RPC endpoint. Their
- * results are schema-validated by the caller before anything else sees them.
+ * The provider call. It is a plain HTTPS request constrained to JSON output;
+ * it is never given a key, a signer handle or an RPC endpoint. The result is
+ * schema-validated by the caller before anything else sees it.
  */
 
-type GeminiResponse = { candidates?: { content?: { parts?: { text?: string }[] } }[] };
 type GroqResponse = { choices?: { message?: { content?: string } }[] };
 
 /** Providers occasionally wrap JSON in prose or fences. Extract the first object. */
@@ -47,45 +46,7 @@ async function postJson(
   }
 }
 
-/**
- * Stage 1 - context understanding, with an extended thinking budget so the model
- * can reason about an ambiguous text request before emitting the envelope.
- */
-export async function callGemini(params: {
-  apiKey: string;
-  model: string;
-  thinkingBudget: number;
-  system: string;
-  user: string;
-}): Promise<unknown> {
-  const payload = await postJson(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      params.model,
-    )}:generateContent`,
-    {
-      systemInstruction: { parts: [{ text: params.system }] },
-      contents: [{ role: 'user', parts: [{ text: params.user }] }],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-        ...(params.thinkingBudget > 0
-          ? { thinkingConfig: { thinkingBudget: params.thinkingBudget } }
-          : {}),
-      },
-    },
-    { 'x-goog-api-key': params.apiKey },
-  );
-
-  const text = (payload as GeminiResponse).candidates?.[0]?.content?.parts
-    ?.map((p) => p.text ?? '')
-    .join('')
-    .trim();
-
-  if (!text) throw new Error('gemini returned an empty candidate');
-  return extractJson(text);
-}
-
-/** Stage 2 - action planning, constrained to a JSON object response. */
+/** Stage 1 (intent) and stage 2 (action plan), constrained to a JSON object response. */
 export async function callGroq(params: {
   apiKey: string;
   model: string;

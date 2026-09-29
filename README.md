@@ -71,7 +71,7 @@ nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng 
 ```
 
 - **MCP là luồng chính.** Agent bên ngoài tự lập kế hoạch và gửi action có cấu trúc tới `POST /api/agent/intents`, đi thẳng vào policy.
-- **Tab AI Commands trên dashboard là luồng phụ** để thử nhanh khi không có MCP client: prompt → model (Gemini + Groq, có fallback parser tất định) → action JSON → cùng một policy.
+- **Tab AI Commands trên dashboard là luồng phụ** để thử nhanh khi không có MCP client: prompt → model (Groq, hai bước: hiểu yêu cầu rồi lập action; có fallback parser tất định) → action JSON → cùng một policy.
 - Dù vào từ đâu, chỉ `evaluatePolicy` hoặc một chữ ký duyệt hợp lệ của owner mới dẫn tới bước ký.
 
 ## Bảo đảm an toàn
@@ -178,7 +178,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-Agent service chạy ở `127.0.0.1:8787`, dashboard ở `http://localhost:5173`. Không có `GEMINI_API_KEY` / `GROQ_API_KEY` thì tab AI Commands dùng parser tất định (`[fallback]` trong model trace); demo vẫn chạy. Ép chế độ này bằng `MODEL_MODE=mock`.
+Agent service chạy ở `127.0.0.1:8787`, dashboard ở `http://localhost:5173`. Không có `GROQ_API_KEY` thì tab AI Commands dùng parser tất định (`[fallback]` trong model trace); demo vẫn chạy. Ép chế độ này bằng `MODEL_MODE=mock`.
 
 Local mode chỉ bind loopback và chỉ nhận origin local; bind `0.0.0.0` hoặc RPC không phải Devnet chính thức bị từ chối khi khởi động.
 
