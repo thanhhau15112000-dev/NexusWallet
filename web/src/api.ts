@@ -33,6 +33,16 @@ export type AgentState = {
   usage?: { spentSol24h: number; remainingSol24h: number | null };
 };
 
+export type AgentHistoryItem = {
+  signature: string;
+  blockTime: number | null;
+  status: 'confirmed' | 'failed';
+  deltaLamports: number;
+  balanceAfterLamports: number;
+  feeLamports: number;
+  explorerUrl: string;
+};
+
 export type AgentHealth = {
   ok: boolean;
   agentId: string;
@@ -208,6 +218,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ signature, signerPubkey }),
     }),
+
+  agentHistory: () => request<{ items: AgentHistoryItem[] }>('/api/agent/history'),
 
   audit: (limit = 60) => request<{ entries: AuditEntryView[] }>(`/api/audit?limit=${limit}`),
   tasks: () => request<{ tasks: TaskCapabilityRecord[] }>('/api/tasks'),

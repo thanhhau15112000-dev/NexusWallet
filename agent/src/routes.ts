@@ -33,6 +33,7 @@ import {
   FEE_BUFFER_LAMPORTS,
   explorerAddressUrl,
   getLamportBalance,
+  getAgentHistory,
   isValidAddress,
   requestAirdrop,
 } from './chain.js';
@@ -686,6 +687,21 @@ const inFlightClaims = new Set<string>();
         });
       }
       throw err;
+    }
+  });
+
+  // Public devnet RPC rate-limits, so repeated polls of the same wallet share one read for a few seconds.
+  const historyCache = new Map<string, { at: number; items: Awaited<ReturnType<typeof getAgentHistory>> }>();
+  app.get('/api/agent/history', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const cached = historyCache.get(userCtx.agentPubkey);
+    if (cached && Date.now() - cached.at < 8_000) return { items: cached.items };
+    try {
+      const items = await getAgentHistory(userCtx.connection, userCtx.agentPubkey, ctx.config.SOLANA_CLUSTER);
+      historyCache.set(userCtx.agentPubkey, { at: Date.now(), items });
+      return { items };
+    } catch (err) {
+      return reply.status(502).send({ error: 'rpc_error', message: err instanceof Error ? err.message : String(err) });
     }
   });
 

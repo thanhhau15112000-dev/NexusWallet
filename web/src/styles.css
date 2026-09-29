@@ -2661,3 +2661,44 @@ pre {
     border-left: 0;
   }
 }
+
+/* Agent wallet history */
+.data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.data-table .delta-in {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.data-table .delta-out {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.data-table .cell-action {
+  text-align: right;
+  white-space: nowrap;
+}
+
+a.explorer-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 5px 10px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a.explorer-cta:hover {
+  border-color: var(--accent);
+  background: #f2faf7;
+}

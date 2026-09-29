@@ -190,6 +190,59 @@ export function explorerAddressUrl(address: string, cluster: Cluster): string {
   return `https://explorer.solana.com/address/${address}?cluster=${cluster}`;
 }
 
+export type AgentHistoryItem = {
+  signature: string;
+  blockTime: number | null;
+  status: 'confirmed' | 'failed';
+  /** Net change of the wallet's SOL balance in this transaction, fee included. Negative when SOL left. */
+  deltaLamports: number;
+  balanceAfterLamports: number;
+  feeLamports: number;
+  explorerUrl: string;
+};
+
+/**
+ * Recent transactions that touched `address`, newest first, with the wallet's own SOL change and balance
+ * after each one, read from the transaction's pre/post balances. Transactions the RPC has not indexed
+ * yet are skipped.
+ */
+export async function getAgentHistory(
+  connection: Connection,
+  address: string,
+  cluster: Cluster,
+  limit = 20,
+): Promise<AgentHistoryItem[]> {
+  const wallet = new PublicKey(address);
+  const signatures = await withRpcRetry(() => connection.getSignaturesForAddress(wallet, { limit }, 'confirmed'));
+  if (signatures.length === 0) return [];
+  const transactions = await withRpcRetry(() =>
+    connection.getParsedTransactions(
+      signatures.map((entry) => entry.signature),
+      { commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+    ),
+  );
+
+  const items: AgentHistoryItem[] = [];
+  transactions.forEach((tx, index) => {
+    const entry = signatures[index];
+    if (!tx?.meta || !entry) return;
+    const at = tx.transaction.message.accountKeys.findIndex((key) => key.pubkey.equals(wallet));
+    const before = tx.meta.preBalances[at];
+    const after = tx.meta.postBalances[at];
+    if (at < 0 || before === undefined || after === undefined) return;
+    items.push({
+      signature: entry.signature,
+      blockTime: tx.blockTime ?? entry.blockTime ?? null,
+      status: tx.meta.err || entry.err ? 'failed' : 'confirmed',
+      deltaLamports: after - before,
+      balanceAfterLamports: after,
+      feeLamports: tx.meta.fee,
+      explorerUrl: explorerTxUrl(entry.signature, cluster),
+    });
+  });
+  return items;
+}
+
 export async function getLamportBalance(connection: Connection, address: string): Promise<number> {
   return withRpcRetry(() => connection.getBalance(new PublicKey(address), 'confirmed'));
 }

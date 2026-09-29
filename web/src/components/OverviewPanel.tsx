@@ -5,7 +5,6 @@ import { ArrowRight, Bot, CheckCircle2, Lock, Plug, ShieldCheck, Unlock, Wallet 
 import { api, type AgentState } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { AgentFundingPanel } from './AgentFundingPanel.js';
-import { RecentRequests } from './RecentRequests.js';
 import { useI18n } from '../i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
@@ -305,12 +304,6 @@ export function OverviewPanel(props: {
         </div>
       </div>
 
-      <RecentRequests
-        title={dict.overview.recentActivity}
-        requests={props.requests}
-        limit={5}
-        onViewAll={() => props.onOpenTab('approvals')}
-      />
     </div>
   );
 }
