@@ -253,7 +253,6 @@ export const en: TranslationDictionary = {
     hintClaudeCode: 'Run this once in a terminal.',
     hintCodex: 'Add this to ~/.codex/config.toml.',
     hintAntigravity: 'Merge this into ~/.gemini/config/mcp_config.json.',
-    hintClaudeDesktop: 'Merge this into claude_desktop_config.json. It needs Node.js: the mcp-remote bridge forwards your token.',
     step2Title: 'Reload the client',
     step2Desc: 'Restart or reload it so it picks up nexuspay.',
     step3Title: 'Ask it to pay',

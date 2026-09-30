@@ -253,7 +253,6 @@ export const vi: TranslationDictionary = {
     hintClaudeCode: 'Chạy lệnh này một lần trong terminal.',
     hintCodex: 'Thêm đoạn này vào ~/.codex/config.toml.',
     hintAntigravity: 'Gộp đoạn này vào ~/.gemini/config/mcp_config.json.',
-    hintClaudeDesktop: 'Gộp đoạn này vào claude_desktop_config.json. Cần có Node.js: cầu nối mcp-remote chuyển token của bạn.',
     step2Title: 'Tải lại client',
     step2Desc: 'Khởi động lại hoặc tải lại client để nạp nexuspay.',
     step3Title: 'Nhờ agent thanh toán',
