@@ -4,7 +4,7 @@ import { api, ApiError, type McpClientConfig } from '../api.js';
 import { useI18n } from '../i18n/context.js';
 import type { TranslationDictionary } from '../i18n/types.js';
 
-type ClientId = 'claude-code' | 'codex' | 'antigravity' | 'claude-desktop';
+type ClientId = 'claude-code' | 'codex' | 'antigravity';
 
 const CLIENTS: Array<{
   id: ClientId;
@@ -15,7 +15,6 @@ const CLIENTS: Array<{
   { id: 'claude-code', name: 'Claude Code', snippet: (c) => c.claudeCode, hint: (m) => m.hintClaudeCode },
   { id: 'codex', name: 'Codex', snippet: (c) => c.codexToml, hint: (m) => m.hintCodex },
   { id: 'antigravity', name: 'Antigravity', snippet: (c) => c.antigravityJson, hint: (m) => m.hintAntigravity },
-  { id: 'claude-desktop', name: 'Claude Desktop', snippet: (c) => c.claudeDesktopJson, hint: (m) => m.hintClaudeDesktop },
 ];
 
 type CopyTarget = 'url' | ClientId;
