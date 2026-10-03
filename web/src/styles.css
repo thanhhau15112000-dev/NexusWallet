@@ -935,6 +935,7 @@ button.mcp-promo-cta:hover:not(:disabled) {
 }
 
 .boot {
+  position: relative;
   display: flex;
   width: min(820px, 100%);
   min-height: min(564px, calc(100vh - 48px));
@@ -992,6 +993,67 @@ button.mcp-promo-cta:hover:not(:disabled) {
 .boot-wallet-empty {
   max-width: 330px;
   margin-top: 14px;
+}
+
+.boot-lang {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.boot-intro {
+  display: flex;
+  max-width: 520px;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+}
+
+.boot-tagline {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.boot-points {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.boot-points li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.boot-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translateY(-1px);
+}
+
+.boot-dot.ok {
+  background: var(--ok);
+}
+
+.boot-dot.warn {
+  background: var(--warn);
+}
+
+.boot-dot.bad {
+  background: var(--bad);
 }
 
 .wallet-picker-options {

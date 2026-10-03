@@ -67,6 +67,12 @@ export const vi: TranslationDictionary = {
     signInBtn: 'Đăng nhập với Phantom',
     connecting: 'Đang kết nối…',
     installPhantom: 'Cài đặt ví Phantom',
+    introTagline: 'Ví có kiểm soát chi tiêu cho AI agent trên Solana. Agent đề xuất thanh toán, luật chi tiêu của bạn quyết định.',
+    introAllow: 'Trong hạn mức: ký ngay.',
+    introApproval: 'Vượt hạn mức: chờ bạn duyệt bằng Phantom.',
+    introDeny: 'Người nhận không có trong danh sách: từ chối, không có đường duyệt.',
+    introDevnet: 'Chạy trên Solana Devnet (tiền thử nghiệm). Bật Testnet Mode trong Developer Settings của Phantom trước khi đăng nhập.',
+    introDocs: 'Cách hoạt động (GitHub)',
   },
   toasts: {
     confirmed: 'Giao dịch đã xác nhận trên Devnet',

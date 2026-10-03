@@ -67,6 +67,12 @@ export type TranslationDictionary = {
     signInBtn: string;
     connecting: string;
     installPhantom: string;
+    introTagline: string;
+    introAllow: string;
+    introApproval: string;
+    introDeny: string;
+    introDevnet: string;
+    introDocs: string;
   };
   toasts: {
     confirmed: string;
