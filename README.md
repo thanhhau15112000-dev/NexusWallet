@@ -1,4 +1,5 @@
 # nexusPay
+n[![CI](https://github.com/thanhhau15112000-dev/NexusWallet/actions/workflows/ci.yml/badge.svg?branch=staging)](https://github.com/thanhhau15112000-dev/NexusWallet/actions/workflows/ci.yml)
 
 **Ví có kiểm soát chi tiêu cho AI agent trên Solana.**
 
