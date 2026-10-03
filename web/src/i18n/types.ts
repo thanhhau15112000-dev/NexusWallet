@@ -253,7 +253,6 @@ export type TranslationDictionary = {
     hintClaudeCode: string;
     hintCodex: string;
     hintAntigravity: string;
-    hintClaudeDesktop: string;
     step2Title: string;
     step2Desc: string;
     step3Title: string;
