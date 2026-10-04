@@ -17,7 +17,7 @@
 5. [Thử nhanh](#thử-nhanh)
 6. [Khó khăn và cách khắc phục](#khó-khăn-và-cách-khắc-phục)
 7. [Phạm vi và giới hạn](#phạm-vi-và-giới-hạn)
-8. Chi tiết kỹ thuật: [Vì sao là Solana](#vì-sao-là-solana) · [Kiến trúc](#kiến-trúc) · [Bảo đảm an toàn](#bảo-đảm-an-toàn) · [Task Capability Vault](#task-capability-vault) · [Kết nối AI agent (MCP)](#kết-nối-ai-agent-mcp) · [Kịch bản demo](#kịch-bản-demo) · [Chạy local](#chạy-local) · [Deploy hosted](#deploy-hosted) · [Kiểm thử](#kiểm-thử) · [Cấu trúc repo](#cấu-trúc-repo) · [Lộ trình](#lộ-trình)
+8. Chi tiết kỹ thuật: [Vì sao là Solana](#vì-sao-là-solana) · [Kiến trúc](#kiến-trúc) · [Bảo đảm an toàn](#bảo-đảm-an-toàn) · [Task Capability Vault](#task-capability-vault) · [Kết nối AI agent (MCP)](#kết-nối-ai-agent-mcp) · [Kịch bản demo](#kịch-bản-demo) · [Chạy local](#chạy-local) · [Deploy hosted](#deploy-hosted) · [Kiểm thử](#kiểm-thử) · [Cấu trúc repo](#cấu-trúc-repo) · [Lộ trình](#lộ-trình) · [Giấy phép](#giấy-phép)
 
 ## Tóm tắt
 
@@ -373,3 +373,7 @@ infra/                      Dockerfile + compose
 ## Lộ trình
 
 Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, hash MCP token và rate limit, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
+
+## Giấy phép
+
+[MIT](LICENSE).
