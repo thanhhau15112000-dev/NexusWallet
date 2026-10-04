@@ -220,6 +220,7 @@ export type TranslationDictionary = {
   };
   apiErrors: {
     rateLimited: string;
+    seedCapReached: string;
   };
   history: {
     requestsTitle: string;

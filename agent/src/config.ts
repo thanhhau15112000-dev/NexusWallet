@@ -43,6 +43,9 @@ const EnvSchema = z.object({
    */
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(2),
 
+  /** Most initial seeds the Master Funder hands out per rolling 24 hours, across all agents. 0 turns seeding off. */
+  SEED_CAP_PER_DAY: z.coerce.number().int().min(0).default(50),
+
   APPROVAL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   MAX_REQUESTS_KEPT: z.coerce.number().int().positive().default(200),
 });

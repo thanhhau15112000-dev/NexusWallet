@@ -123,6 +123,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const template = getCurrentDictionary().apiErrors.rateLimited;
       throw new ApiError(template.replace('{seconds}', String(seconds)), response.status, code);
     }
+    if (response.status === 429 && code === 'seed_cap_reached') {
+      throw new ApiError(getCurrentDictionary().apiErrors.seedCapReached, response.status, code);
+    }
     throw new ApiError(message ?? `${code} (${response.status})`, response.status, code);
   }
   return body as T;
