@@ -32,9 +32,9 @@ const proposeRule: RateRule = { id: 'propose', limit: 30, windowMs: MINUTE, by: 
  * The dashboard polls three reads every 6 s (about 30/min per open tab) and the MCP client polls a held
  * request every 5 s, so the read ceilings sit well above one tab and one agent.
  *
- * `/mcp` is only a backstop. A tool call is several `/mcp` requests (initialize and the call itself) plus
- * one in-process /api request keyed by the same token. That inner request must hit its own limit first,
- * because only there does the agent get a readable RATE_LIMITED tool error rather than a bare HTTP 429.
+ * `/mcp` is only a backstop, set above the in-process read limit. A tool call also makes an /api request
+ * keyed by the same token, and that request must hit its own limit first, because only there does the
+ * agent get a readable RATE_LIMITED tool error rather than a bare HTTP 429.
  */
 export const DEFAULT_RATE_RULES: Record<string, RateRule> = {
   'POST /api/auth/challenge': authRule('auth.challenge'),
