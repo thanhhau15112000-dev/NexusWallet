@@ -48,7 +48,7 @@ import { IdempotencyConflictError, agentError, runAction, runCommand, type Agent
 import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
-import { loadOrCreateMcpToken, mcpOwnerFor } from './mcp-token.js';
+import { createMcpToken, hasMcpToken, loadOrCreateMcpToken, mcpOwnerFor } from './mcp-token.js';
 import { registerRemoteMcp, remoteMcpUrl } from './mcp-remote.js';
 
 function getMockWorkerKeypair(ctx: AppContext): Keypair {
@@ -166,7 +166,7 @@ function resolveUserContext(ctx: AppContext, req: FastifyRequest): AppContext {
     return ctx.getUserContext(session.owner);
   }
   // MCP clients (remote /mcp or the local stdio bundle): a tenant token, accepted only for its read/propose routes.
-  const mcpOwner = mcpOwnerFor(ctx.config.usersDir, req);
+  const mcpOwner = mcpOwnerFor(ctx.config, req);
   if (mcpOwner && ctx.getUserContext) {
     return ctx.getUserContext(mcpOwner);
   }
@@ -178,16 +178,24 @@ function resolveUserContext(ctx: AppContext, req: FastifyRequest): AppContext {
 }
 
 /**
+ * What the dashboard may know about an owner's MCP token without being given one. Hosted mode keeps
+ * only a hash, so there is nothing to show until the owner creates a new token.
+ */
+function mcpTokenStatus(ctx: AppContext, owner: string) {
+  return { owner, url: remoteMcpUrl(ctx.config), hasToken: hasMcpToken(ctx.config.usersDir, owner), token: null };
+}
+
+/**
  * Ready-to-paste entries for the remote MCP endpoint: a URL plus the tenant token as a bearer
  * header, so nothing has to be installed or cloned on the client's machine.
  */
-function mcpClientConfig(ctx: AppContext, owner: string, rotate: boolean) {
-  const token = loadOrCreateMcpToken(ctx.config.usersDir, owner, { rotate });
+function mcpClientConfig(ctx: AppContext, owner: string, token: string) {
   const url = remoteMcpUrl(ctx.config);
   const authorization = `Bearer ${token}`;
   return {
     owner,
     url,
+    hasToken: true,
     token,
     claudeCode: `claude mcp add --transport http nexuspay ${url} --header "Authorization: ${authorization}"`,
     codexToml: [
@@ -277,14 +285,20 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const session = getSession(ctx, req);
     if (!session?.owner) return reply.status(401).send({ error: 'authentication_required' });
     reply.header('cache-control', 'no-store');
-    return mcpClientConfig(ctx, session.owner, false);
+    // Hosted: the token exists only as a hash and is returned once, by the create/rotate call below.
+    if (ctx.config.authRequired) return mcpTokenStatus(ctx, session.owner);
+    return mcpClientConfig(ctx, session.owner, loadOrCreateMcpToken(ctx.config.usersDir, session.owner));
   });
 
   app.post('/api/mcp/token/rotate', async (req, reply) => {
     const session = getSession(ctx, req);
     if (!session?.owner) return reply.status(401).send({ error: 'authentication_required' });
     reply.header('cache-control', 'no-store');
-    return mcpClientConfig(ctx, session.owner, true);
+    // Creates the first token or replaces the current one; clients holding the old token stop working.
+    const token = ctx.config.authRequired
+      ? createMcpToken(ctx.config.usersDir, session.owner, { hashed: true })
+      : loadOrCreateMcpToken(ctx.config.usersDir, session.owner, { rotate: true });
+    return mcpClientConfig(ctx, session.owner, token);
   });
 
   app.get('/api/health', async () => ({

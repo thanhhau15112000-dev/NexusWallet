@@ -73,7 +73,7 @@ function failFromError(err: unknown, config: McpConfig, extra: Record<string, un
   if (err instanceof ApiError && err.status === 401) {
     const message =
       config.tokenSource === 'remote'
-        ? 'The nexusPay agent rejected this connection token (it was rotated or copied wrong). Copy the connection again from the dashboard (Wallet tab > Connect an AI agent) and update the MCP client.'
+        ? 'The nexusPay agent rejected this connection token (it was rotated or copied wrong). A hosted dashboard cannot show an existing token again: create a new one in the dashboard (Wallet tab > Connect an AI agent) and update the MCP client with it.'
         : config.tokenSource === 'env'
           ? 'The nexusPay agent rejected NEXUS_AGENT_TOKEN (rotated, from another checkout, or copied wrong). Copy the MCP entry again from the dashboard (Wallet tab > Connect an AI agent) or run pnpm mcp:config, then restart the MCP client.'
           : `The nexusPay agent rejected the MCP token from ${config.tokenSource}. If the agent is using a different data directory, set NEXUS_AGENT_DATA_DIR to point to it, or sign in to the dashboard with the owner wallet once.`;

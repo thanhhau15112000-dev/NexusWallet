@@ -21,7 +21,7 @@ export function requestIdentity(ctx: AppContext, req: FastifyRequest): RequestId
   const unsigned = cookieValue ? req.unsignCookie(cookieValue) : null;
   const session = unsigned?.valid && unsigned.value ? ctx.sessions.getSession(unsigned.value) : null;
   if (session) return { kind: 'session', owner: session.owner };
-  const tokenOwner = mcpOwnerFor(ctx.config.usersDir, req);
+  const tokenOwner = mcpOwnerFor(ctx.config, req);
   return tokenOwner ? { kind: 'token', owner: tokenOwner } : null;
 }
 

@@ -164,7 +164,7 @@ describe('rate limit on sensitive routes', () => {
     const { app } = await startHostedApp({ now: () => 0, rules: { ...DEFAULT_RATE_RULES, 'POST /mcp': mcpRule } });
     try {
       const cookieHeader = await login(app, Keypair.generate());
-      const token = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body)
+      const token = JSON.parse((await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })).body)
         .token as string;
       const headers = {
         authorization: `Bearer ${token}`,
@@ -192,7 +192,7 @@ describe('rate limit on sensitive routes', () => {
     const { app } = await startHostedApp({ now: () => 0, fallback: { id: 'api', limit: 2, windowMs: MINUTE, by: 'owner' } });
     try {
       const cookieHeader = await login(app, Keypair.generate());
-      const token = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body)
+      const token = JSON.parse((await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })).body)
         .token as string;
       const poll = async (id: number) =>
         JSON.parse(
@@ -236,7 +236,7 @@ describe('rate limit on sensitive routes', () => {
     try {
       const owner = Keypair.generate();
       const cookieHeader = await login(app, owner);
-      const token = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body)
+      const token = JSON.parse((await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })).body)
         .token as string;
       const forged = `Bearer ${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
       const call = (authorization: string) =>
@@ -262,9 +262,9 @@ describe('rate limit on sensitive routes', () => {
     const { app } = await startHostedApp({ now: () => 0, fallback: { id: 'api', limit: 3, windowMs: MINUTE, by: 'owner' } });
     try {
       const cookieHeader = await login(app, Keypair.generate());
-      const token = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body)
+      const token = JSON.parse((await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })).body)
         .token as string;
-      // /api/mcp/config above used one of the session's three reads.
+      // The token request above used one of the session's three reads.
       for (let i = 0; i < 2; i += 1) {
         expect((await app.inject({ method: 'GET', url: '/api/state', headers: { cookie: cookieHeader } })).statusCode).toBe(200);
       }

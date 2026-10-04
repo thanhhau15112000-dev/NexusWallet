@@ -499,7 +499,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <Steps>
                 <li>
                   Sign in to this dashboard with your wallet, then open <em>Show my connection</em> in the MCP card on
-                  the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page.
+                  the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page. On a hosted dashboard click
+                  {' '}<em>Create connection token</em>; the token appears once.
                 </li>
                 <li>
                   Pick your client and copy its entry. The card shows the token masked; <em>Copy</em> puts the full
@@ -632,8 +633,10 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <ul>
               <li>
-                Stored in <code>agent/data/users/&lt;owner&gt;/mcp-token</code> and sent as a bearer token. The MCP
-                server reads it from the agent&apos;s data directory.
+                Sent as a bearer token. The token file is <code>agent/data/users/&lt;owner&gt;/mcp-token</code>. On a
+                hosted dashboard it holds only the SHA-256 hash of the token: the token itself is shown once, when you
+                create or rotate it, and cannot be shown again. When you run the stack locally the file holds the token
+                itself, so the MCP server can read it from the agent&apos;s data directory.
               </li>
               <li>
                 <em>Rotate token</em> in the MCP card on the AI Commands page replaces it. Clients connected by URL stop
@@ -642,8 +645,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 {' '}<code>NEXUS_AGENT_TOKEN</code> is not re-read and must be updated by hand.
               </li>
               <li>
-                The file is plaintext on disk, inside the same trust boundary as the agent keystore. On Windows,
-                access depends on the folder&apos;s ACLs.
+                A local file is plaintext on disk, inside the same trust boundary as the agent keystore. On Windows,
+                access depends on the folder&apos;s ACLs. Hashing does not protect a token that was already copied to a
+                client: rotate it if it leaks.
               </li>
             </ul>
           ),

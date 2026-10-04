@@ -131,10 +131,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-/** Remote MCP connection for one owner: a URL plus the MCP token as a bearer header. */
+/**
+ * Remote MCP connection for one owner: a URL plus the MCP token as a bearer header. Hosted mode returns
+ * the token only from the create/rotate call; local mode also returns it when the config is read.
+ */
 export type McpClientConfig = {
   owner: string;
   url: string;
+  hasToken: true;
   token: string;
   claudeCode: string;
   codexToml: string;
@@ -142,10 +146,13 @@ export type McpClientConfig = {
   claudeDesktopJson: string;
 };
 
+/** What a hosted agent says about an owner's token when it cannot show it: only whether one exists. */
+export type McpTokenStatus = { owner: string; url: string; hasToken: boolean; token: null };
+
 export const api = {
   health: () => request<AgentHealth>('/api/health'),
 
-  mcpConfig: () => request<McpClientConfig>('/api/mcp/config'),
+  mcpConfig: () => request<McpClientConfig | McpTokenStatus>('/api/mcp/config'),
 
   rotateMcpToken: () =>
     request<McpClientConfig>('/api/mcp/token/rotate', { method: 'POST', body: JSON.stringify({}) }),

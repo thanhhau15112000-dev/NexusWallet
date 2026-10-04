@@ -112,7 +112,7 @@ function clientKey(ctx: AppContext, req: FastifyRequest, rule: RateRule): string
     // Only a verified credential selects an owner bucket. A bearer string that fails verification
     // is keyed by address, so nobody can spend another owner's allowance by naming them.
     const tokenOwner =
-      req.routeOptions.url === '/mcp' ? verifyMcpToken(ctx.config.usersDir, req.headers.authorization) : null;
+      req.routeOptions.url === '/mcp' ? verifyMcpToken(ctx.config, req.headers.authorization) : null;
     const identity = tokenOwner ? { kind: 'token', owner: tokenOwner } : requestIdentity(ctx, req);
     if (identity) return `${rule.id}|${identity.kind}:${identity.owner}`;
   }

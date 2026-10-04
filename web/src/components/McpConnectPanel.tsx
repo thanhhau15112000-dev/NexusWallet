@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check, Copy, Plug, ShieldCheck, X } from './icons.js';
-import { api, ApiError, type McpClientConfig } from '../api.js';
+import { api, ApiError, type McpClientConfig, type McpTokenStatus } from '../api.js';
 import { useI18n } from '../i18n/context.js';
 import type { TranslationDictionary } from '../i18n/types.js';
 
@@ -32,17 +32,26 @@ const maskToken = (text: string, token: string) =>
  */
 export function McpConnectPanel() {
   const { dict } = useI18n();
+  // `config` holds a token this page can show. A hosted agent only returns one when it creates it, so after a
+  // reload there is just a `status` saying whether a token exists.
   const [config, setConfig] = useState<McpClientConfig | null>(null);
+  const [status, setStatus] = useState<McpTokenStatus | null>(null);
   const [client, setClient] = useState<ClientId>('claude-code');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<CopyTarget | null>(null);
 
-  const load = async (rotate: boolean) => {
+  const load = async (issue: boolean) => {
     setBusy(true);
     setError(null);
     try {
-      setConfig(rotate ? await api.rotateMcpToken() : await api.mcpConfig());
+      const next = issue ? await api.rotateMcpToken() : await api.mcpConfig();
+      if (next.token === null) {
+        setStatus(next);
+      } else {
+        setConfig(next);
+        setStatus(null);
+      }
     } catch (err) {
       setError(errorText(err, dict.mcp.loadFailed));
     } finally {
@@ -69,7 +78,8 @@ export function McpConnectPanel() {
 
   const selected = CLIENTS.find((item) => item.id === client) ?? CLIENTS[0]!;
   const snippet = config ? selected.snippet(config) : '';
-  const localOnly = config ? /^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(config.url) : false;
+  const connection = config ?? status;
+  const localOnly = connection ? /^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(connection.url) : false;
 
   return (
     <section id="mcp-card" className="mcp-card" aria-labelledby="mcp-card-title">
@@ -85,13 +95,17 @@ export function McpConnectPanel() {
           <li>
             <strong>{dict.mcp.step1Title}</strong>
             <p>{dict.mcp.step1Desc}</p>
-            {config ? (
+            {connection ? (
               <>
                 <div className="mcp-command">
-                  <code>{config.url}</code>
-                  {copyButton('url', config.url)}
+                  <code>{connection.url}</code>
+                  {copyButton('url', connection.url)}
                 </div>
                 {localOnly ? <p className="mcp-warn">{dict.mcp.localOnlyNote}</p> : null}
+              </>
+            ) : null}
+            {config ? (
+              <>
                 <div className="mcp-format-switch" role="group" aria-label={dict.mcp.step1Title}>
                   {CLIENTS.map((item) => (
                     <button
@@ -109,6 +123,16 @@ export function McpConnectPanel() {
                   <pre>{maskToken(snippet, config.token)}</pre>
                   {copyButton(client, snippet)}
                 </div>
+                {localOnly ? null : <p className="mcp-warn">{dict.mcp.tokenOnceWarning}</p>}
+              </>
+            ) : status ? (
+              <>
+                <p>{status.hasToken ? dict.mcp.tokenHidden : dict.mcp.noToken}</p>
+                <p className="mcp-warn">{dict.mcp.tokenOnceWarning}</p>
+                {status.hasToken ? <p className="mcp-warn">{dict.mcp.rotateWarning}</p> : null}
+                <button type="button" className="mcp-reveal-btn" disabled={busy} onClick={() => void load(true)}>
+                  {busy ? dict.mcp.rotating : status.hasToken ? dict.mcp.replaceToken : dict.mcp.createToken}
+                </button>
               </>
             ) : (
               <button type="button" className="mcp-reveal-btn" disabled={busy} onClick={() => void load(false)}>
@@ -143,9 +167,12 @@ export function McpConnectPanel() {
           <span>{dict.mcp.securityNote}</span>
         </p>
         {config ? (
-          <button type="button" className="link" disabled={busy} onClick={() => void load(true)}>
-            {busy ? dict.mcp.rotating : dict.mcp.rotateToken}
-          </button>
+          <>
+            <button type="button" className="link" disabled={busy} onClick={() => void load(true)}>
+              {busy ? dict.mcp.rotating : dict.mcp.rotateToken}
+            </button>
+            <p className="mcp-warn">{dict.mcp.rotateWarning}</p>
+          </>
         ) : null}
       </div>
     </section>

@@ -492,7 +492,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               <Steps>
                 <li>
                   Đăng nhập dashboard này bằng ví, rồi mở <em>Hiện kết nối của tôi</em> trong card MCP trên trang
-                  {' '}<TabLink tab="commands" label="Ra lệnh AI" ctx={ctx} />.
+                  {' '}<TabLink tab="commands" label="Ra lệnh AI" ctx={ctx} />. Trên dashboard hosted, bấm
+                  {' '}<em>Tạo token kết nối</em>; token chỉ hiện một lần.
                 </li>
                 <li>
                   Chọn client của bạn và sao chép cấu hình tương ứng. Card hiện token ở dạng bị ẩn; <em>Sao chép</em>
@@ -626,8 +627,10 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           body: (
             <ul>
               <li>
-                Lưu tại <code>agent/data/users/&lt;owner&gt;/mcp-token</code> và gửi đi dưới dạng bearer token. Server MCP
-                đọc nó từ thư mục dữ liệu của agent.
+                Gửi đi dưới dạng bearer token. File token là <code>agent/data/users/&lt;owner&gt;/mcp-token</code>. Trên
+                dashboard hosted, file chỉ chứa bản băm SHA-256 của token: bản thân token chỉ hiện một lần, lúc bạn tạo
+                hoặc đổi token, và không thể hiện lại. Khi bạn tự chạy hệ thống ở local, file chứa chính token đó, nên
+                server MCP đọc được nó từ thư mục dữ liệu của agent.
               </li>
               <li>
                 <em>Đổi token mới</em> trong card MCP ở trang Ra lệnh AI sẽ thay token. Các client kết nối bằng URL sẽ
@@ -636,8 +639,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 {' '}<code>NEXUS_AGENT_TOKEN</code> không được đọc lại và phải cập nhật thủ công.
               </li>
               <li>
-                File này là plaintext trên đĩa, nằm trong cùng ranh giới tin cậy với keystore của agent. Trên Windows,
-                quyền truy cập phụ thuộc vào ACL của thư mục.
+                File ở local là plaintext trên đĩa, nằm trong cùng ranh giới tin cậy với keystore của agent. Trên Windows,
+                quyền truy cập phụ thuộc vào ACL của thư mục. Việc băm không bảo vệ được token đã sao chép sang client:
+                hãy đổi token nếu nó bị lộ.
               </li>
             </ul>
           ),
