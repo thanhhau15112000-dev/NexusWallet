@@ -36,6 +36,26 @@ export function describeAction(request: PaymentRequest): string {
   }
 }
 
+/**
+ * Localized text for a request error, keyed by its code. Falls back to the raw message for unknown
+ * codes, and for requests stored before `details` existed when a placeholder cannot be filled.
+ */
+function localizeError(
+  error: NonNullable<PaymentRequest['error']>,
+  templates: Record<string, string>,
+  interpolate: (template: string, params: Record<string, string | number>) => string,
+): string {
+  const template = templates[error.code];
+  if (!template) return error.message;
+  const params: Record<string, string | number> = { message: error.message };
+  for (const [key, value] of Object.entries(error.details ?? {})) {
+    if (typeof value === 'string' || typeof value === 'number') params[key] = value;
+  }
+  const placeholders = Array.from(template.matchAll(/\{(\w+)\}/g), (match) => match[1] ?? '');
+  if (placeholders.some((key) => !(key in params))) return error.message;
+  return interpolate(template, params);
+}
+
 function formatTrace(request: PaymentRequest): string {
   const trace = request.modelTrace;
   if (!trace) return '-';
@@ -51,7 +71,7 @@ function RequestRow(props: {
   onApprove: (request: PaymentRequest) => void;
   onCancel: (request: PaymentRequest) => void;
 }) {
-  const { dict } = useI18n();
+  const { dict, interpolate } = useI18n();
   const { request } = props;
   const decision = request.decision;
   const approvalExpired = Boolean(
@@ -78,7 +98,9 @@ function RequestRow(props: {
         ) : null}
       </div>
 
-      {request.error ? <p className="request-error">{request.error.message}</p> : null}
+      {request.error ? (
+        <p className="request-error">{localizeError(request.error, dict.requests.errors, interpolate)}</p>
+      ) : null}
       {approvalExpired ? <p className="request-error">{dict.requests.expiredNotice}</p> : null}
 
       {request.status === 'pending_approval' && request.approval && !approvalExpired ? (

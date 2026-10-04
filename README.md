@@ -2,35 +2,166 @@
 
 **Ví có kiểm soát chi tiêu cho AI agent trên Solana.**
 
-AI agent (Claude, Cursor, Codex, Antigravity...) được cấp một ví Solana riêng và một chính sách chi tiêu do chủ sở hữu đặt. Agent tự đề xuất thanh toán qua MCP; chính sách quyết định. Giao dịch trong hạn mức được ký ngay, giao dịch vượt hạn mức chờ chủ sở hữu ký duyệt bằng ví (hoặc hủy), người nhận ngoài allowlist bị từ chối. Với nhiệm vụ nhiều bước, chủ sở hữu cấp một **Task Capability Vault** on-chain: ngân sách, thời hạn và worker được phép nằm trong smart contract, tiền đi qua escrow và phần dư được hoàn lại.
-
 > Model quyết định *làm gì*. Model không bao giờ quyết định *có được phép hay không*.
 
-- Demo hosted (Solana Devnet): https://nexuspay-56wn.onrender.com
+- Demo (Solana Devnet): https://nexuspay-56wn.onrender.com
 - MCP endpoint: `https://nexuspay-56wn.onrender.com/mcp`
 - Program Task Vault (Devnet): [`3N4GYuQXvqhDeFKLWh4GiXdD3pr3PWcNRtkUyxSYPaUK`](https://explorer.solana.com/address/3N4GYuQXvqhDeFKLWh4GiXdD3pr3PWcNRtkUyxSYPaUK?cluster=devnet)
 
+## Mục lục
+
+1. [Tóm tắt](#tóm-tắt)
+2. [Vấn đề nexusPay giải quyết](#vấn-đề-nexuspay-giải-quyết)
+3. [Cách nexusPay hoạt động](#cách-nexuspay-hoạt-động)
+4. [Điểm nổi bật](#điểm-nổi-bật)
+5. [Thử nhanh](#thử-nhanh)
+6. [Khó khăn và cách khắc phục](#khó-khăn-và-cách-khắc-phục)
+7. [Phạm vi và giới hạn](#phạm-vi-và-giới-hạn)
+8. Chi tiết kỹ thuật: [Vì sao là Solana](#vì-sao-là-solana) · [Kiến trúc](#kiến-trúc) · [Bảo đảm an toàn](#bảo-đảm-an-toàn) · [Task Capability Vault](#task-capability-vault) · [Kết nối AI agent (MCP)](#kết-nối-ai-agent-mcp) · [Kịch bản demo](#kịch-bản-demo) · [Chạy local](#chạy-local) · [Deploy hosted](#deploy-hosted) · [Kiểm thử](#kiểm-thử) · [Cấu trúc repo](#cấu-trúc-repo) · [Lộ trình](#lộ-trình) · [Giấy phép](#giấy-phép)
+
+## Tóm tắt
+
+nexusPay cho phép AI agent tự trả tiền trên Solana, trong khi chủ ví vẫn giữ quyền kiểm soát.
+
+Chủ ví đặt luật chi tiêu: mỗi lần được chi tối đa bao nhiêu, mỗi ngày tối đa bao nhiêu, và được trả cho những ai. Agent chỉ được *đề xuất* giao dịch. Hệ thống so đề xuất với luật rồi quyết định:
+
+- Khoản nhỏ, người nhận quen → ký ngay, không cần ai duyệt.
+- Khoản vượt hạn mức → chờ chủ ví duyệt bằng ví Phantom.
+- Người nhận không có trong danh sách → từ chối.
+
+Agent không có cách nào tự đổi luật, tự duyệt hay tự mở khóa cho mình. Với công việc nhiều bước, chủ ví có thể khóa ngân sách vào một hợp đồng trên chain (Task Vault) để agent chỉ tiêu được trong ngân sách và thời hạn đó.
+
+Dự án chạy trên Solana Devnet, là mạng thử nghiệm nên tiền không có giá trị thật.
+
+## Vấn đề nexusPay giải quyết
+
+AI agent ngày càng tự làm những việc tốn tiền: gọi API trả phí, thuê agent hoặc dịch vụ khác, mua tài nguyên. Muốn agent trả được tiền, hiện có hai cách và cả hai đều có vấn đề:
+
+1. **Đưa private key cho agent.** Agent có toàn quyền với ví. Chỉ cần một prompt độc hại lừa được agent là có thể mất hết tiền.
+2. **Bắt người duyệt từng giao dịch.** An toàn hơn, nhưng agent không còn tự chủ. Khoản nhỏ nào cũng phải chờ người bấm duyệt.
+
+Còn thiếu một lớp ở giữa: cho agent tự chi trong phạm vi được cấp, và chặn hẳn mọi thứ vượt phạm vi. Việc chặn phải nằm trong code và chữ ký số, không dựa vào lời dặn trong prompt.
+
+## Cách nexusPay hoạt động
+
+**Bước 1. Chủ ví thiết lập.** Đăng nhập dashboard bằng ví Phantom. Mỗi chủ ví nhận một ví agent riêng, rồi đặt luật chi tiêu: hạn mức mỗi giao dịch, trần chi trong 24 giờ, danh sách người nhận được phép (allowlist).
+
+**Bước 2. Kết nối AI agent.** Agent kết nối qua MCP, giao thức để AI agent gọi công cụ bên ngoài. Chỉ cần một URL và một token, không cài gì trên máy chạy agent. Dashboard tạo sẵn cấu hình cho Claude Code, Codex và Antigravity.
+
+**Bước 3. Agent đề xuất, luật quyết định.** Mỗi đề xuất chuyển tiền có một trong ba kết quả:
+
+| Kết quả | Khi nào | Điều xảy ra |
+| --- | --- | --- |
+| Cho phép | Trong hạn mức, người nhận có trong allowlist | Ví agent ký ngay, trả về link Explorer |
+| Chờ duyệt | Vượt hạn mức một giao dịch hoặc trần 24 giờ | Chưa ký gì. Chủ ví duyệt bằng Phantom trong 300 giây, hoặc hủy |
+| Từ chối | Người nhận ngoài allowlist, số tiền không hợp lệ, agent đang bị khóa | Không ký, không có đường duyệt |
+
+Chủ ví có nút khóa khẩn cấp (kill switch): khi bật, ví agent không ký bất kỳ giao dịch chuyển tiền nào.
+
+**Bước 4 (tùy chọn). Task Vault cho công việc nhiều bước.** Chủ ví nạp ngân sách cho một nhiệm vụ vào hợp đồng trên Solana, kèm thời hạn, mức trả tối đa mỗi lần và danh sách worker được nhận tiền. Agent trả cho worker qua một khoản tạm giữ (escrow). Worker phải ký xác nhận kết quả thì mới nhận được tiền. Hết hạn hoặc bị thu hồi thì phần còn lại trả về chủ ví. Các luật này nằm trên chain, không phụ thuộc server của nexusPay.
+
+## Điểm nổi bật
+
+Mỗi điểm dưới đây có test hoặc giao dịch trên chain để kiểm tra lại.
+
+**1. Luật nằm trong code, không nằm trong prompt.** Agent chỉ có 5 công cụ: xem trạng thái, xem request và đề xuất chuyển tiền. Không công cụ nào đổi luật, duyệt request hay mở khóa agent. Nếu agent bị lừa qua prompt, nó vẫn chỉ chi được trong hạn mức và cho người nhận trong allowlist. Nếu model lập kế hoạch lệch yêu cầu ban đầu (đổi người nhận hoặc số tiền), giao dịch bị từ chối, kể cả khi người nhận mới cũng nằm trong allowlist.
+Kiểm chứng: [policy.test.ts](agent/test/policy.test.ts), [pipeline.test.ts](agent/test/pipeline.test.ts), [mcp.test.ts](mcp/test/mcp.test.ts)
+
+**2. Duyệt bằng chữ ký ví, không giả mạo hay dùng lại được.** Chữ ký duyệt gắn với đúng request, số tiền, người nhận, phiên bản luật và thời hạn. Hệ thống từ chối chữ ký từ ví khác, chữ ký trên nội dung đã bị sửa, chữ ký dùng lại lần hai, chữ ký quá hạn, và chữ ký ký trên phiên bản luật cũ.
+Kiểm chứng: [approval.test.ts](agent/test/approval.test.ts), [e2e.ts](agent/scripts/e2e.ts)
+
+**3. Trần chi theo ngày không lách được.** Chia nhỏ khoản tiền hay gửi nhiều giao dịch cùng lúc đều không vượt được trần 24 giờ. Gọi lại cùng một giao dịch sau khi timeout cũng không bị trả tiền hai lần.
+Kiểm chứng: [daily-cap.test.ts](agent/test/daily-cap.test.ts)
+
+**4. Nút khóa khẩn cấp có hiệu lực ở mọi đường ký.** Khi bật, mọi đường chuyển tiền đều bị chặn: qua MCP, qua dashboard, qua duyệt request, qua Task Vault. Trạng thái khóa vẫn giữ sau khi server khởi động lại. Khóa agent của một chủ ví không ảnh hưởng chủ ví khác.
+Kiểm chứng: [kill-switch.test.ts](agent/test/kill-switch.test.ts)
+
+**5. Task Vault đã chạy trên Devnet.** Lần kiểm tra ngày 28/9 ghi 20 giao dịch. Trong đó 12 giao dịch bị program từ chối đúng như mong đợi: vượt mức mỗi lần trả, vượt ngân sách, worker hoặc service không được phép, sai người ký. Program trên chain khớp từng byte với bản build trong repo.
+Kiểm chứng: [issue #6](../../issues/6), [verify-task-vault-devnet.ts](agent/scripts/verify-task-vault-devnet.ts)
+
+**6. Phản hồi viết để agent tự hiểu.** Khi bị chặn hoặc phải chờ duyệt, agent nhận về mã lỗi, hướng xử lý và số liệu cụ thể, ví dụ còn bao nhiêu SOL trong trần ngày. Agent dựa vào đó để điều chỉnh thay vì thử lại y nguyên.
+Kiểm chứng: [mcp.test.ts](mcp/test/mcp.test.ts), [policy.ts](shared/src/policy.ts)
+
+Tổng cộng `pnpm test` có 273 test pass. 3 test chạy trên chain bị bỏ qua khi máy không chạy Solana local validator ([chi tiết](#kiểm-thử)). Dự án chưa được audit bảo mật độc lập.
+
+## Thử nhanh
+
+1. Cài ví Phantom, bật **Testnet Mode** trong Developer Settings và chọn Solana Devnet.
+2. Mở https://nexuspay-56wn.onrender.com và kết nối ví.
+3. Nạp SOL Devnet cho ví agent: dùng nút nhận 0.1 SOL hoặc Airdrop trên dashboard, hoặc lấy ở https://faucet.solana.com.
+4. Làm theo [Kịch bản demo](#kịch-bản-demo): đặt luật, kết nối agent qua MCP, thử lần lượt các trường hợp cho phép, chờ duyệt, từ chối và khóa agent.
+
+## Khó khăn và cách khắc phục
+
+### Khi dùng thử
+
+| Gặp tình huống | Lý do | Cách xử lý |
+| --- | --- | --- |
+| Không ký được, hoặc giao dịch không hiện trên Explorer Devnet | Phantom đang ở mainnet | Bật **Testnet Mode** trong Developer Settings của Phantom, chọn Solana Devnet |
+| Agent báo `INSUFFICIENT_FUNDS_INCLUDING_FEES` | Ví agent không đủ SOL, tính cả phí mạng | Nạp thêm bằng nút nhận 0.1 SOL (mỗi agent được một lần) hoặc Airdrop trên dashboard. Nếu airdrop bị giới hạn, dùng https://faucet.solana.com |
+| Khi nạp tiền cho agent, Phantom báo không đủ SOL ở dòng phí | Cảnh báo do Phantom tự quét giao dịch, không phải từ nexusPay | Kiểm tra `receiver` đúng địa chỉ ví agent rồi xác nhận. Chi tiết ở [mcp-troubleshooting.md](docs/mcp-troubleshooting.md#nạp-sol-từ-phantom-trên-dashboard) |
+| Agent báo `RECIPIENT_NOT_IN_ALLOWLIST` | Đúng thiết kế: người nhận chưa có trong allowlist | Thêm người nhận ở tab **Policy**, ví dụ bằng *Use owner wallet* |
+| Khoản nhỏ vẫn bị giữ lại, báo `DAILY_LIMIT_EXCEEDED` | Đúng thiết kế: tổng chi trong 24 giờ đã chạm trần | Duyệt trên dashboard, hoặc tăng *Max per day* ở tab **Policy** |
+| Request không duyệt được nữa, trạng thái `expired` | Đã quá 300 giây kể từ lúc request được tạo | Cho agent đề xuất lại giao dịch |
+| Mọi giao dịch đều báo `AGENT_FROZEN` | Chủ ví đang bật khóa khẩn cấp | Bấm **Unfreeze agent** ở tab **Overview** |
+| Dashboard tự đăng xuất, báo phiên đã hết hạn | Phiên đăng nhập hết hạn (mặc định 30 phút) | Kết nối và ký lại bằng Phantom |
+| Client MCP báo `401` hoặc `mcp_token_rejected` | Token đã bị đổi, hoặc copy thiếu | Copy lại cấu hình ở card **Connect an AI agent (MCP)** rồi cập nhật client |
+| Payment của Task Vault bị từ chối dù task vẫn còn ngân sách | Số tiền vượt mức trả tối đa mỗi lần của task | Nhập số tiền không vượt mức đó |
+| Không đóng được Task Vault | Vẫn còn khoản escrow đang tạm giữ | Cho worker ký xác nhận để nhận tiền, hoặc chờ task hết hạn rồi hoàn tiền |
+
+Lỗi khi cài MCP vào từng client: xem [docs/mcp-troubleshooting.md](docs/mcp-troubleshooting.md).
+
+### Khi xây dựng
+
+Những vấn đề nhóm đã gặp hoặc đã lường trước trong quá trình làm, và cách xử lý trong code:
+
+| Vấn đề | Cách xử lý | Kiểm chứng |
+| --- | --- | --- |
+| Agent gọi lại sau khi timeout có thể làm trả tiền hai lần | Mỗi đề xuất mang một `idempotencyKey`. Gọi lại cùng key thì nhận lại kết quả cũ. Nhiều lần gọi lại cùng lúc dùng chung một kết quả. Dùng key cũ cho giao dịch khác thì bị từ chối | [pipeline.test.ts](agent/test/pipeline.test.ts), [daily-cap.test.ts](agent/test/daily-cap.test.ts) |
+| Nhiều giao dịch gửi cùng lúc có thể cùng lọt qua trần ngày | Có test gửi đồng thời bằng `Promise.all`, tổng chi không vượt trần | [daily-cap.test.ts](agent/test/daily-cap.test.ts) |
+| Model có thể lập kế hoạch sai, hoặc đổi người nhận và số tiền | Kế hoạch của model được đối chiếu với yêu cầu ban đầu, lệch thì từ chối. Kế hoạch đúng vẫn phải qua luật chi tiêu | [pipeline.test.ts](agent/test/pipeline.test.ts) |
+| Chủ ví đổi luật trong lúc giao dịch đang được xử lý | Luật được kiểm lại ngay trước khi ký. Chữ ký duyệt trên phiên bản luật cũ không còn hiệu lực | [pipeline.test.ts](agent/test/pipeline.test.ts), [approval.test.ts](agent/test/approval.test.ts) |
+| Gửi số SOL tối đa làm giao dịch thất bại vì ví agent thiếu tiền rent | Khi tính số tiền tối đa có thể gửi, giữ lại cả phí mạng lẫn mức rent tối thiểu | PR [#55](../../pull/55) |
+| Antigravity (Gemini) từ chối một số từ khóa trong schema của công cụ | Schema của công cụ chỉ dùng các từ khóa Gemini chấp nhận | [mcp.test.ts](mcp/test/mcp.test.ts) |
+| Server nexusPay ngừng hoạt động thì tiền trong Task Vault có thể bị kẹt | Sau khi task hết hạn, bất kỳ ai cũng gọi được lệnh hoàn tiền trên chain, và tiền chỉ trả về chủ ví | [Task Capability Vault](#task-capability-vault) |
+
+### Rủi ro chưa xử lý: bị botnet hoặc DDoS làm sập
+
+**Hiện trạng.** Server chưa giới hạn số request theo IP hay theo token (rate limit); việc này đang nằm trong [lộ trình](#lộ-trình). Nếu bị botnet gửi request dồn dập, server có thể chậm hoặc ngừng phản hồi.
+
+**Nếu server sập, tiền sẽ ra sao:**
+
+| Phần | Ảnh hưởng |
+| --- | --- |
+| Ví agent | Không có giao dịch nào được ký, vì chỉ server giữ key của ví agent. Tiền vẫn nằm trên chain và không mất, nhưng cả agent lẫn chủ ví đều không chuyển được tiền đi cho tới khi server chạy lại |
+| Task Vault | Tiền nằm trong hợp đồng trên chain. Sau khi task hết hạn, bất kỳ ai cũng gọi được lệnh hoàn tiền về chủ ví mà không cần server |
+| Request đang chờ duyệt | Quá 300 giây thì hết hạn; agent phải đề xuất lại sau khi server hoạt động trở lại |
+
+Riêng nút nhận 0.1 SOL: mỗi ví agent được nhận một lần, nhưng chưa có giới hạn tổng. Botnet tạo nhiều ví Phantom có thể dùng hết SOL của ví cấp phát. Khi đó người dùng mới không nhận được seed và phải lấy SOL từ faucet. Đây là SOL Devnet, không có giá trị thật.
+
+**Hướng khắc phục (chưa làm):**
+
+- Rate limit theo IP và theo token cho các route đăng nhập, đề xuất giao dịch và nhận seed.
+- Đặt CDN hoặc WAF có chống DDoS phía trước server.
+- Giới hạn tổng số seed phát ra mỗi ngày. Khi cần, chỉ cho phép một danh sách ví đăng nhập bằng biến `ALLOWED_OWNERS` (đã có).
+- Về lâu dài: cho chủ ví tự rút tiền khỏi ví agent mà không cần server, ví dụ chuyển ví agent sang program on-chain như Task Vault.
+
+## Phạm vi và giới hạn
+
+**Đã có:** Solana Devnet, chuyển SOL và SPL token theo allowlist, luật riêng cho từng chủ ví, hạn mức mỗi giao dịch, trần chi SOL trong 24 giờ, khóa khẩn cấp, duyệt bằng chữ ký Phantom hoặc hủy request, lịch sử ví agent, remote MCP, Task Capability Vault (SOL), audit log mã hóa, giao diện tiếng Anh và tiếng Việt.
+
+**Chưa có:** mainnet, swap/staking/NFT, gọi program tùy ý, trần ngày cho SPL token, quy đổi tiền pháp định, xử lý seed phrase.
+
+**Giới hạn đã biết:**
+
+- Ví agent do server nexusPay giữ key (đã mã hóa AES-256-GCM). Chỉ tiền nằm trong Task Vault mới không phụ thuộc server.
+- MCP token đang lưu dạng plaintext trên disk của server. Chuyển sang lưu dạng hash nằm trong lộ trình.
+- Chữ ký xác nhận của worker chỉ chứng minh worker đã xác nhận kết quả, không chứng minh kết quả đó tốt hay đúng.
+- Chưa có rate limit; botnet hoặc DDoS có thể làm server ngừng phản hồi ([chi tiết](#rủi-ro-chưa-xử-lý-bị-botnet-hoặc-ddos-làm-sập)).
+
 ---
 
-## Vấn đề
-
-AI agent ngày càng tự thực hiện công việc có chi phí: gọi API trả phí, thuê agent/dịch vụ khác, mua tài nguyên. Hiện có hai lựa chọn đều không ổn:
-
-1. **Đưa private key cho agent** — một prompt injection là mất toàn bộ tài sản.
-2. **Bắt người duyệt từng giao dịch** — agent không còn tự chủ, mọi việc nhỏ đều phải chờ người.
-
-Thiếu một lớp ở giữa: cho agent tự chi trong phạm vi được cấp, và chặn cứng mọi thứ vượt phạm vi — bằng code và chữ ký, không bằng lời nhắc trong prompt.
-
-## Giải pháp
-
-nexusPay có hai lớp kiểm soát:
-
-| Lớp | Dùng cho | Cơ chế |
-| --- | --- | --- |
-| **Policy Guard** (ví agent) | Thanh toán lẻ: gửi SOL / SPL token | Hạn mức mỗi giao dịch, trần chi SOL trong 24 giờ, allowlist người nhận và mint. Vượt hạn mức → chủ sở hữu ký duyệt bằng ví hoặc hủy. Ngoài allowlist → từ chối, không có đường duyệt. Owner có kill switch để khóa agent. |
-| **Task Capability Vault** (on-chain) | Nhiệm vụ nhiều bước, trả tiền cho worker/service | Anchor program giữ ngân sách task trong PDA. Agent chỉ chuyển được tiền vào escrow; worker chỉ nhận khi ký receipt; hết hạn hoặc bị thu hồi thì phần dư về lại chủ sở hữu. |
-
-Agent kết nối qua **MCP (Model Context Protocol)** — chỉ cần một URL và token, không cài đặt gì trên máy agent.
+# Chi tiết kỹ thuật
 
 ## Vì sao là Solana
 
@@ -124,7 +255,6 @@ Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`
 | Claude Code | `claude mcp add --transport http nexuspay <url> --header "Authorization: Bearer <token>"` |
 | Codex | `[mcp_servers.nexuspay]` với `url` và `http_headers` trong `~/.codex/config.toml` |
 | Antigravity | `serverUrl` và `headers` trong `~/.gemini/config/mcp_config.json` |
-| Claude Desktop | `npx -y mcp-remote <url> --header Authorization:${AUTH_HEADER}` trong `claude_desktop_config.json` |
 
 | Tool | Tác dụng |
 | --- | --- |
@@ -153,7 +283,7 @@ Chạy local: có bản stdio MCP (`pnpm mcp:build` → `dist/mcp/nexuspay-mcp.m
 
 ## Kịch bản demo
 
-Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Dữ liệu (ví agent, policy, token MCP) là của từng ví Phantom; nếu server bị deploy lại mà không có disk thì phải đặt lại từ đầu, nên chuẩn bị sát giờ demo và không deploy sau đó. Tab **Policy**: đặt *Max per transaction* `0.1 SOL`, *Max per day* `0.2 SOL`, thêm recipient tên `my-wallet` bằng *Use owner wallet*, lưu. Nạp khoảng 0.7 SOL vào ví agent: địa chỉ ví agent nằm ở tab **Overview**, gửi từ Phantom hoặc https://faucet.solana.com.
+Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Dữ liệu (ví agent, policy, token MCP) là của từng ví Phantom. Tab **Policy**: đặt *Max per transaction* `0.1 SOL`, *Max per day* `0.2 SOL`, thêm recipient tên `my-wallet` bằng *Use owner wallet*, lưu. Nạp khoảng 0.7 SOL vào ví agent: địa chỉ ví agent nằm ở tab **Overview**, gửi từ Phantom hoặc https://faucet.solana.com.
 
 **Luồng chính — qua MCP (ví dụ Claude Code):**
 
@@ -205,7 +335,7 @@ Biến môi trường bắt buộc:
 - `ALLOWED_OWNERS` (tùy chọn) — danh sách ví được phép, để trống là cho tất cả
 - `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, `AUDIT_ENCRYPTION_PASSPHRASE` — ba giá trị ngẫu nhiên khác nhau, tối thiểu 32 ký tự
 
-Cần persistent disk cho `/data`; không có disk thì mỗi lần deploy lại sẽ sinh ví agent và MCP token mới (đã gặp trên gói free của Render, gói này cũng tự ngủ khi không có truy cập nên request đầu tiên có thể trễ 50 giây trở lên). `GET /api/health` trả thêm `commit` (từ `RENDER_GIT_COMMIT` hoặc `GIT_COMMIT`) để biết bản đang chạy. Chỉ chạy một instance (session và store JSON ở trong process). TLS kết thúc ở nền tảng hosting hoặc reverse proxy.
+Cần persistent disk cho `/data`. `GET /api/health` trả thêm `commit` (từ `RENDER_GIT_COMMIT` hoặc `GIT_COMMIT`) để biết bản đang chạy. Chỉ chạy một instance (session và store JSON ở trong process). TLS kết thúc ở nền tảng hosting hoặc reverse proxy.
 
 ## Kiểm thử
 
@@ -216,6 +346,8 @@ pnpm e2e     # 3 luồng demo + các case tấn công (khi agent đang chạy)
 ```
 
 `pnpm e2e` chạy allow / approval / deny và các case: duyệt bằng ví không phải owner, chữ ký trên thông điệp bị sửa, replay chữ ký duyệt, duyệt dưới phiên bản policy cũ.
+
+Kết quả `pnpm test` hiện tại: agent 226 pass, 3 skip (25 file); mcp 47 pass (3 file). Ba test bị skip (`task-vault-onchain`, `task-vault-persistence`, `task-vault-routes-onchain`) chỉ chạy khi có Solana local validator ở `127.0.0.1:8899`; không có validator thì chúng tự skip, không tính là pass.
 
 ## Cấu trúc repo
 
@@ -238,20 +370,10 @@ extension/                  Chrome extension (Developer mode)
 infra/                      Dockerfile + compose
 ```
 
-## Phạm vi và giới hạn
-
-**Có:** Solana Devnet, SOL và SPL token theo allowlist, policy theo từng owner, hạn mức mỗi giao dịch, trần chi SOL trong 24 giờ, kill switch, duyệt bằng chữ ký Phantom hoặc hủy yêu cầu chờ duyệt, tab Wallet history (SOL vào/ra ví agent, phân trang, link Explorer), remote MCP, Task Capability Vault (SOL), audit log mã hóa, giao diện tiếng Anh / tiếng Việt.
-
-**Không có:** mainnet, swap/staking/NFT, gọi program tùy ý, trần ngày cho SPL token, quy đổi fiat, xử lý seed phrase.
-
-**Giới hạn đã biết:**
-
-- Ví agent của Policy Guard là **custodial**: key do agent service giữ (đã mã hóa). Tính chất non-custodial chỉ áp dụng cho tiền nằm trong Task Vault.
-- MCP token hiện lưu plaintext trên disk của agent service; lưu dạng hash nằm trong lộ trình.
-- Tab Wallet history đọc từ RPC Devnet công khai (10 giao dịch mỗi trang, chỉ bước từng trang); RPC có thể giới hạn tần suất và khi đó tab hiện thông báo lỗi. Thay đổi tính theo số dư của ví agent, đã gồm phí mạng.
-- Receipt không chứng minh chất lượng kết quả ngoài chain.
-- Không dùng cho tiền thật.
-
 ## Lộ trình
 
 Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, hash MCP token và rate limit, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
+
+## Giấy phép
+
+[MIT](LICENSE).
