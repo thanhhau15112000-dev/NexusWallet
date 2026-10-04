@@ -136,7 +136,7 @@ Những vấn đề nhóm đã gặp hoặc đã lường trước trong quá tr
 | `POST /api/auth/challenge`, `POST /api/auth/login` | 10 / phút (mỗi route) | IP |
 | `POST /api/agent/claim-seed`, `POST /api/agent/airdrop` | 5 / giờ (mỗi route) | IP |
 | `POST /api/agent/intents`, `POST /api/commands` | 30 / phút | chủ ví (phiên hoặc MCP token) |
-| `POST /mcp` | 600 / phút (chặn dự phòng; một lần gọi tool tốn vài request `/mcp`) | MCP token; token sai tính theo IP |
+| `POST /mcp` | 600 / phút (chặn dự phòng, đặt cao hơn ngưỡng đọc trong process) | MCP token; token sai tính theo IP |
 | Các route `/api` còn lại | 240 / phút | chủ ví, chưa đăng nhập thì theo IP |
 
 Phiên dashboard và MCP token của cùng một chủ ví có hạn mức riêng. Request bị chặn không chạm tới policy, ví hay idempotency: với `POST /api/agent/intents`, gửi lại cùng `idempotencyKey` sau khi hết hạn chặn trả về đúng request cũ ([rate-limit.test.ts](agent/test/rate-limit.test.ts)). Bản local (chỉ bind loopback) không bật rate limit.
