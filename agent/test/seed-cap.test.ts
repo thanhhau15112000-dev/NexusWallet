@@ -74,6 +74,19 @@ describe('SeedLedger', () => {
     expect(new SeedLedger(path, 3, () => 1_000).reserve()).toBeNull();
   });
 
+  it('blocks for 24 hours from the moment a bad ledger file is found, not from every restart', () => {
+    for (const content of ['{not json', '{}', '{"grants": "x"}']) {
+      const path = join(tempDir(), 'seed-ledger.json');
+      writeFileSync(path, content);
+      const start = 1_000_000_000_000;
+
+      expect(new SeedLedger(path, 3, () => start).reserve(), content).toBeNull();
+      // A restart an hour later is still inside the block and does not push it back.
+      expect(new SeedLedger(path, 3, () => start + HOUR).reserve(), content).toBeNull();
+      expect(new SeedLedger(path, 3, () => start + 25 * HOUR).reserve(), content).not.toBeNull();
+    }
+  });
+
   it('does not grant a slot it could not save', () => {
     const dir = tempDir();
     const blocker = join(dir, 'blocker');
