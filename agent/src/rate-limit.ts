@@ -1,3 +1,4 @@
+import { isIPv6 } from 'node:net';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { AGENT_ERROR_REMEDIATION } from '@nexus/shared';
 import { requestIdentity } from './auth-hook.js';
@@ -30,6 +31,10 @@ const proposeRule: RateRule = { id: 'propose', limit: 30, windowMs: MINUTE, by: 
  *
  * The dashboard polls three reads every 6 s (about 30/min per open tab) and the MCP client polls a held
  * request every 5 s, so the read ceilings sit well above one tab and one agent.
+ *
+ * `/mcp` is only a backstop. A tool call is several `/mcp` requests (initialize and the call itself) plus
+ * one in-process /api request keyed by the same token. That inner request must hit its own limit first,
+ * because only there does the agent get a readable RATE_LIMITED tool error rather than a bare HTTP 429.
  */
 export const DEFAULT_RATE_RULES: Record<string, RateRule> = {
   'POST /api/auth/challenge': authRule('auth.challenge'),
@@ -38,7 +43,7 @@ export const DEFAULT_RATE_RULES: Record<string, RateRule> = {
   'POST /api/agent/airdrop': faucetRule('airdrop'),
   'POST /api/agent/intents': proposeRule,
   'POST /api/commands': proposeRule,
-  'POST /mcp': { id: 'mcp', limit: 120, windowMs: MINUTE, by: 'owner' },
+  'POST /mcp': { id: 'mcp', limit: 600, windowMs: MINUTE, by: 'owner' },
 };
 
 /** Every other /api route, including unknown paths. */
@@ -88,6 +93,20 @@ export class RateLimiter {
   }
 }
 
+/** One host usually controls a whole /64, so an IPv6 client is keyed by that prefix, not by the single address. */
+export function addressBucket(ip: string): string {
+  const address = ip.split('%')[0] ?? ip;
+  if (!isIPv6(address) || address.toLowerCase().startsWith('::ffff:')) return address;
+  const [head = '', tail] = address.toLowerCase().split('::');
+  const headGroups = head ? head.split(':') : [];
+  const tailGroups = tail ? tail.split(':') : [];
+  const groups =
+    tail === undefined
+      ? headGroups
+      : [...headGroups, ...Array<string>(8 - headGroups.length - tailGroups.length).fill('0'), ...tailGroups];
+  return `${groups.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, '')).join(':')}::/64`;
+}
+
 function clientKey(ctx: AppContext, req: FastifyRequest, rule: RateRule): string {
   if (rule.by === 'owner') {
     // Only a verified credential selects an owner bucket. A bearer string that fails verification
@@ -97,7 +116,7 @@ function clientKey(ctx: AppContext, req: FastifyRequest, rule: RateRule): string
     const identity = tokenOwner ? { kind: 'token', owner: tokenOwner } : requestIdentity(ctx, req);
     if (identity) return `${rule.id}|${identity.kind}:${identity.owner}`;
   }
-  return `${rule.id}|ip:${req.ip}`;
+  return `${rule.id}|ip:${addressBucket(req.ip)}`;
 }
 
 export function registerRateLimit(app: FastifyInstance, ctx: AppContext, options: RateLimitOptions = {}): void {

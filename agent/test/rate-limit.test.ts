@@ -11,13 +11,32 @@ import nacl from 'tweetnacl';
 import { registerAuthHook } from '../src/auth-hook.js';
 import { loadConfig, trustProxySetting } from '../src/config.js';
 import { createContext, type AppContext } from '../src/context.js';
-import { RateLimiter, registerRateLimit, type RateLimitOptions } from '../src/rate-limit.js';
+import {
+  DEFAULT_FALLBACK_RULE,
+  DEFAULT_RATE_RULES,
+  RateLimiter,
+  addressBucket,
+  registerRateLimit,
+  type RateLimitOptions,
+} from '../src/rate-limit.js';
 import { registerRoutes } from '../src/routes.js';
 import { SessionManager, SESSION_COOKIE_NAME } from '../src/sessions.js';
 import { Store } from '../src/store.js';
 
 const MINUTE = 60_000;
 const rule = { id: 'r', limit: 3, windowMs: MINUTE, by: 'ip' as const };
+
+describe('addressBucket', () => {
+  it('keeps IPv4 as is and groups IPv6 by /64', () => {
+    expect(addressBucket('203.0.113.9')).toBe('203.0.113.9');
+    expect(addressBucket('::ffff:203.0.113.9')).toBe('::ffff:203.0.113.9');
+    expect(addressBucket('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe('2001:db8:1:2::/64');
+    expect(addressBucket('2001:DB8:1:2::1')).toBe('2001:db8:1:2::/64');
+    expect(addressBucket('2001:db8:1:3::1')).toBe('2001:db8:1:3::/64');
+    expect(addressBucket('2001:db8::1')).toBe('2001:db8:0:0::/64');
+    expect(addressBucket('::1')).toBe('0:0:0:0::/64');
+  });
+});
 
 describe('RateLimiter', () => {
   it('allows up to the limit, then reports when the window reopens', () => {
@@ -136,8 +155,13 @@ describe('rate limit on sensitive routes', () => {
     }
   });
 
-  it('serves 12 MCP polls per minute and blocks only above the /mcp threshold', async () => {
-    const { app } = await startHostedApp({ now: () => 0 });
+  it('keeps the /mcp backstop above the in-process read limit, so the tool error comes first', () => {
+    expect(DEFAULT_RATE_RULES['POST /mcp']!.limit).toBeGreaterThanOrEqual(DEFAULT_FALLBACK_RULE.limit * 2);
+  });
+
+  it('serves 12 MCP polls per minute under the defaults and blocks above the /mcp threshold', async () => {
+    const mcpRule = { id: 'mcp', limit: 30, windowMs: MINUTE, by: 'owner' as const };
+    const { app } = await startHostedApp({ now: () => 0, rules: { ...DEFAULT_RATE_RULES, 'POST /mcp': mcpRule } });
     try {
       const cookieHeader = await login(app, Keypair.generate());
       const token = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body)
@@ -155,7 +179,7 @@ describe('rate limit on sensitive routes', () => {
         // The tool behind the poll reads the request through the same limiter, keyed by the token.
         expect((await app.inject({ method: 'GET', url: '/api/requests/req_missing', headers })).statusCode).toBe(404);
       }
-      for (let i = 12; i < 120; i += 1) expect((await call()).statusCode).not.toBe(429);
+      for (let i = 12; i < 30; i += 1) expect((await call()).statusCode).not.toBe(429);
       const blocked = await call();
       expect(blocked.statusCode).toBe(429);
       expect(blocked.headers['retry-after']).toBe('60');
@@ -164,8 +188,51 @@ describe('rate limit on sensitive routes', () => {
     }
   });
 
+  it('reaches the agent as a readable RATE_LIMITED tool error when a polled read is limited', async () => {
+    const { app } = await startHostedApp({ now: () => 0, fallback: { id: 'api', limit: 2, windowMs: MINUTE, by: 'owner' } });
+    try {
+      const cookieHeader = await login(app, Keypair.generate());
+      const token = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body)
+        .token as string;
+      const poll = async (id: number) =>
+        JSON.parse(
+          (
+            await app.inject({
+              method: 'POST',
+              url: '/mcp',
+              headers: {
+                authorization: `Bearer ${token}`,
+                accept: 'application/json, text/event-stream',
+                'content-type': 'application/json',
+              },
+              payload: {
+                jsonrpc: '2.0',
+                id,
+                method: 'tools/call',
+                params: { name: 'nexuspay_get_request', arguments: { requestId: 'req_abc' } },
+              },
+            })
+          ).body,
+        ).result;
+
+      for (const id of [1, 2]) expect((await poll(id)).isError).toBe(true); // request not found: the tool ran
+      const limited = await poll(3);
+      expect(limited.isError).toBe(true);
+      expect(JSON.parse(limited.content[0].text)).toMatchObject({
+        code: 'RATE_LIMITED',
+        remediation: expect.stringContaining('Wait details.retryAfterSeconds'),
+        details: { retryAfterSeconds: 60 },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keys credentials by a verified owner, so a forged token cannot spend the owner allowance', async () => {
-    const { app } = await startHostedApp({ now: () => 0 });
+    const { app } = await startHostedApp({
+      now: () => 0,
+      rules: { ...DEFAULT_RATE_RULES, 'POST /mcp': { id: 'mcp', limit: 30, windowMs: MINUTE, by: 'owner' } },
+    });
     try {
       const owner = Keypair.generate();
       const cookieHeader = await login(app, owner);
@@ -181,7 +248,7 @@ describe('rate limit on sensitive routes', () => {
         });
 
       let blocked = 0;
-      for (let i = 0; i < 130; i += 1) {
+      for (let i = 0; i < 40; i += 1) {
         if ((await call(forged)).statusCode === 429) blocked += 1;
       }
       expect(blocked).toBe(10);

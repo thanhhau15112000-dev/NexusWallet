@@ -129,14 +129,14 @@ Những vấn đề nhóm đã gặp hoặc đã lường trước trong quá tr
 
 ### Rủi ro chưa xử lý: bị botnet hoặc DDoS làm sập
 
-**Hiện trạng.** Bản hosted giới hạn số request ngay trong server (rate limit, đếm trong bộ nhớ của một process, khởi động lại thì đếm lại từ đầu). Vượt ngưỡng trả HTTP 429 kèm header `Retry-After` và mã lỗi `RATE_LIMITED`; tool MCP chuyển lỗi này thành thông báo "chờ rồi thử lại". Ngưỡng mặc định ([rate-limit.ts](agent/src/rate-limit.ts)):
+**Hiện trạng.** Bản hosted giới hạn số request ngay trong server (rate limit, đếm trong bộ nhớ của một process, khởi động lại thì đếm lại từ đầu). Vượt ngưỡng trả HTTP 429 kèm header `Retry-After` và mã lỗi `RATE_LIMITED`; khi request đọc hoặc đề xuất giao dịch của tool MCP bị chặn, tool trả lỗi `RATE_LIMITED` kèm hướng dẫn "chờ rồi thử lại" ([rate-limit.test.ts](agent/test/rate-limit.test.ts)); chỉ khi vượt ngưỡng chặn dự phòng của `/mcp` thì client nhận HTTP 429 ở tầng truyền tải. Ngưỡng mặc định ([rate-limit.ts](agent/src/rate-limit.ts)):
 
 | Route | Ngưỡng | Tính theo |
 | --- | --- | --- |
 | `POST /api/auth/challenge`, `POST /api/auth/login` | 10 / phút (mỗi route) | IP |
 | `POST /api/agent/claim-seed`, `POST /api/agent/airdrop` | 5 / giờ (mỗi route) | IP |
 | `POST /api/agent/intents`, `POST /api/commands` | 30 / phút | chủ ví (phiên hoặc MCP token) |
-| `POST /mcp` | 120 / phút | MCP token; token sai tính theo IP |
+| `POST /mcp` | 600 / phút (chặn dự phòng; một lần gọi tool tốn vài request `/mcp`) | MCP token; token sai tính theo IP |
 | Các route `/api` còn lại | 240 / phút | chủ ví, chưa đăng nhập thì theo IP |
 
 Phiên dashboard và MCP token của cùng một chủ ví có hạn mức riêng. Request bị chặn không chạm tới policy, ví hay idempotency: với `POST /api/agent/intents`, gửi lại cùng `idempotencyKey` sau khi hết hạn chặn trả về đúng request cũ ([rate-limit.test.ts](agent/test/rate-limit.test.ts)). Bản local (chỉ bind loopback) không bật rate limit.

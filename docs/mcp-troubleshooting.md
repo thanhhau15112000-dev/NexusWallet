@@ -11,6 +11,7 @@ Dành cho người (hoặc agent) đang cài nexusPay MCP vào client. Cách k�
 | Transfer trả `outcome_unknown` | Timeout hoặc lỗi server sau khi đã gửi | Gọi lại với cùng `idempotencyKey`; không đổi số tiền |
 | Transfer trả `IDEMPOTENCY_CONFLICT` | Dùng lại key cho giao dịch khác | Dùng key mới cho giao dịch mới |
 | Transfer trả `AGENT_FROZEN` | Owner đã khóa agent | Dừng đề xuất transfer; báo owner mở khóa trên dashboard |
+| Tool trả `RATE_LIMITED` (HTTP 429) | Quá nhiều request từ token hoặc địa chỉ này | Chờ `details.retryAfterSeconds` giây rồi thử lại; với transfer thì dùng lại đúng `idempotencyKey` |
 | Transfer trả `DAILY_LIMIT_EXCEEDED` | Tổng chi tiêu SOL trong 24 giờ vượt hạn mức ngày | Owner duyệt trên dashboard hoặc chờ hoàn hạn mức (xem details.remainingSol) |
 
 ## Bản stdio chạy từ repo
