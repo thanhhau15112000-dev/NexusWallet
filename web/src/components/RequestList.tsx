@@ -21,7 +21,9 @@ function verdictTone(verdict: string): string {
   return 'bad';
 }
 
-export function describeAction(request: PaymentRequest): string {
+export type ActionLabels = { balance: string; manualApproval: string };
+
+export function describeAction(request: PaymentRequest, labels: ActionLabels): string {
   const action = request.plan?.action;
   if (!action) return '-';
   switch (action.type) {
@@ -30,9 +32,9 @@ export function describeAction(request: PaymentRequest): string {
     case 'transfer_spl':
       return `${action.amount} ${shorten(action.mint, 4)} → ${shorten(action.recipient, 6)}`;
     case 'get_balance':
-      return 'Balance';
+      return labels.balance;
     case 'request_manual_approval':
-      return 'Manual approval';
+      return labels.manualApproval;
   }
 }
 
@@ -90,7 +92,7 @@ function RequestRow(props: {
       </div>
 
       <div className="request-summary">
-        <Mono>{describeAction(request)}</Mono>
+        <Mono>{describeAction(request, dict.requests.actions)}</Mono>
         {request.execution ? (
           <a href={request.execution.explorerUrl} target="_blank" rel="noreferrer" className="link">
             {dict.requests.explorer}
