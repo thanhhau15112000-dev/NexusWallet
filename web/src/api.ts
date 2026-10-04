@@ -6,6 +6,7 @@ import type {
   TaskPaymentRecord,
   TaskReceiptRecord,
 } from '@nexus/shared';
+import { getCurrentDictionary } from './i18n/context.js';
 
 export type AgentState = {
   cluster: string;
@@ -117,6 +118,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body && typeof body === 'object' ? (body as { message?: unknown; error?: unknown }) : {};
     const message = typeof errorBody.message === 'string' ? errorBody.message : undefined;
     const code = typeof errorBody.error === 'string' ? errorBody.error : 'request failed';
+    if (response.status === 429 && code === 'RATE_LIMITED') {
+      const seconds = Number(response.headers.get('retry-after')) || 1;
+      const template = getCurrentDictionary().apiErrors.rateLimited;
+      throw new ApiError(template.replace('{seconds}', String(seconds)), response.status, code);
+    }
     throw new ApiError(message ?? `${code} (${response.status})`, response.status, code);
   }
   return body as T;

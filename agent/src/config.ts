@@ -34,6 +34,15 @@ const EnvSchema = z.object({
 
   WEB_ORIGIN: z.string().default('http://localhost:5173'),
 
+  /**
+   * Hosted only: how many proxies in front of the agent append to X-Forwarded-For. The client
+   * address is taken that many entries from the right, so entries a client sends itself are
+   * ignored. Render appends the address it saw to whatever the client sent; two hops reaches the
+   * real client behind Render's edge. Too low keys everyone to a proxy address, too high lets a
+   * client choose its own address; check the `remoteAddress` in the request log after deploying.
+   */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(2),
+
   APPROVAL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   MAX_REQUESTS_KEPT: z.coerce.number().int().positive().default(200),
 });
@@ -63,6 +72,17 @@ export function isAllowedDevnetRpcUrl(value: string): boolean {
 }
 
 export type AppConfig = ReturnType<typeof loadConfig>;
+
+export type TrustProxy = (address: string, hop: number) => boolean;
+
+/**
+ * Fastify `trustProxy` for this deployment. Local mode only listens on loopback, so no proxy header is
+ * believed there. A function rather than the number itself: Fastify treats a bare hop count as
+ * "trust nothing", which would key every hosted client to the proxy's address.
+ */
+export function trustProxySetting(config: Pick<AppConfig, 'authRequired' | 'TRUST_PROXY_HOPS'>): TrustProxy | false {
+  return config.authRequired ? (_address, hop) => hop < config.TRUST_PROXY_HOPS : false;
+}
 
 export function loadConfig() {
   for (const candidate of [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../.env')]) {

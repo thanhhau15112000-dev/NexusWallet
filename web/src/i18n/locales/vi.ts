@@ -217,6 +217,9 @@ export const vi: TranslationDictionary = {
       execution_failed: 'Giao dịch thất bại: {message}',
     },
   },
+  apiErrors: {
+    rateLimited: 'Quá nhiều yêu cầu. Chờ {seconds} giây rồi thử lại.',
+  },
   history: {
     requestsTitle: 'Yêu cầu của agent',
     title: 'Lịch sử giao dịch ví agent',
