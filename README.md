@@ -72,13 +72,13 @@ Kiểm chứng: [policy.test.ts](agent/test/policy.test.ts), [pipeline.test.ts](
 **2. Duyệt bằng chữ ký ví, không giả mạo hay dùng lại được.** Chữ ký duyệt gắn với đúng request, số tiền, người nhận, phiên bản luật và thời hạn. Hệ thống từ chối chữ ký từ ví khác, chữ ký trên nội dung đã bị sửa, chữ ký dùng lại lần hai, chữ ký quá hạn, và chữ ký ký trên phiên bản luật cũ.
 Kiểm chứng: [approval.test.ts](agent/test/approval.test.ts), [e2e.ts](agent/scripts/e2e.ts)
 
-**3. Trần chi theo ngày không lách được.** Chia nhỏ khoản tiền hay gửi nhiều giao dịch cùng lúc đều không vượt được trần 24 giờ. Gọi lại cùng một giao dịch sau khi timeout cũng không bị trả tiền hai lần.
+**3. Trần chi SOL theo ngày không lách được.** Chia nhỏ khoản tiền hay gửi nhiều giao dịch cùng lúc đều không vượt trần 24 giờ khi chưa có chủ ví duyệt. Trần này áp dụng cho SOL; SPL token chỉ có hạn mức mỗi giao dịch. Gọi lại cùng một giao dịch sau khi timeout cũng không bị trả tiền hai lần.
 Kiểm chứng: [daily-cap.test.ts](agent/test/daily-cap.test.ts)
 
-**4. Nút khóa khẩn cấp có hiệu lực ở mọi đường ký.** Khi bật, mọi đường chuyển tiền đều bị chặn: qua MCP, qua dashboard, qua duyệt request, qua Task Vault. Trạng thái khóa vẫn giữ sau khi server khởi động lại. Khóa agent của một chủ ví không ảnh hưởng chủ ví khác.
+**4. Nút khóa khẩn cấp có hiệu lực ở mọi đường ký.** Khi bật, mọi đường ví agent ký chuyển tiền đều bị chặn: qua MCP, qua dashboard, qua duyệt request, qua thanh toán và settle của Task Vault. Hoàn tiền Task Vault về chủ ví và thu hồi task vẫn được phép. Trạng thái khóa vẫn giữ sau khi server khởi động lại, với điều kiện thư mục dữ liệu của server được giữ lại. Khóa agent của một chủ ví không ảnh hưởng chủ ví khác.
 Kiểm chứng: [kill-switch.test.ts](agent/test/kill-switch.test.ts)
 
-**5. Task Vault đã chạy trên Devnet.** Lần kiểm tra ngày 28/9 ghi 20 giao dịch. Trong đó 12 giao dịch bị program từ chối đúng như mong đợi: vượt mức mỗi lần trả, vượt ngân sách, worker hoặc service không được phép, sai người ký. Program trên chain khớp từng byte với bản build trong repo.
+**5. Task Vault đã chạy trên Devnet.** Bảng giao dịch của lần kiểm tra ngày 28/9 có 28 chữ ký: 16 thành công, 12 bị program từ chối đúng như mong đợi (vượt mức mỗi lần trả, vượt ngân sách, worker hoặc service không được phép, sai người ký). Tại thời điểm kiểm tra, binary trên chain khớp từng byte với bản build local; program vẫn có quyền nâng cấp.
 Kiểm chứng: [issue #6](../../issues/6), [verify-task-vault-devnet.ts](agent/scripts/verify-task-vault-devnet.ts)
 
 **6. Phản hồi viết để agent tự hiểu.** Khi bị chặn hoặc phải chờ duyệt, agent nhận về mã lỗi, hướng xử lý và số liệu cụ thể, ví dụ còn bao nhiêu SOL trong trần ngày. Agent dựa vào đó để điều chỉnh thay vì thử lại y nguyên.
