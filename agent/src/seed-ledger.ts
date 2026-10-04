@@ -65,14 +65,26 @@ export class SeedLedger {
 
   private load(): void {
     if (!this.path || !existsSync(this.path)) return;
+    let stored: number[] | null = null;
     try {
-      const stored = JSON.parse(readFileSync(this.path, 'utf8')) as { grants?: unknown };
-      if (Array.isArray(stored.grants)) {
-        this.grants = stored.grants.filter((value): value is number => Number.isFinite(value)).sort((a, b) => a - b);
+      const parsed = JSON.parse(readFileSync(this.path, 'utf8')) as { grants?: unknown };
+      if (Array.isArray(parsed.grants)) {
+        stored = parsed.grants.filter((value): value is number => Number.isFinite(value)).sort((a, b) => a - b);
       }
     } catch {
+      // Handled below, the same as a file without a grants list.
+    }
+    if (stored === null) {
       // An unreadable ledger would otherwise lift the cap, so fail closed: count the whole cap as used now.
+      // Saved straight away, so the block ends 24 hours after this moment instead of restarting on every boot.
       this.grants = Array.from({ length: this.cap }, (_, index) => this.now() + index);
+      try {
+        this.persist();
+      } catch {
+        // Still blocked in memory; the next start tries again.
+      }
+    } else {
+      this.grants = stored;
     }
     this.prune();
   }
