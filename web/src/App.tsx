@@ -47,6 +47,8 @@ import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
+const REPO_URL = 'https://github.com/thanhhau15112000-dev/NexusWallet#readme';
+
 type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'history' | 'audit' | 'docs';
 
 type NavGroup = 'operate' | 'control' | 'resources';
@@ -509,6 +511,11 @@ export function App() {
     return (
       <main className="boot-page">
         <section className="boot" aria-labelledby="login-title">
+          {needsSignIn ? (
+            <div className="boot-lang">
+              <LanguageToggle />
+            </div>
+          ) : null}
           <Mascot
             className="boot-mascot"
             pose={offline ? 'sleep' : needsSignIn ? 'wave' : 'think'}
@@ -544,6 +551,18 @@ export function App() {
                   {dict.boot.installPhantom}
                 </p>
               ) : null}
+              <div className="boot-intro">
+                <p className="boot-tagline">{dict.boot.introTagline}</p>
+                <ul className="boot-points">
+                  <li><span className="boot-dot ok" aria-hidden="true" />{dict.boot.introAllow}</li>
+                  <li><span className="boot-dot warn" aria-hidden="true" />{dict.boot.introApproval}</li>
+                  <li><span className="boot-dot bad" aria-hidden="true" />{dict.boot.introDeny}</li>
+                </ul>
+                <p className="hint">{dict.boot.introDevnet}</p>
+                <a className="link" href={REPO_URL} target="_blank" rel="noreferrer">
+                  {dict.boot.introDocs}
+                </a>
+              </div>
             </>
           ) : null}
         </section>

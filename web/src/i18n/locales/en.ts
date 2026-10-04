@@ -67,6 +67,12 @@ export const en: TranslationDictionary = {
     signInBtn: 'Sign in with Phantom',
     connecting: 'Connecting…',
     installPhantom: 'Install Phantom',
+    introTagline: 'A spending-policy wallet for AI agents on Solana. The agent proposes payments; your policy decides.',
+    introAllow: 'Within your limits: signed at once.',
+    introApproval: 'Over a limit: waits for your approval in Phantom.',
+    introDeny: 'Recipient not on your list: denied, with no way to approve.',
+    introDevnet: 'Runs on Solana Devnet (test funds). Turn on Testnet Mode in Phantom Developer Settings before signing in.',
+    introDocs: 'How it works (GitHub)',
   },
   toasts: {
     confirmed: 'Confirmed on devnet',
