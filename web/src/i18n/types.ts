@@ -191,6 +191,26 @@ export type TranslationDictionary = {
       denied: string;
       expired: string;
     };
+    /** Keyed by `PaymentRequest.error.code`; `{param}` placeholders come from `error.details`, `{message}` is the raw error text. */
+    errors: {
+      RECIPIENT_NOT_IN_ALLOWLIST: string;
+      MINT_NOT_IN_ALLOWLIST: string;
+      AMOUNT_EXCEEDS_TRANSACTION_LIMIT: string;
+      DAILY_LIMIT_EXCEEDED: string;
+      INVALID_AMOUNT: string;
+      NO_EXECUTABLE_ACTION: string;
+      MODEL_PLAN_MISMATCH: string;
+      INSUFFICIENT_FUNDS_INCLUDING_FEES: string;
+      PENDING_APPROVAL_REQUIRED: string;
+      IDEMPOTENCY_CONFLICT: string;
+      AGENT_FROZEN: string;
+      expired: string;
+      cancelled: string;
+      policy_changed: string;
+      no_action: string;
+      model_error: string;
+      execution_failed: string;
+    };
   };
   history: {
     requestsTitle: string;
