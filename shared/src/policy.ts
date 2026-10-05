@@ -151,22 +151,25 @@ export function spentLamportsInWindow(
     if (Number.isNaN(createdAtMs) || createdAtMs < cutoff || createdAtMs > nowMs) {
       continue;
     }
-    const isCountedStatus =
-      req.status === 'auto_approved' ||
-      req.status === 'approved' ||
-      req.status === 'confirmed' ||
-      (req.status === 'failed' && req.error?.code === 'execution_failed');
-
-    if (!isCountedStatus) {
-      continue;
-    }
-
-    if (req.decision?.resolved?.type === 'transfer_sol') {
+    if (isCountedSolSpend(req) && req.decision?.resolved?.type === 'transfer_sol') {
       spent += req.decision.resolved.lamports;
     }
   }
 
   return spent;
+}
+
+/**
+ * A SOL transfer that moved, or may have moved, money and so counts toward the 24-hour limit.
+ * The store keeps these for the whole window; see `Store.prune` in the agent.
+ */
+export function isCountedSolSpend(req: PaymentRequest): boolean {
+  const counted =
+    req.status === 'auto_approved' ||
+    req.status === 'approved' ||
+    req.status === 'confirmed' ||
+    (req.status === 'failed' && req.error?.code === 'execution_failed');
+  return counted && req.decision?.resolved?.type === 'transfer_sol';
 }
 
 /**

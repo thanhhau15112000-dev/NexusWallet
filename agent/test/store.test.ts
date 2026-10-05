@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { PaymentRequest } from '@nexus/shared';
+import { defaultPolicy, evaluatePolicy, spentLamportsInWindow, type PaymentRequest } from '@nexus/shared';
 import { Store } from '../src/store.js';
 
 describe('Store', () => {
@@ -144,18 +144,105 @@ describe('Store', () => {
 
   it('prunes oldest requests and removes their idempotency keys when exceeding limit', () => {
     const store = new Store(statePath, 'agent-001', 2);
+    const denied = { status: 'denied' as const, approval: null };
 
-    store.putRequest(makeRequest({ id: 'req_1', idempotencyKey: 'idem_1' }));
-    store.putRequest(makeRequest({ id: 'req_2', idempotencyKey: 'idem_2' }));
+    store.putRequest(makeRequest({ id: 'req_1', idempotencyKey: 'idem_1', ...denied }));
+    store.putRequest(makeRequest({ id: 'req_2', idempotencyKey: 'idem_2', ...denied }));
     expect(store.listRequests()).toHaveLength(2);
 
-    store.putRequest(makeRequest({ id: 'req_3', idempotencyKey: 'idem_3' }));
+    store.putRequest(makeRequest({ id: 'req_3', idempotencyKey: 'idem_3', ...denied }));
     expect(store.listRequests()).toHaveLength(2);
 
     expect(store.getRequest('req_1')).toBeUndefined();
     expect(store.findByIdempotencyKey('idem_1')).toBeUndefined();
     expect(store.getRequest('req_3')).toBeDefined();
     expect(store.findByIdempotencyKey('idem_3')?.id).toBe('req_3');
+  });
+
+  describe('pruning keeps what the 24-hour SOL limit and retries depend on', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const WALLET = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+
+    function solSpend(id: string, lamports: number, createdAt = new Date().toISOString()): PaymentRequest {
+      return makeRequest({
+        id,
+        createdAt,
+        status: 'confirmed',
+        idempotencyKey: `idem_${id}`,
+        approval: null,
+        decision: {
+          verdict: 'allow',
+          policyVersion: 1,
+          reasons: [],
+          resolved: { type: 'transfer_sol', recipient: WALLET, recipientLabel: 'my-wallet', lamports },
+        },
+      });
+    }
+
+    function balanceCheck(id: string): PaymentRequest {
+      return makeRequest({ id, status: 'confirmed', approval: null, balanceLamports: 1, prompt: 'check balance' });
+    }
+
+    it('keeps counted SOL spends after 200 balance requests, so the daily limit still applies', () => {
+      const store = new Store(statePath, 'agent-001', 200);
+      for (let i = 0; i < 10; i += 1) store.putRequest(solSpend(`spend_${i}`, 100_000_000));
+      for (let i = 0; i < 200; i += 1) store.putRequest(balanceCheck(`balance_${i}`));
+
+      const spent = spentLamportsInWindow(store.listRequests());
+      expect(spent).toBe(1_000_000_000);
+      const policy = {
+        ...defaultPolicy('agent-001'),
+        maxSolLamportsPerDay: 200_000_000,
+        allowedRecipients: [{ label: 'my-wallet', address: WALLET }],
+      };
+      const decision = evaluatePolicy(policy, { type: 'transfer_sol', recipient: 'my-wallet', amountSol: 0.05 }, { spentLamports24h: spent });
+      expect(decision.verdict).toBe('require_approval');
+      expect(decision.code).toBe('DAILY_LIMIT_EXCEEDED');
+    });
+
+    it('keeps the idempotency key of a counted spend, so a retry returns the original request', () => {
+      const store = new Store(statePath, 'agent-001', 200);
+      store.putRequest(solSpend('spend_1', 50_000_000));
+      for (let i = 0; i < 200; i += 1) store.putRequest(balanceCheck(`balance_${i}`));
+
+      expect(store.findByIdempotencyKey('idem_spend_1')?.id).toBe('spend_1');
+    });
+
+    it('lets a counted spend go once it is older than the 24-hour window', () => {
+      const store = new Store(statePath, 'agent-001', 2);
+      store.putRequest(solSpend('old_spend', 50_000_000, new Date(Date.now() - DAY_MS - 60_000).toISOString()));
+      store.putRequest(balanceCheck('balance_1'));
+      store.putRequest(balanceCheck('balance_2'));
+
+      expect(store.getRequest('old_spend')).toBeUndefined();
+      expect(store.findByIdempotencyKey('idem_old_spend')).toBeUndefined();
+    });
+
+    it('keeps a pending approval until it reaches a final status', () => {
+      const store = new Store(statePath, 'agent-001', 1);
+      store.putRequest(makeRequest({ id: 'pending_1' }));
+      store.putRequest(balanceCheck('balance_1'));
+      store.putRequest(balanceCheck('balance_2'));
+      expect(store.getRequest('pending_1')).toBeDefined();
+
+      store.putRequest({ ...store.getRequest('pending_1')!, status: 'expired' });
+      store.putRequest(balanceCheck('balance_3'));
+      expect(store.getRequest('pending_1')).toBeUndefined();
+    });
+
+    it('still drops denied and balance requests with their keys', () => {
+      const store = new Store(statePath, 'agent-001', 3);
+      store.putRequest(solSpend('spend_1', 50_000_000));
+      store.putRequest(makeRequest({ id: 'denied_1', status: 'denied', approval: null, idempotencyKey: 'idem_denied_1' }));
+      store.putRequest(balanceCheck('balance_1'));
+      store.putRequest(balanceCheck('balance_2'));
+      store.putRequest(balanceCheck('balance_3'));
+
+      expect(store.listRequests()).toHaveLength(3);
+      expect(store.getRequest('spend_1')).toBeDefined();
+      expect(store.getRequest('denied_1')).toBeUndefined();
+      expect(store.findByIdempotencyKey('idem_denied_1')).toBeUndefined();
+    });
   });
 
   it('scopes task payment and receipt ids per task and re-keys legacy state files', () => {
