@@ -41,7 +41,7 @@ import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { LanguageToggle } from './components/SettingsMenu.js';
-import { Mascot } from './components/Mascot.js';
+import { BootScreen } from './components/BootScreen.js';
 import { Mono, Pill, shorten } from './components/ui.js';
 import { useI18n } from './i18n/context.js';
 
@@ -509,64 +509,23 @@ export function App() {
   if (!state) {
     const needsSignIn = authReady && authRequired && !authenticated;
     return (
-      <main className="boot-page">
-        <section className="boot" aria-labelledby="login-title">
-          {needsSignIn ? (
-            <div className="boot-lang">
-              <LanguageToggle />
-            </div>
-          ) : null}
-          <Mascot
-            className="boot-mascot"
-            pose={offline ? 'sleep' : needsSignIn ? 'wave' : 'think'}
-            caption={offline ? dict.mascot.offline : needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
+      <BootScreen
+        needsSignIn={needsSignIn}
+        offline={offline}
+        signInError={signInError}
+        connecting={Boolean(busy.connect)}
+        hasWallets={walletChoices.length > 0}
+        pickerOpen={walletPickerOpen}
+        onTogglePicker={() => setWalletPickerOpen((open) => !open)}
+        walletOptions={
+          <WalletOptions
+            choices={walletChoices}
+            busy={Boolean(busy.connect)}
+            onSelect={(choice) => void connect(choice)}
           />
-          <h1 id="login-title">nexusPay</h1>
-          <p className="boot-status">{needsSignIn ? dict.boot.signInRequired : offline ? dict.boot.serviceUnavailable : dict.boot.loading}</p>
-          {offline ? <p className="bad-text boot-error">{offline}</p> : null}
-          {signInError ? <p className="bad-text boot-error">{signInError}</p> : null}
-          {authReady && authRequired && !authenticated ? (
-            <>
-              <button
-                type="button"
-                className="primary boot-sign-in"
-                aria-expanded={walletPickerOpen}
-                aria-controls="login-wallet-options"
-                disabled={!walletChoices.length || Boolean(busy.connect)}
-                onClick={() => setWalletPickerOpen((open) => !open)}
-              >
-                {busy.connect ? dict.boot.connecting : dict.boot.signInBtn}
-              </button>
-              {walletPickerOpen ? (
-                <div id="login-wallet-options" className="boot-wallet-picker">
-                  <WalletOptions
-                    choices={walletChoices}
-                    busy={Boolean(busy.connect)}
-                    onSelect={(choice) => void connect(choice)}
-                  />
-                </div>
-              ) : null}
-              {!walletChoices.length ? (
-                <p className="wallet-picker-empty boot-wallet-empty">
-                  {dict.boot.installPhantom}
-                </p>
-              ) : null}
-              <div className="boot-intro">
-                <p className="boot-tagline">{dict.boot.introTagline}</p>
-                <ul className="boot-points">
-                  <li><span className="boot-dot ok" aria-hidden="true" />{dict.boot.introAllow}</li>
-                  <li><span className="boot-dot warn" aria-hidden="true" />{dict.boot.introApproval}</li>
-                  <li><span className="boot-dot bad" aria-hidden="true" />{dict.boot.introDeny}</li>
-                </ul>
-                <p className="hint">{dict.boot.introDevnet}</p>
-                <a className="link" href={REPO_URL} target="_blank" rel="noreferrer">
-                  {dict.boot.introDocs}
-                </a>
-              </div>
-            </>
-          ) : null}
-        </section>
-      </main>
+        }
+        repoUrl={REPO_URL}
+      />
     );
   }
 
