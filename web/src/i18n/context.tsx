@@ -24,10 +24,7 @@ function getInitialLanguage(): Locale {
   } catch {
     // localStorage blocked
   }
-  if (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi')) {
-    return 'vi';
-  }
-  return 'en';
+  return 'vi';
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {

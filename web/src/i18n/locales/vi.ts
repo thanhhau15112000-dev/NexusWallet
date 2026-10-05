@@ -72,7 +72,7 @@ export const vi: TranslationDictionary = {
     signInBtn: 'Đăng nhập bằng ví',
     connecting: 'Đang kết nối…',
     installPhantom: 'Cài ví Solana, chẳng hạn Phantom, rồi tải lại trang.',
-    introTagline: 'Nhờ AI thanh toán trên Solana, với hạn mức và người nhận do bạn chọn.',
+    introTagline: 'Cho phép AI thanh toán trên Solana, với hạn mức và người nhận do bạn chọn.',
     introAllow: 'Đúng quy tắc và trong hạn mức: agent tự ký giao dịch.',
     introApproval: 'Vượt hạn mức: cần bạn ký duyệt bằng ví.',
     introDeny: 'Người nhận ngoài danh sách cho phép: giao dịch bị chặn.',
