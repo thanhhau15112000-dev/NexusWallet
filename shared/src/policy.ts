@@ -160,16 +160,23 @@ export function spentLamportsInWindow(
 }
 
 /**
- * A SOL transfer that moved, or may have moved, money and so counts toward the 24-hour limit.
- * The store keeps these for the whole window; see `Store.prune` in the agent.
+ * A SOL or SPL transfer that moved, or may have moved, money: it reached the signer and either
+ * confirmed or failed during execution (outcome unknown). The store keeps these for the whole
+ * 24-hour window so retries keep their idempotency key; see `Store.prune` in the agent.
  */
-export function isCountedSolSpend(req: PaymentRequest): boolean {
-  const counted =
+export function mayHaveMovedFunds(req: PaymentRequest): boolean {
+  const reachedSigner =
     req.status === 'auto_approved' ||
     req.status === 'approved' ||
     req.status === 'confirmed' ||
     (req.status === 'failed' && req.error?.code === 'execution_failed');
-  return counted && req.decision?.resolved?.type === 'transfer_sol';
+  const type = req.decision?.resolved?.type;
+  return reachedSigner && (type === 'transfer_sol' || type === 'transfer_spl');
+}
+
+/** The SOL subset of `mayHaveMovedFunds`: what counts toward the 24-hour SOL limit. */
+export function isCountedSolSpend(req: PaymentRequest): boolean {
+  return mayHaveMovedFunds(req) && req.decision?.resolved?.type === 'transfer_sol';
 }
 
 /**

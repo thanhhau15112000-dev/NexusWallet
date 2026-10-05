@@ -230,6 +230,68 @@ describe('Store', () => {
       expect(store.getRequest('pending_1')).toBeUndefined();
     });
 
+    function splTransfer(
+      id: string,
+      overrides: Partial<PaymentRequest> = {},
+      createdAt = new Date().toISOString(),
+    ): PaymentRequest {
+      return makeRequest({
+        id,
+        createdAt,
+        status: 'confirmed',
+        idempotencyKey: `idem_${id}`,
+        approval: null,
+        decision: {
+          verdict: 'allow',
+          policyVersion: 1,
+          reasons: [],
+          resolved: {
+            type: 'transfer_spl',
+            recipient: WALLET,
+            recipientLabel: 'my-wallet',
+            mint: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr',
+            mintLabel: 'usdc',
+            amount: 5,
+          },
+        },
+        ...overrides,
+      });
+    }
+
+    const executionFailed = {
+      status: 'failed' as const,
+      error: { code: 'execution_failed', message: 'RPC timeout after send' },
+    };
+
+    it('keeps SPL transfers that moved or may have moved funds, so a retry returns the original request', () => {
+      const store = new Store(statePath, 'agent-001', 200);
+      store.putRequest(splTransfer('spl_confirmed'));
+      store.putRequest(splTransfer('spl_failed', executionFailed));
+      for (let i = 0; i < 200; i += 1) store.putRequest(balanceCheck(`balance_${i}`));
+
+      expect(store.findByIdempotencyKey('idem_spl_confirmed')?.id).toBe('spl_confirmed');
+      expect(store.findByIdempotencyKey('idem_spl_failed')?.id).toBe('spl_failed');
+    });
+
+    it('lets an SPL transfer go once it is older than the 24-hour window', () => {
+      const store = new Store(statePath, 'agent-001', 2);
+      store.putRequest(splTransfer('old_spl', {}, new Date(Date.now() - DAY_MS - 60_000).toISOString()));
+      store.putRequest(balanceCheck('balance_1'));
+      store.putRequest(balanceCheck('balance_2'));
+
+      expect(store.getRequest('old_spl')).toBeUndefined();
+      expect(store.findByIdempotencyKey('idem_old_spl')).toBeUndefined();
+    });
+
+    it('counts only SOL toward the 24-hour limit, not SPL transfers', () => {
+      const store = new Store(statePath, 'agent-001', 200);
+      store.putRequest(solSpend('spend_1', 50_000_000));
+      store.putRequest(splTransfer('spl_1'));
+      store.putRequest(splTransfer('spl_2', executionFailed));
+
+      expect(spentLamportsInWindow(store.listRequests())).toBe(50_000_000);
+    });
+
     it('still drops denied and balance requests with their keys', () => {
       const store = new Store(statePath, 'agent-001', 3);
       store.putRequest(solSpend('spend_1', 50_000_000));

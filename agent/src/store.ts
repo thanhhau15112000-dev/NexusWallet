@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import {
   DEFAULT_DAILY_WINDOW_MS,
   defaultPolicy,
-  isCountedSolSpend,
+  mayHaveMovedFunds,
   PolicySchema,
   TaskCapabilityRecordSchema,
   TaskPaymentRecordSchema,
@@ -224,8 +224,9 @@ export class Store {
 
   /**
    * Keeps the request list near `maxRequests`, oldest first, but never drops a request that the
-   * 24-hour SOL limit or a retry still depends on: counted SOL spends inside the window and requests
-   * that have not reached a final status. When only those remain the list may exceed the cap.
+   * 24-hour SOL limit or a retry still depends on: SOL and SPL transfers that moved, or may have
+   * moved, funds inside the window, and requests that have not reached a final status. When only
+   * those remain the list may exceed the cap.
    */
   private prune(now = Date.now()): void {
     let excess = this.data.requests.length - this.maxRequests;
@@ -303,7 +304,7 @@ const IN_FLIGHT_STATUSES = new Set(['planned', 'pending_approval', 'approved', '
 
 function isLoadBearing(request: PaymentRequest, cutoff: number): boolean {
   if (IN_FLIGHT_STATUSES.has(request.status)) return true;
-  return isCountedSolSpend(request) && new Date(request.createdAt).getTime() >= cutoff;
+  return mayHaveMovedFunds(request) && new Date(request.createdAt).getTime() >= cutoff;
 }
 
 // Payment ids are scoped per task on-chain (escrow/receipt PDA seeds), so records are too.
