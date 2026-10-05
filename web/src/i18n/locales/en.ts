@@ -192,6 +192,10 @@ export const en: TranslationDictionary = {
     balanceTag: 'Balance',
     signatureTag: 'Signature',
     explorer: 'Explorer ↗',
+    actions: {
+      balance: 'Balance',
+      manualApproval: 'Manual approval',
+    },
     statuses: {
       planned: 'Queued',
       auto_approved: 'Auto',
@@ -417,6 +421,7 @@ export const en: TranslationDictionary = {
     },
   },
   docs: {
+    navLabel: 'Documentation',
     searchPlaceholder: 'Search docs',
     empty: 'No matching pages',
     previous: 'Previous',

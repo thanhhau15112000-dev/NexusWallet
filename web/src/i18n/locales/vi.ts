@@ -192,6 +192,10 @@ export const vi: TranslationDictionary = {
     balanceTag: 'Số dư',
     signatureTag: 'Chữ ký',
     explorer: 'Explorer ↗',
+    actions: {
+      balance: 'Số dư',
+      manualApproval: 'Duyệt thủ công',
+    },
     statuses: {
       planned: 'Chờ xử lý',
       auto_approved: 'Đã tự động duyệt',
@@ -417,6 +421,7 @@ export const vi: TranslationDictionary = {
     },
   },
   docs: {
+    navLabel: 'Tài liệu',
     searchPlaceholder: 'Tìm kiếm tài liệu',
     empty: 'Không tìm thấy trang phù hợp',
     previous: 'Trang trước',

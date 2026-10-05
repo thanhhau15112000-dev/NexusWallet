@@ -192,6 +192,10 @@ export type TranslationDictionary = {
     balanceTag: string;
     signatureTag: string;
     explorer: string;
+    actions: {
+      balance: string;
+      manualApproval: string;
+    };
     statuses: {
       planned: string;
       auto_approved: string;
@@ -417,6 +421,7 @@ export type TranslationDictionary = {
     };
   };
   docs: {
+    navLabel: string;
     searchPlaceholder: string;
     empty: string;
     previous: string;
