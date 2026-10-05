@@ -1,7 +1,9 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
+  DEFAULT_DAILY_WINDOW_MS,
   defaultPolicy,
+  mayHaveMovedFunds,
   PolicySchema,
   TaskCapabilityRecordSchema,
   TaskPaymentRecordSchema,
@@ -214,15 +216,32 @@ export class Store {
       if (request.idempotencyKey) {
         this.data.idempotency[request.idempotencyKey] = request.id;
       }
-      if (this.data.requests.length > this.maxRequests) {
-        const dropped = this.data.requests.splice(0, this.data.requests.length - this.maxRequests);
-        for (const item of dropped) {
-          if (item.idempotencyKey) delete this.data.idempotency[item.idempotencyKey];
-        }
-      }
+      this.prune();
     }
     this.flush();
     return next;
+  }
+
+  /**
+   * Keeps the request list near `maxRequests`, oldest first, but never drops a request that the
+   * 24-hour SOL limit or a retry still depends on: SOL and SPL transfers that moved, or may have
+   * moved, funds inside the window, and requests that have not reached a final status. When only
+   * those remain the list may exceed the cap.
+   */
+  private prune(now = Date.now()): void {
+    let excess = this.data.requests.length - this.maxRequests;
+    if (excess <= 0) return;
+    const cutoff = now - DEFAULT_DAILY_WINDOW_MS;
+    const kept: PaymentRequest[] = [];
+    for (const request of this.data.requests) {
+      if (excess > 0 && !isLoadBearing(request, cutoff)) {
+        if (request.idempotencyKey) delete this.data.idempotency[request.idempotencyKey];
+        excess -= 1;
+        continue;
+      }
+      kept.push(request);
+    }
+    this.data.requests = kept;
   }
 
   getTasks(): TaskCapabilityRecord[] {
@@ -279,6 +298,13 @@ export class Store {
     this.data.receipts[key] = TaskReceiptRecordSchema.parse(receipt);
     this.flush();
   }
+}
+
+const IN_FLIGHT_STATUSES = new Set(['planned', 'pending_approval', 'approved', 'auto_approved']);
+
+function isLoadBearing(request: PaymentRequest, cutoff: number): boolean {
+  if (IN_FLIGHT_STATUSES.has(request.status)) return true;
+  return mayHaveMovedFunds(request) && new Date(request.createdAt).getTime() >= cutoff;
 }
 
 // Payment ids are scoped per task on-chain (escrow/receipt PDA seeds), so records are too.
