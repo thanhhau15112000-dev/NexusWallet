@@ -13,6 +13,19 @@ function login(sm: SessionManager, key = nacl.sign.keyPair()) {
   return { pubkey, session: sm.verifyChallenge({ challengeId: challenge.challengeId, pubkey, signature })! };
 }
 
+describe('SessionManager challenges', () => {
+  it('keeps a pending challenge usable while many others are requested', () => {
+    const sm = new SessionManager([], 1800);
+    const key = nacl.sign.keyPair();
+    const pubkey = bs58.encode(key.publicKey);
+    const real = sm.createChallenge(pubkey, 'http://localhost:5173')!;
+    for (let i = 0; i < 500; i += 1) sm.createChallenge(bs58.encode(nacl.sign.keyPair().publicKey), 'http://localhost:5173');
+
+    const signature = bs58.encode(nacl.sign.detached(new TextEncoder().encode(real.message), key.secretKey));
+    expect(sm.verifyChallenge({ challengeId: real.challengeId, pubkey, signature })?.owner).toBe(pubkey);
+  });
+});
+
 describe('SessionManager persistence', () => {
   it('keeps sessions across a restart and stores only token hashes', () => {
     const storePath = join(mkdtempSync(join(tmpdir(), 'nexus-sessions-')), 'sessions.json');

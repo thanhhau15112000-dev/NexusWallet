@@ -5,9 +5,10 @@ import Fastify from 'fastify';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ZodError } from 'zod';
-import { loadConfig } from './config.js';
+import { loadConfig, trustProxySetting } from './config.js';
 import { createContext } from './context.js';
 import { registerAuthHook } from './auth-hook.js';
+import { registerRateLimit } from './rate-limit.js';
 import { registerRoutes } from './routes.js';
 
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
@@ -16,6 +17,7 @@ const CHROME_EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/i;
 async function main(): Promise<void> {
   const config = loadConfig();
   const app = Fastify({
+    trustProxy: trustProxySetting(config),
     logger: {
       level: 'info',
       // Prompts and signatures must never land in the log verbatim.
@@ -38,6 +40,8 @@ async function main(): Promise<void> {
 
   const ctx = createContext(config);
 
+  // Hosted only: local mode binds loopback, where every client shares one address.
+  if (config.authRequired) registerRateLimit(app, ctx);
   registerAuthHook(app, ctx);
 
   app.setErrorHandler((error, _req, reply) => {

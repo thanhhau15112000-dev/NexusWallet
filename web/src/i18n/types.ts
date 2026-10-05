@@ -223,6 +223,9 @@ export type TranslationDictionary = {
       execution_failed: string;
     };
   };
+  apiErrors: {
+    rateLimited: string;
+  };
   history: {
     requestsTitle: string;
     title: string;

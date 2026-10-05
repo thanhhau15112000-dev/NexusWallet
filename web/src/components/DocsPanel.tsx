@@ -825,6 +825,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 <tr><td>Codex cuts the call at 60 s</td><td>Keep <code>tool_timeout_sec = 90</code> in the Codex entry.</td></tr>
                 <tr><td>Antigravity rejects the tool schema</td><td>Run <code>pnpm mcp:build</code> and restart Antigravity.</td></tr>
                 <tr><td><code>AGENT_FROZEN</code></td><td>The owner has locked the agent. Ask the owner to unfreeze it on the dashboard; do not retry transfers while frozen.</td></tr>
+                <tr><td><code>RATE_LIMITED</code></td><td>Too many requests from this token or address. Wait <code>details.retryAfterSeconds</code> seconds, then retry; reuse the same <code>idempotencyKey</code> for a transfer.</td></tr>
                 <tr><td><code>DAILY_LIMIT_EXCEEDED</code></td><td>The 24-hour spending limit was exceeded. The owner must approve this transfer in the dashboard, or wait for capacity to reset.</td></tr>
               </tbody>
             </table>

@@ -86,7 +86,8 @@ export type AgentErrorCode =
   | 'INSUFFICIENT_FUNDS_INCLUDING_FEES'
   | 'PENDING_APPROVAL_REQUIRED'
   | 'IDEMPOTENCY_CONFLICT'
-  | 'AGENT_FROZEN';
+  | 'AGENT_FROZEN'
+  | 'RATE_LIMITED';
 
 export const AGENT_ERROR_REMEDIATION: Record<AgentErrorCode, string> = {
   RECIPIENT_NOT_IN_ALLOWLIST:
@@ -108,6 +109,8 @@ export const AGENT_ERROR_REMEDIATION: Record<AgentErrorCode, string> = {
     'This idempotencyKey was already used for a different transfer. Omit idempotencyKey for a new transfer; reuse a key only to retry the identical transfer.',
   AGENT_FROZEN:
     'The owner has frozen this agent. Do not retry or change parameters; ask the owner to unfreeze the agent in the nexusPay dashboard.',
+  RATE_LIMITED:
+    'Too many requests. Wait details.retryAfterSeconds seconds, then retry. To retry a transfer, reuse the same idempotencyKey; do not change the amount.',
 };
 
 export type PolicyDecision = {

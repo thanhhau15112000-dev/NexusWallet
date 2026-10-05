@@ -222,6 +222,9 @@ export const en: TranslationDictionary = {
       execution_failed: 'Transaction failed: {message}',
     },
   },
+  apiErrors: {
+    rateLimited: 'Too many requests. Wait {seconds} seconds and try again.',
+  },
   history: {
     requestsTitle: 'Agent requests',
     title: 'Agent wallet history',

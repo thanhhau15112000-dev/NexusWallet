@@ -129,7 +129,19 @@ Những vấn đề nhóm đã gặp hoặc đã lường trước trong quá tr
 
 ### Rủi ro chưa xử lý: bị botnet hoặc DDoS làm sập
 
-**Hiện trạng.** Server chưa giới hạn số request theo IP hay theo token (rate limit); việc này đang nằm trong [lộ trình](#lộ-trình). Nếu bị botnet gửi request dồn dập, server có thể chậm hoặc ngừng phản hồi.
+**Hiện trạng.** Bản hosted giới hạn số request ngay trong server (rate limit, đếm trong bộ nhớ của một process, khởi động lại thì đếm lại từ đầu). Vượt ngưỡng trả HTTP 429 kèm header `Retry-After` và mã lỗi `RATE_LIMITED`; khi request đọc hoặc đề xuất giao dịch của tool MCP bị chặn, tool trả lỗi `RATE_LIMITED` kèm hướng dẫn "chờ rồi thử lại" ([rate-limit.test.ts](agent/test/rate-limit.test.ts)); chỉ khi vượt ngưỡng chặn dự phòng của `/mcp` thì client nhận HTTP 429 ở tầng truyền tải. Ngưỡng mặc định ([rate-limit.ts](agent/src/rate-limit.ts)):
+
+| Route | Ngưỡng | Tính theo |
+| --- | --- | --- |
+| `POST /api/auth/challenge`, `POST /api/auth/login` | 10 / phút (mỗi route) | IP |
+| `POST /api/agent/claim-seed`, `POST /api/agent/airdrop` | 5 / giờ (mỗi route) | IP |
+| `POST /api/agent/intents`, `POST /api/commands` | 30 / phút | chủ ví (phiên hoặc MCP token) |
+| `POST /mcp` | 600 / phút (chặn dự phòng, đặt cao hơn ngưỡng đọc trong process) | MCP token; token sai tính theo IP |
+| Các route `/api` còn lại | 240 / phút | chủ ví, chưa đăng nhập thì theo IP |
+
+Phiên dashboard và MCP token của cùng một chủ ví có hạn mức riêng. Request bị chặn không chạm tới policy, ví hay idempotency: với `POST /api/agent/intents`, gửi lại cùng `idempotencyKey` sau khi hết hạn chặn trả về đúng request cũ ([rate-limit.test.ts](agent/test/rate-limit.test.ts)). Bản local (chỉ bind loopback) không bật rate limit.
+
+**Chưa có.** Không có CDN hay WAF; rate limit trong process không chống được DDoS tầng mạng. Botnet đủ lớn vẫn có thể làm server chậm hoặc ngừng phản hồi vì đường truyền và CPU, trước khi request tới được bộ đếm. Địa chỉ IP được lấy từ `X-Forwarded-For` theo số proxy `TRUST_PROXY_HOPS` (mặc định 2, theo mô tả cách Render ghi header này); chưa kiểm chứng trên bản đang chạy, xem [Deploy hosted](#deploy-hosted).
 
 **Nếu server sập, tiền sẽ ra sao:**
 
@@ -143,7 +155,6 @@ Riêng nút nhận 0.1 SOL: mỗi ví agent được nhận một lần, nhưng 
 
 **Hướng khắc phục (chưa làm):**
 
-- Rate limit theo IP và theo token cho các route đăng nhập, đề xuất giao dịch và nhận seed.
 - Đặt CDN hoặc WAF có chống DDoS phía trước server.
 - Giới hạn tổng số seed phát ra mỗi ngày. Khi cần, chỉ cho phép một danh sách ví đăng nhập bằng biến `ALLOWED_OWNERS` (đã có).
 - Về lâu dài: cho chủ ví tự rút tiền khỏi ví agent mà không cần server, ví dụ chuyển ví agent sang program on-chain như Task Vault.
@@ -159,7 +170,7 @@ Riêng nút nhận 0.1 SOL: mỗi ví agent được nhận một lần, nhưng 
 - Ví agent do server nexusPay giữ key (đã mã hóa AES-256-GCM). Chỉ tiền nằm trong Task Vault mới không phụ thuộc server.
 - MCP token đang lưu dạng plaintext trên disk của server. Chuyển sang lưu dạng hash nằm trong lộ trình.
 - Chữ ký xác nhận của worker chỉ chứng minh worker đã xác nhận kết quả, không chứng minh kết quả đó tốt hay đúng.
-- Chưa có rate limit; botnet hoặc DDoS có thể làm server ngừng phản hồi ([chi tiết](#rủi-ro-chưa-xử-lý-bị-botnet-hoặc-ddos-làm-sập)).
+- Rate limit chỉ nằm trong process server (bản hosted), không có CDN hay WAF; DDoS tầng mạng vẫn có thể làm server ngừng phản hồi ([chi tiết](#rủi-ro-chưa-xử-lý-bị-botnet-hoặc-ddos-làm-sập)).
 
 ---
 
@@ -335,6 +346,7 @@ Biến môi trường bắt buộc:
 - `WEB_ORIGIN` — origin HTTPS của dashboard, không có path hay dấu `/` cuối
 - `ADMIN_PUBKEY` — public key Phantom của admin
 - `ALLOWED_OWNERS` (tùy chọn) — danh sách ví được phép, để trống là cho tất cả
+- `TRUST_PROXY_HOPS` (tùy chọn, mặc định 2) — số proxy phía trước server ghi thêm vào `X-Forwarded-For`; địa chỉ client được lấy từ phải sang trái theo số này nên không giả mạo được bằng header tự gửi. Đặt thấp quá thì mọi client dùng chung một bộ đếm; cao quá thì client chọn được địa chỉ của mình. Sau khi deploy, so `remoteAddress` trong log request với IP thật của một client để kiểm tra
 - `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, `AUDIT_ENCRYPTION_PASSPHRASE` — ba giá trị ngẫu nhiên khác nhau, tối thiểu 32 ký tự
 
 Cần persistent disk cho `/data`. `GET /api/health` trả thêm `commit` (từ `RENDER_GIT_COMMIT` hoặc `GIT_COMMIT`) để biết bản đang chạy. Chỉ chạy một instance (session và store JSON ở trong process). TLS kết thúc ở nền tảng hosting hoặc reverse proxy.
@@ -374,7 +386,7 @@ infra/                      Dockerfile + compose
 
 ## Lộ trình
 
-Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, hash MCP token và rate limit, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
+Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, hash MCP token, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
 
 ## Giấy phép
 
