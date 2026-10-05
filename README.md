@@ -26,7 +26,15 @@ nexusPay cho phép AI agent đề xuất chuyển tiền, còn quy tắc do ch�
 | Kết quả | Giao dịch hoặc request chờ duyệt/từ chối | Escrow, receipt, settle hoặc refund |
 | Ranh giới tin cậy | Cần tin runtime và dữ liệu của server | Cần tin program được triển khai và quyền nâng cấp; receipt không chứng minh chất lượng công việc |
 
-Hai luồng có kiểm soát khác nhau. Policy của Payment Guard không phải hợp đồng on-chain, và Task Vault không biến ví agent thành ví phi lưu ký.
+Hai luồng có kiểm soát khác nhau. Policy của Payment Guard không phải hợp đồng on-chain, và Task Vault không biến ví agent thành ví non-custodial (owner tự giữ quyền kiểm soát key).
+
+### Vì sao Solana
+
+- **PDA (Program Derived Address):** mỗi task có capability PDA (`["capability", owner, task_id]`), vault PDA và escrow/receipt PDA. Program kiểm tra quyền trên các account này.
+- **Signer theo vai trò:** owner cấp ngân sách/revoke, `agent_signer` tạo payment, worker ký settle. Quyền của từng vai trò được kiểm tra trong instruction.
+- **SOL và SPL Token:** Payment Guard hỗ trợ cả hai; Task Vault hiện chỉ hỗ trợ SOL. Allowlist mint giới hạn loại SPL token được chuyển.
+- **Rent và account lifecycle:** program đóng account ở các bước settle/refund/close tương ứng để hoàn rent. Escrow còn chờ phải được xử lý trước khi đóng task.
+- **Permissionless refund:** sau expiry, caller bất kỳ có thể gửi instruction hoàn escrow về owner; không cần server nexusPay ký thay owner.
 
 ## Thử trong vài phút
 
@@ -68,6 +76,21 @@ flowchart LR
 - Chữ ký duyệt gắn với request, số tiền, người nhận, phiên bản policy, nonce và thời hạn. Thời hạn mặc định là 300 giây; session đăng nhập mặc định là 30 phút. Đăng nhập và duyệt giao dịch là hai thao tác khác nhau.
 - Store JSON ghi qua file tạm rồi rename; audit payload mã hóa và có chuỗi hash. Đây là dữ liệu server, không phải sổ cái bất biến công khai.
 
+### Đặc tính kỹ thuật
+
+| Đặc tính | Triển khai và phạm vi |
+| --- | --- |
+| **Streamable HTTP / Bearer token** | Remote MCP tại `/mcp`, token theo owner; bản local có transport stdio |
+| **ed25519** | Xác minh chữ ký `signMessage` của owner cho login và approval; approval gắn request, nonce, policy version và TTL |
+| **AES-256-GCM** | Mã hóa private key và audit payload khi lưu (encryption at rest); không bảo vệ runtime đã bị chiếm quyền |
+| **Append-only / SHA-256 hash chaining** | Audit ghi nối tiếp và liên kết hash giữa các entry; cần integrity verification, không phải log bất biến trước server có quyền sửa toàn bộ file |
+| **Idempotency** | Với structured transfer action, `idempotencyKey` nhận diện retry cùng action; key khác action trả `IDEMPOTENCY_CONFLICT` khi record còn được giữ lại |
+| **Retention / rolling 24-hour window** | Lịch sử mặc định giữ 200 request; phép tính chi SOL trong cửa sổ trượt 24 giờ hiện phụ thuộc lịch sử này |
+| **Deterministic fallback parser** | AI Commands có parser tất định khi không dùng model provider; action vẫn qua schema validation và `evaluatePolicy` |
+| **Multi-tenant / single-instance** | Context riêng theo owner; Store JSON và session hiện phục vụ một instance, chưa có transaction chung cho nhiều replica |
+
+Nguồn: [`crypto.ts`](agent/src/crypto.ts), [`audit.ts`](agent/src/audit.ts), [`pipeline.ts`](agent/src/pipeline.ts), [`mcp-remote.ts`](agent/src/mcp-remote.ts), [`store.ts`](agent/src/store.ts).
+
 ### Cấu trúc repo
 
 | Thư mục | Trách nhiệm |
@@ -96,6 +119,18 @@ Endpoint hosted: `https://nexuspay-56wn.onrender.com/mcp`. Đăng nhập dashboa
 Nếu kết quả là `outcome_unknown`, đối chiếu request và Explorer; retry cùng action với **cùng** `idempotencyKey`. Hai key khác nhau được xem là hai đề xuất. Cơ chế này không bảo đảm chống gửi lại vô thời hạn khi record đã bị xóa khỏi lịch sử.
 
 Local có bản stdio: `pnpm mcp:build`, sau đó `pnpm mcp:install -- --client codex|claude-desktop|antigravity`. Cấu hình và lỗi theo client: [MCP troubleshooting](docs/mcp-troubleshooting.md).
+
+### Kịch bản demo Payment Guard
+
+Đặt `Max per transaction = 0.1 SOL`, `Max per day = 0.2 SOL`, thêm recipient `my-wallet` vào allowlist và nạp đủ SOL Devnet kể cả phí mạng.
+
+1. Gửi `0.05 SOL` đến `my-wallet`: `allow`, kiểm tra `execution.explorerUrl`.
+2. Gửi `0.5 SOL` đến `my-wallet`: `require_approval`; owner ký duyệt trong TTL hoặc cancel.
+3. Gửi đến recipient ngoài allowlist: `RECIPIENT_NOT_IN_ALLOWLIST`, không có đường approval.
+4. Nếu bước 2 đã được duyệt, gửi thêm khoản nhỏ: `DAILY_LIMIT_EXCEEDED`, vì khoản đã duyệt cũng được tính vào rolling 24-hour window khi record còn lưu.
+5. Bật kill switch rồi đề xuất transfer: `AGENT_FROZEN`. MCP không có tool tự unfreeze hoặc thay policy.
+
+MCP trả `code`, `message`, `remediation` và `details` cho error/pending approval. `details` dùng SOL và lamports; pending request có `pollIntervalMs` và `dashboardUrl`. Ví dụ này kiểm tra hành vi trong retention hiện tại, không chứng minh chống retry hoặc daily cap vô thời hạn.
 
 ## Task Capability Vault
 
@@ -138,7 +173,7 @@ pnpm build   # Vite bundle + TypeScript toàn workspace
 
 | Giới hạn đã biết | Ảnh hưởng | Hướng khắc phục |
 | --- | --- | --- |
-| Lịch sử mặc định giữ 200 request; sổ ghi chi tiêu 24 giờ và key chống retry dùng cùng lịch sử ([Store](agent/src/store.ts), [Policy](shared/src/policy.ts)) | Request cũ bị xóa có thể làm quên khoản chi trong 24 giờ và key retry | Tách ledger 24 giờ và record chống retry khỏi lịch sử hiển thị; bổ sung test hồi quy khi xóa lịch sử và khởi động lại. Tăng retention chỉ là giảm xác suất, không sửa invariant |
+| Retention mặc định giữ 200 request; spending ledger 24 giờ và idempotency record dùng cùng lịch sử ([Store](agent/src/store.ts), [Policy](shared/src/policy.ts)) | Request cũ bị prune (xóa khỏi lịch sử) có thể làm quên khoản chi trong 24 giờ và `idempotencyKey` | Tách spending ledger và idempotency record khỏi lịch sử hiển thị; bổ sung regression test cho pruning và restart. Tăng retention chỉ là giảm xác suất, không sửa invariant |
 | Server giữ key ví agent | Mã hóa khi lưu không bảo vệ khỏi runtime bị chiếm quyền; owner không có đường rút trực tiếp độc lập server cho ví này | Giữ scope Devnet; nếu mở rộng, thiết kế quyền chi on-chain và đường thu hồi cho owner |
 | Store/session phục vụ một instance | Nhiều replica không có đồng bộ/transaction chung | Giữ một instance; chỉ chuyển sang database giao dịch khi cần scale |
 | Mất data hoặc passphrase | Có thể mất policy/token/key và khả năng truy cập tiền ví agent | Persistent disk, backup và kiểm thử restore; không coi tiền còn trên chain là bằng chứng vẫn rút được |
@@ -183,7 +218,7 @@ Khi demo lỗi: kiểm tra mạng Phantom, số dư agent kể cả phí/rent, a
 
 ## Hướng phát triển
 
-Ưu tiên tiếp theo là sửa việc xóa lịch sử ảnh hưởng tính chi tiêu và chống retry, kiểm chứng restore và reconciliation Task Vault; sau đó hoàn tất hardening đang có PR và QA client/dashboard thực tế. Stablecoin và công cụ Task Vault qua MCP thuộc phạm vi mở rộng, không phải chức năng hiện tại.
+Ưu tiên tiếp theo là sửa retention của spending ledger/idempotency, kiểm chứng restore và reconciliation Task Vault; sau đó hoàn tất hardening đang có PR và QA client/dashboard thực tế. Stablecoin và công cụ Task Vault qua MCP thuộc phạm vi mở rộng, không phải chức năng hiện tại.
 
 Theo dõi: [roadmap #18](https://github.com/thanhhau15112000-dev/NexusWallet/issues/18), [hardening #75](https://github.com/thanhhau15112000-dev/NexusWallet/issues/75), [demo #66](https://github.com/thanhhau15112000-dev/NexusWallet/issues/66).
 
