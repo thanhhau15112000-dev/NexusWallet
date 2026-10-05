@@ -507,6 +507,13 @@ input[type="checkbox"] {
   font-weight: 700;
 }
 
+.lang-toggle-btn:hover:not(:disabled),
+.lang-toggle-btn:active:not(:disabled) {
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
 .tab-panel[hidden] {
   display: none;
 }
@@ -931,7 +938,9 @@ html:has(.boot-page) { scrollbar-gutter: auto; }
 body:has(.boot-page) { overflow: hidden; }
 
 .boot-page {
-  --boot-bg: #f6f9f7;
+  --boot-bg: #ffffff;
+  --boot-glow: #ccebe0;
+  --boot-edge: #e2f3ed;
   --boot-panel: #fcfdfc;
   --boot-tint: #e8f2ec;
   --boot-text: #183d33;
@@ -941,7 +950,10 @@ body:has(.boot-page) { overflow: hidden; }
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  background: var(--boot-bg);
+  color-scheme: light;
+  background: radial-gradient(ellipse at 0% 0%, var(--boot-glow), transparent 70%),
+    radial-gradient(ellipse at 100% 100%, var(--boot-edge), transparent 75%),
+    linear-gradient(120deg, #eff9f4 0%, var(--boot-bg) 45%, #f7fcfa 65%, #d9eee6 100%);
   color: var(--boot-text);
   padding: 0 clamp(20px, 5vw, 80px);
 }
@@ -1221,28 +1233,6 @@ body:has(.boot-page) { overflow: hidden; }
   .boot-page .boot-mascot { display: none; }
   .boot-points li, .boot-tagline { font-size: 11px; }
   .boot-footer { grid-template-columns: auto minmax(0, 1fr); gap: 16px; font-size: 10px; }
-}
-
-@media (prefers-color-scheme: dark) {
-  .boot-page {
-    color-scheme: dark;
-    --boot-bg: #11211c;
-    --boot-panel: #1a3028;
-    --boot-tint: #1a3028;
-    --boot-text: #e4eee7;
-    --boot-muted: #b0c2b7;
-    --boot-line: #365146;
-    --boot-accent: #86cfb0;
-    --accent: #86cfb0;
-  }
-  .boot-page .lang-toggle-btn { color: var(--boot-text); border-color: var(--boot-line); background: var(--boot-panel); }
-  .boot-page .boot-sign-in { background: #86cfb0; border-color: #86cfb0; color: #11211c; }
-  .boot-page .boot-sign-in:hover:not(:disabled) { background: #a0ddc3; }
-  .boot-page .boot-sign-in:disabled { opacity: .65; }
-  .boot-page .wallet-option { background: var(--boot-panel); border-color: var(--boot-line); color: var(--boot-text); }
-  .boot-page .wallet-option:hover:not(:disabled) { background: #243f34; }
-  .boot-page .wallet-option-action { color: var(--boot-accent); }
-  .boot-page .bad-text { color: #f5a7a7; }
 }
 
 .wallet-picker-options {
