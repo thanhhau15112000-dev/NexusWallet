@@ -6,7 +6,7 @@ Dành cho người (hoặc agent) đang cài nexusPay MCP vào client. Cách k�
 
 | Triệu chứng | Nguyên nhân | Cách sửa |
 | --- | --- | --- |
-| `401` / `mcp_token_rejected` | Token đã bị rotate hoặc copy sai | Mở dashboard → tab **AI Commands** → card **Connect an AI agent (MCP)** → copy lại entry và cập nhật client |
+| `401` / `mcp_token_rejected` | Token đã bị rotate hoặc copy sai | Mở dashboard → tab **AI Commands** → card **Connect an AI agent (MCP)**. Bản hosted không hiện lại được token cũ: tạo token mới, copy entry và cập nhật client. Bản local: copy lại entry |
 | Transfer trả `PENDING_APPROVAL_REQUIRED` | Số tiền vượt hạn mức mỗi giao dịch | Owner duyệt trên dashboard; poll `nexuspay_get_request` theo `pollIntervalMs` |
 | Transfer trả `outcome_unknown` | Timeout hoặc lỗi server sau khi đã gửi | Gọi lại với cùng `idempotencyKey`; không đổi số tiền |
 | Transfer trả `IDEMPOTENCY_CONFLICT` | Dùng lại key cho giao dịch khác | Dùng key mới cho giao dịch mới |

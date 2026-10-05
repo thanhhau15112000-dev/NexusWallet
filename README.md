@@ -107,7 +107,7 @@ Tổng cộng `pnpm test` có 273 test pass. 3 test chạy trên chain bị bỏ
 | Request không duyệt được nữa, trạng thái `expired` | Đã quá 300 giây kể từ lúc request được tạo | Cho agent đề xuất lại giao dịch |
 | Mọi giao dịch đều báo `AGENT_FROZEN` | Chủ ví đang bật khóa khẩn cấp | Bấm **Unfreeze agent** ở tab **Overview** |
 | Dashboard tự đăng xuất, báo phiên đã hết hạn | Phiên đăng nhập hết hạn (mặc định 30 phút) | Kết nối và ký lại bằng Phantom |
-| Client MCP báo `401` hoặc `mcp_token_rejected` | Token đã bị đổi, hoặc copy thiếu | Copy lại cấu hình ở card **Connect an AI agent (MCP)** rồi cập nhật client |
+| Client MCP báo `401` hoặc `mcp_token_rejected` | Token đã bị đổi, hoặc copy thiếu | Bản hosted không hiện lại được token cũ: ở card **Connect an AI agent (MCP)** bấm tạo token mới, copy cấu hình rồi cập nhật client (bản local: copy lại cấu hình) |
 | Payment của Task Vault bị từ chối dù task vẫn còn ngân sách | Số tiền vượt mức trả tối đa mỗi lần của task | Nhập số tiền không vượt mức đó |
 | Không đóng được Task Vault | Vẫn còn khoản escrow đang tạm giữ | Cho worker ký xác nhận để nhận tiền, hoặc chờ task hết hạn rồi hoàn tiền |
 
@@ -168,9 +168,23 @@ Riêng nút nhận 0.1 SOL: mỗi ví agent được nhận một lần, và t�
 **Giới hạn đã biết:**
 
 - Ví agent do server nexusPay giữ key (đã mã hóa AES-256-GCM). Chỉ tiền nằm trong Task Vault mới không phụ thuộc server.
-- MCP token đang lưu dạng plaintext trên disk của server. Chuyển sang lưu dạng hash nằm trong lộ trình.
+- MCP token: bản hosted chỉ lưu `sha256(token)` trong file `mcp-token` của từng chủ ví và chỉ trả token một lần, khi tạo mới hoặc đổi token; chủ ví không xem lại được token cũ. File plaintext từ phiên bản trước được đổi sang hash ở lần đọc đầu tiên mà token vẫn dùng được. Bản local vẫn lưu plaintext để bản stdio tự tìm thấy token (chấp nhận được vì local chỉ bind loopback). Băm token **không** giải quyết các vấn đề trong bảng dưới.
 - Chữ ký xác nhận của worker chỉ chứng minh worker đã xác nhận kết quả, không chứng minh kết quả đó tốt hay đúng.
 - Rate limit chỉ nằm trong process server (bản hosted), không có CDN hay WAF; DDoS tầng mạng vẫn có thể làm server ngừng phản hồi ([chi tiết](#rủi-ro-chưa-xử-lý-bị-botnet-hoặc-ddos-làm-sập)).
+
+**Vấn đề dữ liệu đã nhận biết, chưa xử lý** (băm MCP token không giải quyết các điểm này):
+
+| # | Vấn đề | Hiện trạng | Hệ quả |
+| --- | --- | --- | --- |
+| D1 | Token bị lộ vẫn chi tiêu được trong hạn mức | MCP token gọi được `POST /api/agent/intents` (đề xuất giao dịch) | Ai có token có thể cho agent chi tới hạn mức mỗi giao dịch và trần ngày, cho tới khi chủ ví đổi token hoặc khóa agent. Băm token trên server không bảo vệ token đã lộ ở phía client |
+| D2 | Token không có thời hạn | [mcp-token.ts](agent/src/mcp-token.ts) không lưu thời điểm tạo hay hết hạn | Token dùng mãi tới khi đổi thủ công |
+| D3 | Token phía client vẫn là plaintext | Cấu hình Claude Code, Codex, Antigravity lưu nguyên header | Ngoài tầm kiểm soát của server |
+| D4 | Khóa ví agent nằm cùng thư mục `/data` | [crypto.ts](agent/src/crypto.ts): AES-256-GCM, khóa dẫn xuất bằng scrypt từ `AGENT_KEYSTORE_PASSPHRASE` (biến môi trường); bản hosted từ chối passphrase mặc định ([config.ts](agent/src/config.ts)) | Lộ cả đĩa **và** biến môi trường thì lộ khóa ví agent; băm token không đổi điều này |
+| D5 | Ghi keystore không atomic | `writeFileSync` trực tiếp trong [crypto.ts](agent/src/crypto.ts); `store.ts`, `sessions.ts` và file token đã ghi atomic (file tạm rồi đổi tên) | Crash giữa lúc ghi có thể làm hỏng file khóa |
+| D6 | Bản hosted hiện tại không có persistent disk | Render deploy xóa `/data` | Mỗi lần deploy: token, ví agent, policy, audit, ví cấp phát đều tạo mới. Băm token không liên quan nhưng điều này ảnh hưởng mọi dữ liệu |
+| D7 | Bản local vẫn lưu token plaintext | Giữ hành vi này để bản stdio tự tìm token | Chấp nhận được vì local chỉ bind loopback |
+
+Lộ trình xử lý tiếp: hạn dùng token, thời điểm dùng gần nhất và cảnh báo khi token dùng bất thường (D1, D2); OAuth cho remote MCP để bỏ token tĩnh (D1, D2, D3); ghi keystore atomic (D5); persistent disk hoặc store ngoài cho bản hosted (D6); quản lý khóa ví agent bằng KMS hoặc chuyển ví agent sang program on-chain (D4).
 
 ---
 
@@ -261,7 +275,7 @@ Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`
 
 ## Kết nối AI agent (MCP)
 
-Đăng nhập dashboard bằng ví Phantom (Devnet) → tab **AI Commands** (hoặc bấm card **Set up MCP** ở tab **Overview**, sẽ mở đúng chỗ này) → card **Connect an AI agent (MCP)** → **Show my connection** → copy entry cho client của bạn. Token bị che trên màn hình; nút Copy vẫn đặt token đầy đủ vào clipboard.
+Đăng nhập dashboard bằng ví Phantom (Devnet) → tab **AI Commands** (hoặc bấm card **Set up MCP** ở tab **Overview**, sẽ mở đúng chỗ này) → card **Connect an AI agent (MCP)** → **Show my connection**. Trên bản hosted, bấm **Create connection token**: token chỉ hiện một lần, hãy copy entry cho client của bạn ngay. Bản local hiện lại được token. Token bị che trên màn hình; nút Copy vẫn đặt token đầy đủ vào clipboard.
 
 | Client | Cách thêm |
 | --- | --- |
@@ -387,7 +401,7 @@ infra/                      Dockerfile + compose
 
 ## Lộ trình
 
-Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, hash MCP token, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
+Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
 
 ## Giấy phép
 

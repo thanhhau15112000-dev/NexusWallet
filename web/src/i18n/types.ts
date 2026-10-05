@@ -307,6 +307,12 @@ export type TranslationDictionary = {
     securityNote: string;
     rotateToken: string;
     rotating: string;
+    createToken: string;
+    replaceToken: string;
+    noToken: string;
+    tokenHidden: string;
+    tokenOnceWarning: string;
+    rotateWarning: string;
     loading: string;
     loadFailed: string;
     clipboardUnavailable: string;
