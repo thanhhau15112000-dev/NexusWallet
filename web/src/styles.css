@@ -931,7 +931,9 @@ html:has(.boot-page) { scrollbar-gutter: auto; }
 body:has(.boot-page) { overflow: hidden; }
 
 .boot-page {
-  --boot-bg: #f6f9f7;
+  --boot-bg: #f4faf7;
+  --boot-glow: #dceee7;
+  --boot-edge: #edf6f2;
   --boot-panel: #fcfdfc;
   --boot-tint: #e8f2ec;
   --boot-text: #183d33;
@@ -941,7 +943,8 @@ body:has(.boot-page) { overflow: hidden; }
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  background: var(--boot-bg);
+  background: radial-gradient(ellipse at 5% 10%, var(--boot-glow), transparent 58%),
+    linear-gradient(135deg, var(--boot-bg) 25%, var(--boot-edge) 100%);
   color: var(--boot-text);
   padding: 0 clamp(20px, 5vw, 80px);
 }
@@ -1226,7 +1229,9 @@ body:has(.boot-page) { overflow: hidden; }
 @media (prefers-color-scheme: dark) {
   .boot-page {
     color-scheme: dark;
-    --boot-bg: #11211c;
+    --boot-bg: #24433f;
+    --boot-glow: #42665e;
+    --boot-edge: #2b514e;
     --boot-panel: #1a3028;
     --boot-tint: #1a3028;
     --boot-text: #e4eee7;
