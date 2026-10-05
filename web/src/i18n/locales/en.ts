@@ -224,6 +224,8 @@ export const en: TranslationDictionary = {
   },
   apiErrors: {
     rateLimited: 'Too many requests. Wait {seconds} seconds and try again.',
+    seedCapReached:
+      'The free demo SOL for the last 24 hours has been handed out. Get Devnet SOL from https://faucet.solana.com, or try again later.',
   },
   history: {
     requestsTitle: 'Agent requests',

@@ -527,7 +527,7 @@ const inFlightClaims = new Set<string>();
       });
     }
 
-    if (!ctx.masterFunder) {
+    if (!ctx.masterFunder || !ctx.seedLedger) {
       return reply.status(503).send({
         error: 'funder_unavailable',
         message: 'Master Funder is not configured on this instance.',
@@ -535,12 +535,30 @@ const inFlightClaims = new Set<string>();
     }
 
     inFlightClaims.add(claimKey);
+    let reservation: number | null = null;
     try {
       if (userCtx.store.hasClaimedInitialFunding()) {
         return reply.status(409).send({
           error: 'already_claimed',
           message: 'Initial demo funding (0.1 SOL) has already been claimed for this agent wallet.',
         });
+      }
+
+      // A signed transfer kept from an earlier attempt was counted when it was created; resuming it takes no new slot.
+      if (!userCtx.store.getPendingInitialFunding()) {
+        reservation = ctx.seedLedger.reserve();
+        if (reservation === null) {
+          const retryAfterSeconds = ctx.seedLedger.retryAfterSeconds();
+          return reply
+            .status(429)
+            .header('retry-after', String(retryAfterSeconds))
+            .send({
+              error: 'seed_cap_reached',
+              message:
+                'The free demo SOL for the last 24 hours has been handed out. Get Devnet SOL from https://faucet.solana.com, or try again later.',
+              details: { retryAfterSeconds },
+            });
+        }
       }
 
       const amountLamports = 100_000_000; // 0.1 SOL
@@ -565,6 +583,14 @@ const inFlightClaims = new Set<string>();
     } catch (err) {
       if (err instanceof SeedTransferFailedError) {
         userCtx.store.clearPendingInitialFunding();
+      }
+      // Give the slot back only when no seed can have been paid: nothing signed is retained and the claim is not recorded.
+      if (
+        reservation !== null &&
+        !userCtx.store.getPendingInitialFunding() &&
+        !userCtx.store.hasClaimedInitialFunding()
+      ) {
+        ctx.seedLedger.release(reservation);
       }
       if (err instanceof SeedTransferOutcomeUnknownError) {
         return reply.status(409).send({

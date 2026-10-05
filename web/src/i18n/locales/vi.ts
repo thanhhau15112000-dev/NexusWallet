@@ -224,6 +224,8 @@ export const vi: TranslationDictionary = {
   },
   apiErrors: {
     rateLimited: 'Quá nhiều yêu cầu. Chờ {seconds} giây rồi thử lại.',
+    seedCapReached:
+      'SOL demo miễn phí trong 24 giờ qua đã được phát hết. Lấy SOL Devnet tại https://faucet.solana.com, hoặc thử lại sau.',
   },
   history: {
     requestsTitle: 'Yêu cầu của agent',

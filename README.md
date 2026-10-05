@@ -151,12 +151,12 @@ Phiên dashboard và MCP token của cùng một chủ ví có hạn mức riên
 | Task Vault | Tiền nằm trong hợp đồng trên chain. Sau khi task hết hạn, bất kỳ ai cũng gọi được lệnh hoàn tiền về chủ ví mà không cần server |
 | Request đang chờ duyệt | Quá 300 giây thì hết hạn; agent phải đề xuất lại sau khi server hoạt động trở lại |
 
-Riêng nút nhận 0.1 SOL: mỗi ví agent được nhận một lần, nhưng chưa có giới hạn tổng. Botnet tạo nhiều ví Phantom có thể dùng hết SOL của ví cấp phát. Khi đó người dùng mới không nhận được seed và phải lấy SOL từ faucet. Đây là SOL Devnet, không có giá trị thật.
+Riêng nút nhận 0.1 SOL: mỗi ví agent được nhận một lần, và tổng số seed phát ra bị chặn trong cửa sổ trượt 24 giờ (`SEED_CAP_PER_DAY`, mặc định 50, tức tối đa 5 SOL Devnet mỗi ngày). Vượt trần thì `POST /api/agent/claim-seed` trả HTTP 429 với `error: seed_cap_reached` và hướng người dùng sang faucet; không có giao dịch nào được tạo. Slot được giữ trước khi tạo giao dịch nên các claim đồng thời không vượt trần; giao dịch chắc chắn chưa xảy ra thì slot được trả lại, còn giao dịch đã ký mà chưa rõ kết quả thì slot vẫn tính. Bộ đếm lưu trong `seed-ledger.json` cạnh khóa ví cấp phát, nên mất khi `/data` bị xóa (mỗi lần deploy trên Render). Botnet vẫn có thể dùng hết trần mỗi ngày, khi đó người dùng thật phải lấy SOL từ faucet; trần chỉ giới hạn mức thiệt hại, không phân biệt người thật với bot. Đây là SOL Devnet, không có giá trị thật.
 
 **Hướng khắc phục (chưa làm):**
 
 - Đặt CDN hoặc WAF có chống DDoS phía trước server.
-- Giới hạn tổng số seed phát ra mỗi ngày. Khi cần, chỉ cho phép một danh sách ví đăng nhập bằng biến `ALLOWED_OWNERS` (đã có).
+- Phân biệt người thật với bot khi nhận seed. Khi cần, chỉ cho phép một danh sách ví đăng nhập bằng biến `ALLOWED_OWNERS` (đã có).
 - Về lâu dài: cho chủ ví tự rút tiền khỏi ví agent mà không cần server, ví dụ chuyển ví agent sang program on-chain như Task Vault.
 
 ## Phạm vi và giới hạn
@@ -346,6 +346,7 @@ Biến môi trường bắt buộc:
 - `WEB_ORIGIN` — origin HTTPS của dashboard, không có path hay dấu `/` cuối
 - `ADMIN_PUBKEY` — public key Phantom của admin
 - `ALLOWED_OWNERS` (tùy chọn) — danh sách ví được phép, để trống là cho tất cả
+- `SEED_CAP_PER_DAY` (tùy chọn, mặc định 50) — số seed 0.1 SOL tối đa phát ra trong 24 giờ; 0 là tắt hẳn việc phát seed
 - `TRUST_PROXY_HOPS` (tùy chọn, mặc định 2) — số proxy phía trước server ghi thêm vào `X-Forwarded-For`; địa chỉ client được lấy từ phải sang trái theo số này nên không giả mạo được bằng header tự gửi. Đặt thấp quá thì mọi client dùng chung một bộ đếm; cao quá thì client chọn được địa chỉ của mình. Sau khi deploy, so `remoteAddress` trong log request với IP thật của một client để kiểm tra
 - `SESSION_COOKIE_SECRET`, `AGENT_KEYSTORE_PASSPHRASE`, `AUDIT_ENCRYPTION_PASSPHRASE` — ba giá trị ngẫu nhiên khác nhau, tối thiểu 32 ký tự
 

@@ -6,6 +6,7 @@ import type { AppConfig } from './config.js';
 import { loadOrCreateAgentKey } from './crypto.js';
 import { loadOrCreateMasterFunder } from './funder.js';
 import { createModelPipeline, type ModelPipeline } from './model/index.js';
+import { SeedLedger } from './seed-ledger.js';
 import { SessionManager } from './sessions.js';
 import { Store } from './store.js';
 
@@ -23,6 +24,8 @@ export type AppContext = {
   sessions: SessionManager;
   masterFunder?: Keypair;
   masterFunderPubkey?: string;
+  /** Shared by all tenants: how many seeds the Master Funder has handed out in the last 24 hours. */
+  seedLedger?: SeedLedger;
   /** Demo worker/service signer shared by all tenants; stored encrypted in the data dir, never exposed. */
   mockWorker?: Keypair;
   getUserContext?: (ownerPubkey: string) => AppContext;
@@ -51,6 +54,8 @@ export function createContext(config: AppConfig): AppContext {
     config.adminPubkey,
     resolve(config.dataDir, 'sessions.json'),
   );
+
+  const seedLedger = new SeedLedger(resolve(config.dataDir, 'seed-ledger.json'), config.SEED_CAP_PER_DAY);
 
   const userContexts = new Map<string, AppContext>();
 
@@ -101,6 +106,7 @@ export function createContext(config: AppConfig): AppContext {
       sessions,
       masterFunder: funder.keypair,
       masterFunderPubkey: funder.pubkey,
+      seedLedger,
       mockWorker,
       getUserContext,
     };
@@ -118,6 +124,7 @@ export function createContext(config: AppConfig): AppContext {
     sessions,
     masterFunder: funder.keypair,
     masterFunderPubkey: funder.pubkey,
+    seedLedger,
     getUserContext,
   };
 }
