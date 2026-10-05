@@ -72,7 +72,7 @@ export const en: TranslationDictionary = {
     signInBtn: 'Sign in with your wallet',
     connecting: 'Connecting…',
     installPhantom: 'Install a Solana wallet, such as Phantom, then reload this page.',
-    introTagline: 'Let AI pay on Solana, with spending limits and recipients you choose.',
+    introTagline: 'Allow AI to pay on Solana, with spending limits and recipients you choose.',
     introAllow: 'Meets your rules and limits: the agent signs automatically.',
     introApproval: 'Over a limit: you need to approve with your wallet.',
     introDeny: 'Recipient outside your approved list: payment blocked.',
