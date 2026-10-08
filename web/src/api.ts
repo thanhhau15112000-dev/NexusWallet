@@ -6,6 +6,7 @@ import type {
   TaskPaymentRecord,
   TaskReceiptRecord,
 } from '@nexus/shared';
+import { getCurrentDictionary } from './i18n/context.js';
 
 export type AgentState = {
   cluster: string;
@@ -117,15 +118,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body && typeof body === 'object' ? (body as { message?: unknown; error?: unknown }) : {};
     const message = typeof errorBody.message === 'string' ? errorBody.message : undefined;
     const code = typeof errorBody.error === 'string' ? errorBody.error : 'request failed';
+    if (response.status === 429 && code === 'RATE_LIMITED') {
+      const seconds = Number(response.headers.get('retry-after')) || 1;
+      const template = getCurrentDictionary().apiErrors.rateLimited;
+      throw new ApiError(template.replace('{seconds}', String(seconds)), response.status, code);
+    }
+    if (response.status === 429 && code === 'seed_cap_reached') {
+      throw new ApiError(getCurrentDictionary().apiErrors.seedCapReached, response.status, code);
+    }
     throw new ApiError(message ?? `${code} (${response.status})`, response.status, code);
   }
   return body as T;
 }
 
-/** Remote MCP connection for one owner: a URL plus the MCP token as a bearer header. */
+/**
+ * Remote MCP connection for one owner: a URL plus the MCP token as a bearer header. Hosted mode returns
+ * the token only from the create/rotate call; local mode also returns it when the config is read.
+ */
 export type McpClientConfig = {
   owner: string;
   url: string;
+  hasToken: true;
   token: string;
   claudeCode: string;
   codexToml: string;
@@ -133,10 +146,13 @@ export type McpClientConfig = {
   claudeDesktopJson: string;
 };
 
+/** What a hosted agent says about an owner's token when it cannot show it: only whether one exists. */
+export type McpTokenStatus = { owner: string; url: string; hasToken: boolean; token: null };
+
 export const api = {
   health: () => request<AgentHealth>('/api/health'),
 
-  mcpConfig: () => request<McpClientConfig>('/api/mcp/config'),
+  mcpConfig: () => request<McpClientConfig | McpTokenStatus>('/api/mcp/config'),
 
   rotateMcpToken: () =>
     request<McpClientConfig>('/api/mcp/token/rotate', { method: 'POST', body: JSON.stringify({}) }),

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 import type { AppContext } from './context.js';
 import { mcpOwnerFor } from './mcp-token.js';
@@ -12,6 +12,18 @@ export const PUBLIC_AUTH_PATHS = new Set([
   '/api/auth/logout',
 ]);
 export const PUBLIC_ACTION_PATH_PREFIX = '/api/actions/';
+
+export type RequestIdentity = { kind: 'session' | 'token'; owner: string };
+
+/** Who the request is authenticated as: a wallet-signed session, or an MCP token on a route in its scope. */
+export function requestIdentity(ctx: AppContext, req: FastifyRequest): RequestIdentity | null {
+  const cookieValue = req.cookies?.[SESSION_COOKIE_NAME];
+  const unsigned = cookieValue ? req.unsignCookie(cookieValue) : null;
+  const session = unsigned?.valid && unsigned.value ? ctx.sessions.getSession(unsigned.value) : null;
+  if (session) return { kind: 'session', owner: session.owner };
+  const tokenOwner = mcpOwnerFor(ctx.config, req);
+  return tokenOwner ? { kind: 'token', owner: tokenOwner } : null;
+}
 
 /**
  * Every /api route needs a wallet-signed session, in every deployment mode. The one
@@ -36,11 +48,7 @@ export function registerAuthHook(app: FastifyInstance, ctx: AppContext): void {
     }
     if (PUBLIC_AUTH_PATHS.has(pathname) || isPublicAction) return;
 
-    const cookieValue = req.cookies?.[SESSION_COOKIE_NAME];
-    const unsigned = cookieValue ? req.unsignCookie(cookieValue) : null;
-    const session = unsigned?.valid && unsigned.value ? ctx.sessions.getSession(unsigned.value) : null;
-    if (session) return;
-    if (mcpOwnerFor(config.usersDir, req)) return;
+    if (requestIdentity(ctx, req)) return;
     return reply.status(401).send({ error: 'authentication_required' });
   });
 }

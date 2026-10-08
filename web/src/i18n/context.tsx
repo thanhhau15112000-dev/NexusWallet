@@ -27,6 +27,11 @@ function getInitialLanguage(): Locale {
   return 'vi';
 }
 
+/** Dictionary for the language the dashboard currently shows, for code that runs outside React (the API client). */
+export function getCurrentDictionary(): TranslationDictionary {
+  return dictionaries[getInitialLanguage()];
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Locale>(getInitialLanguage);
 

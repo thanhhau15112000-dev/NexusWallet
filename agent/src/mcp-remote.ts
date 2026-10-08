@@ -62,7 +62,7 @@ export function registerRemoteMcp(app: FastifyInstance, ctx: AppContext): void {
   const dashboardUrl = ctx.config.allowedOrigins[0] ?? 'http://localhost:5173';
 
   app.post('/mcp', async (req, reply) => {
-    const owner = verifyMcpToken(ctx.config.usersDir, req.headers.authorization);
+    const owner = verifyMcpToken(ctx.config, req.headers.authorization);
     if (!owner) {
       return reply
         .status(401)

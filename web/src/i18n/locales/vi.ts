@@ -192,6 +192,10 @@ export const vi: TranslationDictionary = {
     balanceTag: 'Số dư',
     signatureTag: 'Chữ ký',
     explorer: 'Explorer ↗',
+    actions: {
+      balance: 'Số dư',
+      manualApproval: 'Duyệt thủ công',
+    },
     statuses: {
       planned: 'Chờ xử lý',
       auto_approved: 'Đã tự động duyệt',
@@ -221,6 +225,11 @@ export const vi: TranslationDictionary = {
       model_error: 'AI không xử lý được yêu cầu: {message}',
       execution_failed: 'Giao dịch thất bại: {message}',
     },
+  },
+  apiErrors: {
+    rateLimited: 'Quá nhiều yêu cầu. Chờ {seconds} giây rồi thử lại.',
+    seedCapReached:
+      'SOL demo miễn phí trong 24 giờ qua đã được phát hết. Lấy SOL Devnet tại https://faucet.solana.com, hoặc thử lại sau.',
   },
   history: {
     requestsTitle: 'Yêu cầu của agent',
@@ -297,7 +306,13 @@ export const vi: TranslationDictionary = {
     tokenTitle: 'MCP token của bạn',
     securityNote: 'Token là mã truy cập dành cho ứng dụng AI; hãy giữ kín. Nút Sao chép lấy đầy đủ token dù màn hình đang ẩn bớt. Ứng dụng chỉ được đọc trạng thái, xem yêu cầu và đề xuất chuyển tiền theo quy tắc của bạn. Đổi token sẽ ngắt các ứng dụng dùng token cũ.',
     rotateToken: 'Đổi token mới',
-    rotating: 'Đang đổi token…',
+    rotating: 'Đang xử lý…',
+    createToken: 'Tạo token kết nối',
+    replaceToken: 'Tạo token mới',
+    noToken: 'Ví này chưa có token nào.',
+    tokenHidden: 'Ví này đã có token, nhưng hệ thống chỉ lưu bản băm nên không thể hiện lại.',
+    tokenOnceWarning: 'Token chỉ hiện một lần. Hãy sao chép ngay: rời khỏi hoặc tải lại trang này thì không xem lại được.',
+    rotateWarning: 'Tạo token mới sẽ ngắt mọi client còn dùng token cũ.',
     loading: 'Đang tải…',
     loadFailed: 'Không thể tải cấu hình MCP',
     clipboardUnavailable: 'Không thể truy cập bộ nhớ tạm; vui lòng bôi đen và sao chép thủ công',
@@ -412,6 +427,7 @@ export const vi: TranslationDictionary = {
     },
   },
   docs: {
+    navLabel: 'Tài liệu',
     searchPlaceholder: 'Tìm kiếm tài liệu',
     empty: 'Không tìm thấy trang phù hợp',
     previous: 'Trang trước',

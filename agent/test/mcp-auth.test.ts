@@ -119,7 +119,10 @@ describe('MCP token authentication', () => {
     try {
       const owner = Keypair.generate();
       const cookieHeader = await login(app, owner);
-      const res = await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } });
+      // Hosted mode only hands a token out when one is created; reading the config never does.
+      const status = JSON.parse((await app.inject({ method: 'GET', url: '/api/mcp/config', headers: { cookie: cookieHeader } })).body);
+      expect(status).toMatchObject({ hasToken: false, token: null, url: `${ctx.config.allowedOrigins[0]}/mcp` });
+      const res = await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } });
       expect(res.statusCode).toBe(200);
       const mcp = JSON.parse(res.body);
       expect(mcp.url).toBe(`${ctx.config.allowedOrigins[0]}/mcp`);
