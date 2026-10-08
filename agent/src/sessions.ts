@@ -15,7 +15,9 @@ type Session = {
 };
 
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
-const MAX_CHALLENGES = 64;
+// Pending challenges live two minutes and are small. The cap only bounds memory; it is high enough
+// that a per-address rate limit cannot be outrun by a few clients evicting real users' challenges.
+const MAX_CHALLENGES = 4096;
 export const SESSION_COOKIE_NAME = 'nexus_session';
 
 function tokenHash(token: string): string {

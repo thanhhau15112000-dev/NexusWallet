@@ -49,7 +49,7 @@ export function RecentRequests(props: {
                     {request.prompt}
                   </td>
                   <td>
-                    <Mono>{describeAction(request)}</Mono>
+                    <Mono>{describeAction(request, dict.requests.actions)}</Mono>
                   </td>
                   <td className="cell-time">
                     {new Date(request.createdAt).toLocaleTimeString()}

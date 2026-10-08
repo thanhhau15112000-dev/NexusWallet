@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { AGENT_ERROR_REMEDIATION } from '@nexus/shared';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { NexusApi, type Fetch } from '../src/api.js';
 import { loadMcpConfig, type McpConfig } from '../src/config.js';
@@ -426,6 +427,33 @@ describe('nexusPay MCP tools', () => {
       details: { idempotencyKey: 'k1' },
       idempotencyKey: 'k1',
     });
+  });
+
+  it('turns a 429 from the agent into a readable RATE_LIMITED tool error that keeps the idempotencyKey', async () => {
+    const body = {
+      error: 'RATE_LIMITED',
+      code: 'RATE_LIMITED',
+      message: 'Too many requests. Retry in 12 seconds.',
+      remediation: AGENT_ERROR_REMEDIATION.RATE_LIMITED,
+      details: { retryAfterSeconds: 12 },
+    };
+    const client = await connect(vi.fn(async () => json(429, body)) as unknown as Fetch);
+
+    const transfer = await client.callTool({
+      name: 'nexuspay_transfer_sol',
+      arguments: { recipient: 'treasury', amountSol: 0.05, idempotencyKey: 'k429' },
+    });
+    expect(transfer.isError).toBe(true);
+    expect(parse(transfer)).toMatchObject({
+      code: 'RATE_LIMITED',
+      remediation: expect.stringContaining('Wait details.retryAfterSeconds'),
+      details: { retryAfterSeconds: 12 },
+      idempotencyKey: 'k429',
+    });
+
+    const poll = await client.callTool({ name: 'nexuspay_get_request', arguments: { requestId: 'req_abc' } });
+    expect(poll.isError).toBe(true);
+    expect(parse(poll)).toMatchObject({ code: 'RATE_LIMITED', details: { retryAfterSeconds: 12 } });
   });
 
   it('reports an unreachable agent without claiming an unknown outcome', async () => {

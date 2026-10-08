@@ -192,6 +192,10 @@ export type TranslationDictionary = {
     balanceTag: string;
     signatureTag: string;
     explorer: string;
+    actions: {
+      balance: string;
+      manualApproval: string;
+    };
     statuses: {
       planned: string;
       auto_approved: string;
@@ -222,6 +226,10 @@ export type TranslationDictionary = {
       model_error: string;
       execution_failed: string;
     };
+  };
+  apiErrors: {
+    rateLimited: string;
+    seedCapReached: string;
   };
   history: {
     requestsTitle: string;
@@ -299,6 +307,12 @@ export type TranslationDictionary = {
     securityNote: string;
     rotateToken: string;
     rotating: string;
+    createToken: string;
+    replaceToken: string;
+    noToken: string;
+    tokenHidden: string;
+    tokenOnceWarning: string;
+    rotateWarning: string;
     loading: string;
     loadFailed: string;
     clipboardUnavailable: string;
@@ -413,6 +427,7 @@ export type TranslationDictionary = {
     };
   };
   docs: {
+    navLabel: string;
     searchPlaceholder: string;
     empty: string;
     previous: string;

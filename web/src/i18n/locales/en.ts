@@ -192,6 +192,10 @@ export const en: TranslationDictionary = {
     balanceTag: 'Balance',
     signatureTag: 'Signature',
     explorer: 'Explorer ↗',
+    actions: {
+      balance: 'Balance',
+      manualApproval: 'Manual approval',
+    },
     statuses: {
       planned: 'Queued',
       auto_approved: 'Auto',
@@ -221,6 +225,11 @@ export const en: TranslationDictionary = {
       model_error: 'The model failed to process the command: {message}',
       execution_failed: 'Transaction failed: {message}',
     },
+  },
+  apiErrors: {
+    rateLimited: 'Too many requests. Wait {seconds} seconds and try again.',
+    seedCapReached:
+      'The free demo SOL for the last 24 hours has been handed out. Get Devnet SOL from https://faucet.solana.com, or try again later.',
   },
   history: {
     requestsTitle: 'Agent requests',
@@ -297,7 +306,13 @@ export const en: TranslationDictionary = {
     tokenTitle: 'Your MCP token',
     securityNote: 'The token is hidden on screen; Copy puts the full value on your clipboard. Keep it private. It only lets the agent read status and requests and propose transfers; the policy and your approvals still decide. Rotating it disconnects clients that use the old one.',
     rotateToken: 'Rotate token',
-    rotating: 'Rotating…',
+    rotating: 'Working…',
+    createToken: 'Create connection token',
+    replaceToken: 'Create a new token',
+    noToken: 'No token has been created for this wallet yet.',
+    tokenHidden: 'A token exists for this wallet, but only its hash is stored, so it cannot be shown again.',
+    tokenOnceWarning: 'The token is shown only once. Copy it now: after you leave or reload this page it cannot be shown again.',
+    rotateWarning: 'Creating a new token disconnects every client that still uses the old one.',
     loading: 'Loading…',
     loadFailed: 'Failed to load MCP config',
     clipboardUnavailable: 'Clipboard is not available; select the text and copy it manually',
@@ -412,6 +427,7 @@ export const en: TranslationDictionary = {
     },
   },
   docs: {
+    navLabel: 'Documentation',
     searchPlaceholder: 'Search docs',
     empty: 'No matching pages',
     previous: 'Previous',

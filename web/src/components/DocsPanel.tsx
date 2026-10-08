@@ -1,127 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-  ArrowUpRight,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Info,
-  Search,
-  TriangleAlert,
-} from './icons.js';
+import { useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Search } from './icons.js';
 import { useI18n } from '../i18n/context.js';
 import type { TranslationDictionary } from '../i18n/types.js';
+import {
+  Callout,
+  CodeBlock,
+  Steps,
+  TabLink,
+  Tabs,
+  type DocPage,
+  type DocsContext,
+  type DocsLinkTab,
+} from './docsBlocks.js';
+import { buildPagesVi } from './docsPagesVi.js';
 
-/** Dashboard tabs a docs page can link to. Kept in sync with FEATURE_TABS in App.tsx. */
-export type DocsLinkTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit';
+export type { DocsLinkTab };
 
-type DocSection = { id: string; title: string; body: ReactNode };
-
-type DocPage = {
-  id: string;
-  group: string;
-  title: string;
-  summary: string;
-  /** Extra search terms that do not appear in the title or summary. */
-  keywords?: string;
-  sections: DocSection[];
-};
-
-type DocsContext = {
-  openTab: (tab: DocsLinkTab) => void;
-};
-
-function CodeBlock(props: { code: string; label?: string }) {
-  const { dict } = useI18n();
-  const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const timer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(props.code);
-      setCopied('copied');
-    } catch {
-      setCopied('failed');
-    }
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setCopied('idle'), 1800);
-  };
-
-  return (
-    <div className="docs-code">
-      <div className="docs-code-head">
-        <span>{props.label ?? dict.docs.code}</span>
-        <button type="button" className="docs-code-copy" onClick={() => void copy()} aria-label={dict.docs.copyCode}>
-          {copied === 'copied' ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-          {copied === 'copied' ? dict.docs.copied : copied === 'failed' ? dict.docs.copyFailed : dict.docs.copy}
-        </button>
-      </div>
-      <pre>
-        <code>{props.code}</code>
-      </pre>
-    </div>
-  );
-}
-
-function Callout(props: { tone: 'note' | 'warn'; title: string; children: ReactNode }) {
-  const Icon = props.tone === 'warn' ? TriangleAlert : Info;
-  return (
-    <aside className={`docs-callout docs-callout-${props.tone}`}>
-      <Icon size={16} aria-hidden="true" />
-      <div>
-        <strong>{props.title}</strong>
-        <div>{props.children}</div>
-      </div>
-    </aside>
-  );
-}
-
-function Steps(props: { children: ReactNode }) {
-  return <ol className="docs-steps">{props.children}</ol>;
-}
-
-function TabLink(props: { tab: DocsLinkTab; label: string; ctx: DocsContext }) {
-  const { dict, interpolate } = useI18n();
-  return (
-    <button type="button" className="docs-tab-link" onClick={() => props.ctx.openTab(props.tab)}>
-      {interpolate(dict.docs.openTab, { label: props.label })}
-      <ArrowUpRight size={13} aria-hidden="true" />
-    </button>
-  );
-}
-
-function Tabs(props: { items: Array<{ id: string; label: string; body: ReactNode }> }) {
-  const [active, setActive] = useState(props.items[0]?.id ?? '');
-  const current = props.items.find((item) => item.id === active) ?? props.items[0];
-  return (
-    <div className="docs-tabs">
-      <div className="docs-tabs-list" role="tablist">
-        {props.items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={item.id === current?.id}
-            className={item.id === current?.id ? 'is-active' : ''}
-            onClick={() => setActive(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel">{current?.body}</div>
-    </div>
-  );
-}
-
-function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
+export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
   return [
     {
       id: 'overview',
@@ -604,7 +499,8 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
               <Steps>
                 <li>
                   Sign in to this dashboard with your wallet, then open <em>Show my connection</em> in the MCP card on
-                  the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page.
+                  the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page. On a hosted dashboard click
+                  {' '}<em>Create connection token</em>; the token appears once.
                 </li>
                 <li>
                   Pick your client and copy its entry. The card shows the token masked; <em>Copy</em> puts the full
@@ -737,8 +633,10 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
           body: (
             <ul>
               <li>
-                Stored in <code>agent/data/users/&lt;owner&gt;/mcp-token</code> and sent as a bearer token. The MCP
-                server reads it from the agent&apos;s data directory.
+                Sent as a bearer token. The token file is <code>agent/data/users/&lt;owner&gt;/mcp-token</code>. On a
+                hosted dashboard it holds only the SHA-256 hash of the token: the token itself is shown once, when you
+                create or rotate it, and cannot be shown again. When you run the stack locally the file holds the token
+                itself, so the MCP server can read it from the agent&apos;s data directory.
               </li>
               <li>
                 <em>Rotate token</em> in the MCP card on the AI Commands page replaces it. Clients connected by URL stop
@@ -747,8 +645,9 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 {' '}<code>NEXUS_AGENT_TOKEN</code> is not re-read and must be updated by hand.
               </li>
               <li>
-                The file is plaintext on disk, inside the same trust boundary as the agent keystore. On Windows,
-                access depends on the folder&apos;s ACLs.
+                A local file is plaintext on disk, inside the same trust boundary as the agent keystore. On Windows,
+                access depends on the folder&apos;s ACLs. Hashing does not protect a token that was already copied to a
+                client: rotate it if it leaks.
               </li>
             </ul>
           ),
@@ -825,6 +724,7 @@ function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
                 <tr><td>Codex cuts the call at 60 s</td><td>Keep <code>tool_timeout_sec = 90</code> in the Codex entry.</td></tr>
                 <tr><td>Antigravity rejects the tool schema</td><td>Run <code>pnpm mcp:build</code> and restart Antigravity.</td></tr>
                 <tr><td><code>AGENT_FROZEN</code></td><td>The owner has locked the agent. Ask the owner to unfreeze it on the dashboard; do not retry transfers while frozen.</td></tr>
+                <tr><td><code>RATE_LIMITED</code></td><td>Too many requests from this token or address. Wait <code>details.retryAfterSeconds</code> seconds, then retry; reuse the same <code>idempotencyKey</code> for a transfer.</td></tr>
                 <tr><td><code>DAILY_LIMIT_EXCEEDED</code></td><td>The 24-hour spending limit was exceeded. The owner must approve this transfer in the dashboard, or wait for capacity to reset.</td></tr>
               </tbody>
             </table>
@@ -923,14 +823,14 @@ function matches(page: DocPage, query: string): boolean {
 }
 
 export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
-  const { dict } = useI18n();
+  const { dict, lang } = useI18n();
   const [pageId, setPageId] = useState('overview');
   const [query, setQuery] = useState('');
   const articleRef = useRef<HTMLElement | null>(null);
 
   const pages = useMemo(
-    () => buildPages({ openTab: props.onOpenTab }, dict),
-    [props.onOpenTab, dict],
+    () => (lang === 'vi' ? buildPagesVi : buildPages)({ openTab: props.onOpenTab }, dict),
+    [props.onOpenTab, dict, lang],
   );
   const pageIndex = Math.max(0, pages.findIndex((page) => page.id === pageId));
   const page = pages[pageIndex]!;
@@ -954,7 +854,7 @@ export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
 
   return (
     <div className="docs">
-      <nav className="docs-sidebar" aria-label="Documentation">
+      <nav className="docs-sidebar" aria-label={dict.docs.navLabel}>
         <label className="docs-search">
           <Search size={14} aria-hidden="true" />
           <input
