@@ -42,4 +42,6 @@ pub enum TaskVaultError {
     ReceiptLockedWhileTaskActive,
     #[msg("Allowed worker must be set and differ from the agent signer")]
     InvalidAllowedWorker,
+    #[msg("A verified owner acceptance signature for this output is required")]
+    OwnerAcceptanceRequired,
 }

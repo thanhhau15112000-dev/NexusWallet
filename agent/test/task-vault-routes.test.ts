@@ -10,6 +10,7 @@ import { createContext } from '../src/context.js';
 import { loadConfig } from '../src/config.js';
 import { registerRoutes } from '../src/routes.js';
 import { SESSION_COOKIE_NAME } from '../src/sessions.js';
+import { submitOutput } from './task-output-helpers.js';
 
 function makeTempDir(): string {
   return mkdtempSync(join(tmpdir(), 'nexus-task-vault-routes-test-'));
@@ -62,7 +63,7 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
     const sessionCookie = loginRes.cookies.find((c: { name: string }) => c.name === SESSION_COOKIE_NAME);
     const cookieHeader = `${sessionCookie!.name}=${sessionCookie!.value}`;
 
-    return { app, masterCtx, ownerPubkey, cookieHeader };
+    return { app, masterCtx, ownerPubkey, ownerKey, cookieHeader };
   }
 
   it.each([
@@ -101,7 +102,7 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
   });
 
   it('executes full task lifecycle: fund -> two payments -> overbudget rejected -> settle -> refund', async () => {
-    const { app, masterCtx, ownerPubkey, cookieHeader } = await setupApp();
+    const { app, masterCtx, ownerPubkey, ownerKey, cookieHeader } = await setupApp();
 
     try {
       const now = Math.floor(Date.now() / 1000);
@@ -194,36 +195,25 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
       expect(JSON.parse(wrongWorkerRes.body).error).toBe('unauthorized_worker');
 
       // Settle Payment 1 with valid worker ed25519 signature
-      const canonicalMsg1 = `NEXUS_RECEIPT_V1:${taskId}:pay-001:hash-res-001`;
-      const workerSig1 = bs58.encode(
-        nacl.sign.detached(new TextEncoder().encode(canonicalMsg1), workerKey.secretKey),
-      );
+      const settlement1 = await submitOutput(app, cookieHeader, taskId, 'pay-001', workerKey.secretKey, ownerKey.secretKey, { output: 'completed-001' });
 
       const settle1Res = await app.inject({
         method: 'POST',
         url: `/api/tasks/${taskId}/payments/pay-001/settle`,
         headers: { cookie: cookieHeader },
-        payload: {
-          resultHash: 'hash-res-001',
-          workerPubkey,
-          workerSignature: workerSig1,
-        },
+        payload: settlement1,
       });
       expect(settle1Res.statusCode).toBe(200);
       const settle1Data = JSON.parse(settle1Res.body);
       expect(settle1Data.payment.status).toBe('settled');
-      expect(settle1Data.receipt.resultHash).toBe('hash-res-001');
+      expect(settle1Data.receipt.resultHash).toBe(settlement1.resultHash);
 
       // Replay settle -> 400 already_settled
       const replaySettleRes = await app.inject({
         method: 'POST',
         url: `/api/tasks/${taskId}/payments/pay-001/settle`,
         headers: { cookie: cookieHeader },
-        payload: {
-          resultHash: 'hash-res-001',
-          workerPubkey,
-          workerSignature: workerSig1,
-        },
+        payload: settlement1,
       });
       expect(replaySettleRes.statusCode).toBe(400);
       expect(JSON.parse(replaySettleRes.body).error).toBe('already_settled');
@@ -255,19 +245,12 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
       expect(JSON.parse(prematureRefundRes.body).error).toBe('pending_escrows_exist');
 
       // Settle Payment 2
-      const canonicalMsg2 = `NEXUS_RECEIPT_V1:${taskId}:pay-002:hash-res-002`;
-      const workerSig2 = bs58.encode(
-        nacl.sign.detached(new TextEncoder().encode(canonicalMsg2), workerKey.secretKey),
-      );
+      const settlement2 = await submitOutput(app, cookieHeader, taskId, 'pay-002', workerKey.secretKey, ownerKey.secretKey, { output: 'completed-002' });
       const settle2Res = await app.inject({
         method: 'POST',
         url: `/api/tasks/${taskId}/payments/pay-002/settle`,
         headers: { cookie: cookieHeader },
-        payload: {
-          resultHash: 'hash-res-002',
-          workerPubkey,
-          workerSignature: workerSig2,
-        },
+        payload: settlement2,
       });
       expect(settle2Res.statusCode).toBe(200);
 
@@ -476,7 +459,7 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
   });
 
   it('allows multi-payment settlement to fully spend budget without locking pending escrows prematurely', async () => {
-    const { app, cookieHeader } = await setupApp();
+    const { app, cookieHeader, ownerKey } = await setupApp();
 
     try {
       const now = Math.floor(Date.now() / 1000);
@@ -526,18 +509,12 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
       });
 
       // Settle Payment 1: Task must STAY 'active' because pay-m2 is still held (pending)
-      const sig1 = bs58.encode(
-        nacl.sign.detached(new TextEncoder().encode(`NEXUS_RECEIPT_V1:${taskId}:pay-m1:res-m1`), workerKey.secretKey),
-      );
+      const settlement1 = await submitOutput(app, cookieHeader, taskId, 'pay-m1', workerKey.secretKey, ownerKey.secretKey, { output: 'm1' });
       const settle1Res = await app.inject({
         method: 'POST',
         url: `/api/tasks/${taskId}/payments/pay-m1/settle`,
         headers: { cookie: cookieHeader },
-        payload: {
-          resultHash: 'res-m1',
-          workerPubkey,
-          workerSignature: sig1,
-        },
+        payload: settlement1,
       });
       expect(settle1Res.statusCode).toBe(200);
       const getTask1 = await app.inject({
@@ -548,18 +525,12 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
       expect(JSON.parse(getTask1.body).task.status).toBe('active'); // NOT completed prematurely!
 
       // Settle Payment 2: Now 0 pending escrows remaining and spent == budget -> transitions to completed
-      const sig2 = bs58.encode(
-        nacl.sign.detached(new TextEncoder().encode(`NEXUS_RECEIPT_V1:${taskId}:pay-m2:res-m2`), workerKey.secretKey),
-      );
+      const settlement2 = await submitOutput(app, cookieHeader, taskId, 'pay-m2', workerKey.secretKey, ownerKey.secretKey, { output: 'm2' });
       const settle2Res = await app.inject({
         method: 'POST',
         url: `/api/tasks/${taskId}/payments/pay-m2/settle`,
         headers: { cookie: cookieHeader },
-        payload: {
-          resultHash: 'res-m2',
-          workerPubkey,
-          workerSignature: sig2,
-        },
+        payload: settlement2,
       });
       expect(settle2Res.statusCode).toBe(200);
       const getTask2 = await app.inject({

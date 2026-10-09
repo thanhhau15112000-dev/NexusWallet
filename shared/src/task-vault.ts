@@ -36,6 +36,13 @@ export const TaskCapabilityRecordSchema = z.object({
 
 export type TaskCapabilityRecord = z.infer<typeof TaskCapabilityRecordSchema>;
 
+export const TaskDeliverySchema = z.object({
+  resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+  resultPayload: z.record(z.unknown()),
+  workerSignature: z.string().min(1),
+  submittedAt: z.string().datetime(),
+});
+
 export const TaskPaymentRecordSchema = z.object({
   taskId: z.string().trim().min(1).max(64),
   paymentId: z.string().trim().min(1).max(64),
@@ -48,6 +55,7 @@ export const TaskPaymentRecordSchema = z.object({
   txSignature: z.string().optional(),
   isSimulated: z.boolean().optional(),
   createdAt: z.string().datetime().optional(),
+  delivery: TaskDeliverySchema.optional(),
 });
 
 export type TaskPaymentRecord = z.infer<typeof TaskPaymentRecordSchema>;
@@ -66,9 +74,16 @@ export const TaskReceiptRecordSchema = z.object({
   isSimulated: z.boolean().optional(),
   isClosed: z.boolean().optional(),
   closeTxSignature: z.string().optional(),
+  acceptedBy: PubkeySchema.optional(),
+  ownerSignature: z.string().optional(),
 });
 
 export type TaskReceiptRecord = z.infer<typeof TaskReceiptRecordSchema>;
+
+/** Bind the receipt to the actual JSON output presented for owner review. */
+export function computeOutputHash(resultPayload: Record<string, unknown>): string {
+  return toHex(sha256Sync(new TextEncoder().encode(`NEXUS_TASK_OUTPUT_V1:${JSON.stringify(resultPayload)}`)));
+}
 
 // ----------------------------------------------------------- state machine
 

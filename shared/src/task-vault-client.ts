@@ -2,9 +2,10 @@ import {
   PublicKey,
   SystemProgram,
   TransactionInstruction,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from '@solana/web3.js';
 import { Buffer } from 'buffer';
-import { TASK_VAULT_PROGRAM_ID, computeCanonicalSeed } from './task-vault.js';
+import { TASK_VAULT_PROGRAM_ID, computeCanonicalSeed, toHex } from './task-vault.js';
 
 export const TASK_VAULT_PROGRAM_PUBKEY = new PublicKey(TASK_VAULT_PROGRAM_ID);
 
@@ -68,7 +69,7 @@ export const TASK_RECEIPT_ACCOUNT_SIZE = 8 + 32 + 32 + 32 * 4 + 8 + 8 + 1;
 const DISCRIMINATORS = {
   create_and_fund_task: new Uint8Array([0, 142, 234, 27, 129, 198, 51, 254]),
   execute_task_payment: new Uint8Array([36, 128, 220, 0, 103, 204, 220, 163]),
-  settle_with_receipt: new Uint8Array([88, 243, 178, 201, 225, 254, 125, 117]),
+  settle_accepted_output: new Uint8Array([92, 51, 219, 244, 161, 152, 185, 36]),
   revoke_task: new Uint8Array([188, 70, 249, 6, 56, 255, 109, 40]),
   refund_and_close: new Uint8Array([234, 86, 236, 241, 216, 155, 25, 84]),
   refund_expired_escrow: new Uint8Array([40, 9, 115, 148, 140, 7, 157, 160]),
@@ -179,7 +180,18 @@ export interface SettleWithReceiptArgs {
   programId?: PublicKey;
 }
 
-export function settleWithReceiptInstruction(args: SettleWithReceiptArgs): TransactionInstruction {
+export function computeTaskAcceptanceMessage(args: {
+  taskCapability: PublicKey;
+  escrow: PublicKey;
+  requestHash: Uint8Array | string;
+  resultHash: Uint8Array | string;
+  amountLamports: number | bigint;
+  programId?: PublicKey;
+}): string {
+  return `NEXUS_TASK_ACCEPTANCE_V1\nProgram: ${args.programId ?? TASK_VAULT_PROGRAM_PUBKEY}\nTask: ${args.taskCapability}\nEscrow: ${args.escrow}\nRequest: ${toHex(to32ByteArray(args.requestHash))}\nOutput: ${toHex(to32ByteArray(args.resultHash))}\nAmount (lamports): ${BigInt(args.amountLamports)}`;
+}
+
+export function settleAcceptedOutputInstruction(args: SettleWithReceiptArgs): TransactionInstruction {
   const programId = args.programId ?? TASK_VAULT_PROGRAM_PUBKEY;
   const paymentIdBytes = to32ByteArray(args.paymentId);
   const resultHashBytes = to32ByteArray(args.resultHash);
@@ -187,11 +199,11 @@ export function settleWithReceiptInstruction(args: SettleWithReceiptArgs): Trans
 
   // Layout: discriminator(8) + result_hash(32)
   const data = new Uint8Array(8 + 32);
-  data.set(DISCRIMINATORS.settle_with_receipt, 0);
+  data.set(DISCRIMINATORS.settle_accepted_output, 0);
   data.set(resultHashBytes, 8);
 
   const rentRecipient = args.agentSigner ?? args.owner;
-  if (!rentRecipient) throw new Error('agentSigner or owner is required for settleWithReceiptInstruction');
+  if (!rentRecipient) throw new Error('agentSigner or owner is required for settleAcceptedOutputInstruction');
 
   return new TransactionInstruction({
     programId,
@@ -202,6 +214,7 @@ export function settleWithReceiptInstruction(args: SettleWithReceiptArgs): Trans
       { pubkey: args.worker, isSigner: true, isWritable: true },
       { pubkey: rentRecipient, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
     ],
     data: Buffer.from(data),
   });
