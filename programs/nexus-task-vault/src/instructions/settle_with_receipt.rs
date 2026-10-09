@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::state::*;
 use crate::errors::TaskVaultError;
+use anchor_lang::solana_program::{ed25519_program, instruction::Instruction, sysvar::instructions::{load_current_index_checked, load_instruction_at_checked}};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct SettleWithReceiptParams {
@@ -45,6 +46,10 @@ pub struct SettleWithReceipt<'info> {
     pub agent_signer: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
+
+    /// CHECK: Its address is constrained; only the runtime instruction sysvar is accepted.
+    #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions: UncheckedAccount<'info>,
 }
 
 pub fn handle_settle_with_receipt(
@@ -69,6 +74,21 @@ pub fn handle_settle_with_receipt(
     require!(
         params.result_hash != [0u8; 32],
         TaskVaultError::InvalidResultHash
+    );
+
+    let expected_message = format!(
+        "NEXUS_TASK_ACCEPTANCE_V1\nProgram: {}\nTask: {}\nEscrow: {}\nRequest: {}\nOutput: {}\nAmount (lamports): {}",
+        ctx.program_id, ctx.accounts.task_capability.key(), ctx.accounts.escrow.key(),
+        hex(&ctx.accounts.escrow.request_hash), hex(&params.result_hash),
+        ctx.accounts.escrow.amount_lamports,
+    );
+    let instructions = ctx.accounts.instructions.to_account_info();
+    let index = load_current_index_checked(&instructions)?;
+    require!(index > 0, TaskVaultError::OwnerAcceptanceRequired);
+    let verification = load_instruction_at_checked(usize::from(index - 1), &instructions)?;
+    require!(
+        matches_owner_acceptance(&verification, &ctx.accounts.task_capability.owner, expected_message.as_bytes()),
+        TaskVaultError::OwnerAcceptanceRequired
     );
 
     let remaining_pending = ctx
@@ -118,4 +138,62 @@ pub fn handle_settle_with_receipt(
     }
 
     Ok(())
+}
+
+fn hex(bytes: &[u8; 32]) -> String {
+    bytes.iter().map(|byte| format!("{:02x}", byte)).collect()
+}
+
+// Accept only the self-contained, single-signature layout used by web3.js.
+// The native Ed25519 program verifies the signature before this instruction executes.
+fn matches_owner_acceptance(ix: &Instruction, owner: &Pubkey, message: &[u8]) -> bool {
+    let data = &ix.data;
+    if ix.program_id != ed25519_program::id() || !ix.accounts.is_empty()
+        || data.len() != 112 + message.len() || data[0..2] != [1, 0] {
+        return false;
+    }
+    let offsets: Vec<u16> = data[2..16].chunks_exact(2)
+        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]])).collect();
+    offsets == [48, u16::MAX, 16, u16::MAX, 112, message.len() as u16, u16::MAX]
+        && data[16..48] == owner.to_bytes()
+        && data[112..] == *message
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn verification(owner: Pubkey, message: &[u8]) -> Instruction {
+        let mut data = vec![1, 0];
+        for value in [48u16, u16::MAX, 16, u16::MAX, 112, message.len() as u16, u16::MAX] {
+            data.extend_from_slice(&value.to_le_bytes());
+        }
+        data.extend_from_slice(owner.as_ref());
+        data.extend_from_slice(&[7u8; 64]);
+        data.extend_from_slice(message);
+        Instruction { program_id: ed25519_program::id(), accounts: vec![], data }
+    }
+
+    #[test]
+    fn accepts_only_owner_and_exact_message_in_self_contained_verification() {
+        let owner = Pubkey::new_unique();
+        let message = b"accept this output and amount";
+        let ix = verification(owner, message);
+        assert!(matches_owner_acceptance(&ix, &owner, message));
+        assert!(!matches_owner_acceptance(&ix, &Pubkey::new_unique(), message));
+        assert!(!matches_owner_acceptance(&ix, &owner, b"accept other output and amount"));
+        let mut unrelated = ix.clone();
+        unrelated.program_id = Pubkey::new_unique();
+        assert!(!matches_owner_acceptance(&unrelated, &owner, message));
+        for offset in [2, 4, 6, 8, 10, 12, 14] {
+            let mut malformed = ix.clone();
+            malformed.data[offset] ^= 1;
+            assert!(!matches_owner_acceptance(&malformed, &owner, message));
+        }
+        for length in [0, 1, 15, 111, ix.data.len() - 1] {
+            let mut truncated = ix.clone();
+            truncated.data.truncate(length);
+            assert!(!matches_owner_acceptance(&truncated, &owner, message));
+        }
+    }
 }

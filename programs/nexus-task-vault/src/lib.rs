@@ -26,7 +26,7 @@ pub mod nexus_task_vault {
         instructions::handle_execute_task_payment(ctx, params)
     }
 
-    pub fn settle_with_receipt(
+    pub fn settle_accepted_output(
         ctx: Context<SettleWithReceipt>,
         params: SettleWithReceiptParams,
     ) -> Result<()> {

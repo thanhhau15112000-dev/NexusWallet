@@ -2090,6 +2090,34 @@ pre {
   color: var(--ok);
 }
 
+.task-output-review {
+  display: grid;
+  gap: 10px;
+  min-width: 240px;
+  max-width: 420px;
+}
+
+.task-output-review pre {
+  margin: 8px 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.task-output-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.task-output-confirm input {
+  flex: 0 0 auto;
+  width: auto;
+}
+
 .ok-icon {
   color: var(--ok);
 }

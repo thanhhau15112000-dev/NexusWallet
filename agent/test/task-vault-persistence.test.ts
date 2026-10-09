@@ -21,8 +21,9 @@ import { createContext } from '../src/context.js';
 import { loadConfig } from '../src/config.js';
 import { registerRoutes } from '../src/routes.js';
 import { SESSION_COOKIE_NAME } from '../src/sessions.js';
+import { submitOutput } from './task-output-helpers.js';
 
-const RPC_URL = 'http://127.0.0.1:8899';
+const RPC_URL = process.env.TASK_VAULT_TEST_RPC_URL ?? 'http://127.0.0.1:8899';
 const SERVICE_ID = 'task-vault-persistence-e2e';
 
 describe('Task Vault Persistence and Browser Refresh Lifecycle', () => {
@@ -160,15 +161,12 @@ describe('Task Vault Persistence and Browser Refresh Lifecycle', () => {
       payload: { taskId, paymentId: 'pay-001', serviceId: SERVICE_ID, payload: { p: 1 } },
     });
     const result1 = JSON.parse(runRes1.body);
+    const acceptedOutput1 = await submitOutput(app1, cookieHeader1, taskId, 'pay-001', worker.secretKey, owner.secretKey, result1.resultPayload);
     const settleRes1 = await app1.inject({
       method: 'POST',
       url: `/api/tasks/${taskId}/payments/pay-001/settle`,
       headers: { cookie: cookieHeader1 },
-      payload: {
-        resultHash: result1.resultHash,
-        workerPubkey: result1.workerPubkey,
-        workerSignature: result1.workerSignature,
-      },
+      payload: acceptedOutput1,
     });
     expect(settleRes1.statusCode).toBe(200);
 
@@ -250,15 +248,12 @@ describe('Task Vault Persistence and Browser Refresh Lifecycle', () => {
       payload: { taskId, paymentId: 'pay-002', serviceId: SERVICE_ID, payload: { p: 2 } },
     });
     const result2 = JSON.parse(runRes2.body);
+    const acceptedOutput2 = await submitOutput(app2, cookieHeader2, taskId, 'pay-002', worker.secretKey, owner.secretKey, result2.resultPayload);
     const settleRes2 = await app2.inject({
       method: 'POST',
       url: `/api/tasks/${taskId}/payments/pay-002/settle`,
       headers: { cookie: cookieHeader2 },
-      payload: {
-        resultHash: result2.resultHash,
-        workerPubkey: result2.workerPubkey,
-        workerSignature: result2.workerSignature,
-      },
+      payload: acceptedOutput2,
     });
     expect(settleRes2.statusCode).toBe(200);
 

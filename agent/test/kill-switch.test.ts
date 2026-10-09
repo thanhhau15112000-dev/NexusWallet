@@ -25,6 +25,7 @@ import { createContext } from '../src/context.js';
 import { loadConfig } from '../src/config.js';
 import { registerRoutes } from '../src/routes.js';
 import { SESSION_COOKIE_NAME } from '../src/sessions.js';
+import { submitOutput } from './task-output-helpers.js';
 import { Store } from '../src/store.js';
 import { loadOrCreateMcpToken } from '../src/mcp-token.js';
 
@@ -824,15 +825,12 @@ describe('Agent Kill Switch (Freeze / Unfreeze)', () => {
       headers: { cookie: cookieHeader },
     });
 
+    const acceptedOutput = await submitOutput(app, cookieHeader, taskId, 'pay-001', workerKey.secretKey, owner.secretKey, { output: 'completed' });
     const settleRes = await app.inject({
       method: 'POST',
       url: `/api/tasks/${taskId}/payments/pay-001/settle`,
       headers: { cookie: cookieHeader },
-      payload: {
-        resultHash: 'hash-res-001',
-        workerPubkey,
-        workerSignature: workerSig,
-      },
+      payload: acceptedOutput,
     });
     expect(settleRes.statusCode).toBe(200);
 

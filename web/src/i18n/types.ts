@@ -410,7 +410,12 @@ export type TranslationDictionary = {
       receiptLockedHint: string;
       receiptWorkerOnlyHint: string;
       closingReceipt: string;
-      settleWithReceipt: string;
+      acceptAndSettle: string;
+      submitOutput: string;
+      submittingOutput: string;
+      reviewOutput: string;
+      reviewedConfirmation: string;
+      reviewLimitation: string;
       settling: string;
       refunded: string;
       onChainDevnet: string;
@@ -436,6 +441,8 @@ export type TranslationDictionary = {
       onchainSettlement: string;
       simulatedSettlement: string;
       settleFailed: string;
+      outputSubmitted: string;
+      outputFailed: string;
       receiptClosedRentReturned: string;
       closeReceiptFailed: string;
       taskRevoked: string;

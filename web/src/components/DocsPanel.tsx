@@ -364,7 +364,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
             <p>
               Instead of letting the agent spend freely, the owner funds a <strong>Task Capability</strong>: a budget,
               a per-payment cap, an expiry and optionally one allowed worker and service. The agent can only move funds
-              from the task vault into escrow, and escrow is released to the worker only with a valid receipt.
+              from the task vault into escrow. The worker submits output for review, and payment requires the owner's acceptance signature for that exact output and payment.
             </p>
           ),
         },
@@ -382,7 +382,10 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 match the task limits, and the amount must fit the cap and the remaining budget.
               </li>
               <li>
-                <strong>Settle with receipt.</strong> The Worker signs a Receipt before task expiry to receive the Escrow funds. A Receipt does not prove work quality. This demo uses a mock Worker managed by the server.
+                <strong>Submit output.</strong> The mock Worker produces output and signs its hash. Submission saves the output for review while the Escrow remains held.
+              </li>
+              <li>
+                <strong>Review and accept.</strong> Read the submitted output, confirm that you accept it, and sign acceptance with the owner wallet to release payment before task expiry. The program verifies acceptance of the exact output, Escrow and amount. Quality is checked by the owner; there is no independent quality verification or dispute resolution. Without acceptance, funds remain held until expiry, when they can be refunded to the owner. Output replacement and revision workflows are not supported yet.
               </li>
               <li>
                 <strong>Close.</strong> <em>Revoke Task</em> stops new payments. <em>Refund &amp; Close</em> returns the
@@ -401,7 +404,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 state conditions in local records, without transferring SOL on Devnet, and are labelled <em>Simulated</em>.
               </p>
               <Callout tone="note" title="On-chain actions need your wallet">
-                Creating, revoking and closing an on-chain task are signed by the owner wallet. Phantom must be
+                Creating, accepting output, revoking and closing a task require the owner wallet. Phantom must be
                 available in the browser.
               </Callout>
               <TabLink tab="tasks" label="Task Vault" ctx={ctx} />

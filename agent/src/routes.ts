@@ -12,8 +12,9 @@ import {
   spentLamportsInWindow,
   type Policy,
   validateTaskTransition,
-  computeTaskHash,
   computeReceiptHash,
+  computeOutputHash,
+  computeTaskAcceptanceMessage,
   deriveTaskCapabilityPda,
   deriveVaultPda,
   deriveEscrowPda,
@@ -22,10 +23,10 @@ import {
   computeReceiptSigningMessage,
   TASK_VAULT_PROGRAM_PUBKEY,
   executeTaskPaymentInstruction,
-  settleWithReceiptInstruction,
+  settleAcceptedOutputInstruction,
   TASK_RECEIPT_ACCOUNT_SIZE,
 } from '@nexus/shared';
-import { Keypair, PublicKey, SystemProgram, type TransactionInstruction } from '@solana/web3.js';
+import { Ed25519Program, Keypair, PublicKey, SystemProgram, type TransactionInstruction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { verifyMessageSignature } from './crypto.js';
@@ -1054,12 +1055,56 @@ const inFlightClaims = new Set<string>();
     return { task: updatedTask, payment: paymentRecord };
   });
 
+  const DeliveryBody = z.object({
+    resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+    resultPayload: z.record(z.unknown()).refine((value) => Object.keys(value).length > 0),
+    workerPubkey: PubkeySchema,
+    workerSignature: z.string().trim().min(1).max(200),
+  });
+
+  app.post('/api/tasks/:taskId/payments/:paymentId/output', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
+    if (userCtx.store.isFrozen()) return reply.status(409).send({ error: 'AGENT_FROZEN' });
+    const parsed = DeliveryBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_output' });
+    const body = parsed.data;
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
+    const payment = userCtx.store.getPayment(taskId, paymentId);
+    if (!payment) return reply.status(404).send({ error: 'payment_not_found' });
+    if (task.isClosed || payment.status !== 'held') return reply.status(400).send({ error: 'already_settled' });
+    const check = validateTaskTransition(task, { type: 'settle_payment', paymentId }, Math.floor(Date.now() / 1000));
+    if (!check.valid) return reply.status(400).send({ error: 'settle_rejected', message: check.error });
+    if (body.workerPubkey !== payment.worker) return reply.status(403).send({ error: 'unauthorized_worker' });
+    if (computeOutputHash(body.resultPayload) !== body.resultHash) return reply.status(400).send({ error: 'output_hash_mismatch' });
+    if (!verifyMessageSignature({
+      message: `NEXUS_RECEIPT_V1:${taskId}:${paymentId}:${body.resultHash}`,
+      signatureBase58: body.workerSignature,
+      pubkeyBase58: payment.worker,
+    })) return reply.status(401).send({ error: 'invalid_worker_signature' });
+    if (payment.delivery) {
+      if (payment.delivery.resultHash !== body.resultHash) return reply.status(409).send({ error: 'output_already_submitted' });
+      return { payment, reused: true };
+    }
+    const updatedPayment = { ...payment, delivery: {
+      resultHash: body.resultHash, resultPayload: body.resultPayload,
+      workerSignature: body.workerSignature, submittedAt: new Date().toISOString(),
+    } };
+    userCtx.store.setPayment(updatedPayment, { allowOverwrite: true });
+    userCtx.audit.record('task_output_submitted', null, { taskId, paymentId, resultHash: body.resultHash });
+    return { payment: updatedPayment, reused: false };
+  });
+
+  const settlementInFlight = new Set<string>();
   const SettlePaymentBody = z.object({
     resultHash: z.string().trim().min(1),
     workerPubkey: PubkeySchema,
     workerSignature: z.string().trim().min(1),
     txSignature: z.string().trim().optional(),
     isSimulated: z.boolean().optional(),
+    ownerSignature: z.string().trim().max(200).optional(),
   });
 
   app.post('/api/tasks/:taskId/payments/:paymentId/settle', async (req, reply) => {
@@ -1078,6 +1123,10 @@ const inFlightClaims = new Set<string>();
 
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
+
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
+    if (task.agentSigner !== userCtx.agentPubkey) return reply.status(409).send({ error: 'agent_signer_mismatch' });
+    if (task.isClosed) return reply.status(400).send({ error: 'settle_rejected' });
 
     const payment = userCtx.store.getPayment(taskId, paymentId);
     if (!payment) {
@@ -1103,6 +1152,12 @@ const inFlightClaims = new Set<string>();
       return reply.status(401).send({ error: 'invalid_worker_signature', message: 'worker signature verification failed' });
     }
 
+    if (!payment.delivery) return reply.status(409).send({ error: 'output_not_submitted' });
+    if (payment.delivery.resultHash !== body.resultHash || computeOutputHash(payment.delivery.resultPayload) !== body.resultHash) {
+      return reply.status(409).send({ error: 'output_hash_mismatch' });
+    }
+    if (!body.ownerSignature) return reply.status(403).send({ error: 'owner_acceptance_required' });
+
     const now = Math.floor(Date.now() / 1000);
     const heldPayments = userCtx.store.getPayments(taskId).filter((p) => p.status === 'held');
     const remainingPending = Math.max(0, heldPayments.length - 1);
@@ -1116,90 +1171,112 @@ const inFlightClaims = new Set<string>();
     }
 
     const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+    const [escrowPda] = deriveEscrowPda(taskPda, paymentId);
     const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
-    const isSimulated = task.isSimulated !== false;
-    let txSignature: string | undefined;
-    if (!isSimulated) {
-      const workerKeypair = getMockWorkerKeypair(userCtx);
-      if (workerKeypair.publicKey.toBase58() !== payment.worker) {
-        return reply.status(400).send({
-          error: 'unsupported_onchain_worker',
-          message: 'only the configured mock worker can sign on-chain demo settlements',
-        });
-      }
-      try {
-        // The demo worker holds no funds of its own: the agent pays the fee and tops the worker
-        // up so it can fund the receipt PDA and still stay rent-exempt afterwards.
-        const [receiptRent, systemAccountRent, workerLamports] = await Promise.all([
-          userCtx.connection.getMinimumBalanceForRentExemption(TASK_RECEIPT_ACCOUNT_SIZE),
-          userCtx.connection.getMinimumBalanceForRentExemption(0),
-          userCtx.connection.getBalance(workerKeypair.publicKey, 'confirmed'),
-        ]);
-        const instructions: TransactionInstruction[] = [];
-        const topUp = receiptRent + systemAccountRent - workerLamports;
-        if (topUp > 0) {
-          instructions.push(SystemProgram.transfer({
-            fromPubkey: userCtx.signer.publicKey,
-            toPubkey: workerKeypair.publicKey,
-            lamports: topUp,
-          }));
-        }
-        instructions.push(settleWithReceiptInstruction({
-          taskCapability: taskPda,
-          escrow: new PublicKey(payment.escrowPda!),
-          paymentId,
-          worker: workerKeypair.publicKey,
-          agentSigner: new PublicKey(task.agentSigner),
-          resultHash: body.resultHash,
-        }));
-        txSignature = await submitTaskVaultInstruction(userCtx.connection, instructions, userCtx.signer, [workerKeypair]);
-      } catch (error) {
-        req.log.error({ err: error, taskId, paymentId }, 'Task Vault settlement transaction failed');
-        return reply.status(502).send({ error: 'onchain_settlement_failed' });
-      }
-    }
-
-    userCtx.store.setPayment({ ...payment, status: 'settled', txSignature, isSimulated }, { allowOverwrite: true });
-
-    const receiptRecord = {
-      taskId,
-      paymentId,
-      worker: payment.worker,
-      serviceId: payment.serviceId,
-      requestHash: payment.requestHash,
-      resultHash: body.resultHash,
-      amountLamports: payment.amountLamports,
-      settledAt: now,
-      receiptPda: receiptPda.toBase58(),
-      txSignature,
-      isSimulated,
-    };
-    userCtx.store.setReceipt(receiptRecord, { allowOverwrite: false });
-
-    // Recompute the status from state re-read after the on-chain await.
-    const latestTask = userCtx.store.getTask(taskId)!;
-    const heldAfterSettle = userCtx.store.getPayments(taskId).filter((p) => p.status === 'held').length;
-    const next = validateTaskTransition(
-      latestTask,
-      { type: 'settle_payment', paymentId, remainingPendingEscrows: heldAfterSettle },
-      now,
-    );
-    if (next.nextStatus && next.nextStatus !== 'closed' && next.nextStatus !== latestTask.status) {
-      userCtx.store.setTask({ ...latestTask, status: next.nextStatus }, { allowOverwrite: true });
-    }
-
-    userCtx.audit.record('task_payment_settled', null, {
-      taskId,
-      paymentId,
-      worker: payment.worker,
-      amountLamports: payment.amountLamports,
-      resultHash: body.resultHash,
-      receiptPda: receiptRecord.receiptPda,
-      txSignature: receiptRecord.txSignature,
-      isSimulated: receiptRecord.isSimulated,
+    const acceptanceMessage = computeTaskAcceptanceMessage({
+      taskCapability: taskPda, escrow: escrowPda, requestHash: payment.requestHash,
+      resultHash: body.resultHash, amountLamports: payment.amountLamports,
     });
+    if (!verifyMessageSignature({ message: acceptanceMessage, signatureBase58: body.ownerSignature, pubkeyBase58: task.owner })) {
+      return reply.status(401).send({ error: 'invalid_owner_acceptance' });
+    }
+    const settlementKey = escrowPda.toBase58();
+    if (settlementInFlight.has(settlementKey)) return reply.status(409).send({ error: 'settlement_in_progress' });
+    settlementInFlight.add(settlementKey);
+    try {
+      const isSimulated = task.isSimulated !== false;
+      let txSignature: string | undefined;
+      if (!isSimulated) {
+        const workerKeypair = getMockWorkerKeypair(userCtx);
+        if (workerKeypair.publicKey.toBase58() !== payment.worker) {
+          return reply.status(400).send({
+            error: 'unsupported_onchain_worker',
+            message: 'only the configured mock worker can sign on-chain demo settlements',
+          });
+        }
+        try {
+          // The demo worker holds no funds of its own: the agent pays the fee and tops the worker
+          // up so it can fund the receipt PDA and still stay rent-exempt afterwards.
+          const [receiptRent, systemAccountRent, workerLamports] = await Promise.all([
+            userCtx.connection.getMinimumBalanceForRentExemption(TASK_RECEIPT_ACCOUNT_SIZE),
+            userCtx.connection.getMinimumBalanceForRentExemption(0),
+            userCtx.connection.getBalance(workerKeypair.publicKey, 'confirmed'),
+          ]);
+          const instructions: TransactionInstruction[] = [];
+          const topUp = receiptRent + systemAccountRent - workerLamports;
+          if (topUp > 0) {
+            instructions.push(SystemProgram.transfer({
+              fromPubkey: userCtx.signer.publicKey,
+              toPubkey: workerKeypair.publicKey,
+              lamports: topUp,
+            }));
+          }
+          instructions.push(Ed25519Program.createInstructionWithPublicKey({
+            publicKey: new PublicKey(task.owner).toBytes(),
+            message: Buffer.from(acceptanceMessage),
+            signature: bs58.decode(body.ownerSignature),
+          }));
+          instructions.push(settleAcceptedOutputInstruction({
+            taskCapability: taskPda,
+            escrow: escrowPda,
+            paymentId,
+            worker: workerKeypair.publicKey,
+            agentSigner: new PublicKey(task.agentSigner),
+            resultHash: body.resultHash,
+          }));
+          txSignature = await submitTaskVaultInstruction(userCtx.connection, instructions, userCtx.signer, [workerKeypair]);
+        } catch (error) {
+          req.log.error({ err: error, taskId, paymentId }, 'Task Vault settlement transaction failed');
+          return reply.status(502).send({ error: 'onchain_settlement_failed' });
+        }
+      }
 
-    return { payment: { ...payment, status: 'settled', txSignature, isSimulated }, receipt: receiptRecord };
+      userCtx.store.setPayment({ ...payment, status: 'settled', txSignature, isSimulated }, { allowOverwrite: true });
+
+      const receiptRecord = {
+        taskId,
+        paymentId,
+        worker: payment.worker,
+        serviceId: payment.serviceId,
+        requestHash: payment.requestHash,
+        resultHash: body.resultHash,
+        amountLamports: payment.amountLamports,
+        settledAt: now,
+        receiptPda: receiptPda.toBase58(),
+        txSignature,
+        isSimulated,
+        acceptedBy: task.owner,
+        ownerSignature: body.ownerSignature,
+      };
+      userCtx.store.setReceipt(receiptRecord, { allowOverwrite: false });
+
+      // Recompute the status from state re-read after the on-chain await.
+      const latestTask = userCtx.store.getTask(taskId)!;
+      const heldAfterSettle = userCtx.store.getPayments(taskId).filter((p) => p.status === 'held').length;
+      const next = validateTaskTransition(
+        latestTask,
+        { type: 'settle_payment', paymentId, remainingPendingEscrows: heldAfterSettle },
+        now,
+      );
+      if (next.nextStatus && next.nextStatus !== 'closed' && next.nextStatus !== latestTask.status) {
+        userCtx.store.setTask({ ...latestTask, status: next.nextStatus }, { allowOverwrite: true });
+      }
+
+      userCtx.audit.record('task_payment_settled', null, {
+        taskId,
+        paymentId,
+        worker: payment.worker,
+        amountLamports: payment.amountLamports,
+        resultHash: body.resultHash,
+        receiptPda: receiptRecord.receiptPda,
+        txSignature: receiptRecord.txSignature,
+        isSimulated: receiptRecord.isSimulated,
+      });
+
+      return { payment: { ...payment, status: 'settled', txSignature, isSimulated }, receipt: receiptRecord };
+    } finally {
+      settlementInFlight.delete(settlementKey);
+    }
   });
 
   app.post('/api/tasks/:taskId/revoke', async (req, reply) => {
@@ -1349,13 +1426,7 @@ const inFlightClaims = new Set<string>();
       evaluatedAt: new Date().toISOString(),
       outputSummary: `Service ${body.serviceId} executed computation successfully`,
     };
-    const resultHash = computeTaskHash({
-      owner: workerPubkey,
-      taskId: body.taskId,
-      budgetLamports: 100,
-      perPaymentCapLamports: 100,
-      expiry: 9999999999,
-    });
+    const resultHash = computeOutputHash(resultPayload);
 
     const canonicalReceiptMessage = `NEXUS_RECEIPT_V1:${body.taskId}:${body.paymentId}:${resultHash}`;
     const signatureBytes = nacl.sign.detached(

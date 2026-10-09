@@ -298,6 +298,7 @@ export const api = {
       resultHash: string;
       workerPubkey: string;
       workerSignature: string;
+      ownerSignature: string;
       txSignature?: string;
       isSimulated?: boolean;
     },
@@ -306,6 +307,15 @@ export const api = {
       `/api/tasks/${taskId}/payments/${paymentId}/settle`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
+  submitTaskOutput: (taskId: string, paymentId: string, input: {
+    resultHash: string;
+    resultPayload: Record<string, unknown>;
+    workerPubkey: string;
+    workerSignature: string;
+  }) => request<{ payment: TaskPaymentRecord; reused: boolean }>(
+    `/api/tasks/${taskId}/payments/${paymentId}/output`,
+    { method: 'POST', body: JSON.stringify(input) },
+  ),
   closeTaskReceipt: (taskId: string, paymentId: string, txSignature: string) =>
     request<{ receipt: TaskReceiptRecord }>(
       `/api/tasks/${taskId}/receipts/${paymentId}/close`,
@@ -328,7 +338,7 @@ export const api = {
       workerSignature: string;
       requestHash: string;
       resultHash: string;
-      resultPayload: unknown;
+      resultPayload: Record<string, unknown>;
     }>('/api/tasks/mock-service/run', {
       method: 'POST',
       body: JSON.stringify(input),

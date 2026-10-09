@@ -21,9 +21,11 @@ import {
   revokeTaskInstruction,
   deriveTaskCapabilityPda,
   deriveReceiptPda,
+  deriveEscrowPda,
+  computeTaskAcceptanceMessage,
 } from '@nexus/shared';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
-import { getPhantom } from '../phantom.js';
+import { getPhantom, signPhantomMessage } from '../phantom.js';
 import { api, ApiError } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { useI18n } from '../i18n/context.js';
@@ -50,6 +52,7 @@ export function TaskVaultPanel(props: {
   const [loaded, setLoaded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [reviewedOutputs, setReviewedOutputs] = useState<Set<string>>(new Set());
 
   // Create form state
   const [newTaskId, setNewTaskId] = useState(`task-${Date.now().toString(36)}`);
@@ -90,6 +93,7 @@ export function TaskVaultPanel(props: {
   };
 
   useEffect(() => {
+    setReviewedOutputs(new Set());
     void loadTasks();
   }, [props.owner]);
 
@@ -276,22 +280,55 @@ export function TaskVaultPanel(props: {
     }
   };
 
-  const handleSettleMockPayment = async (paymentId: string, serviceId: string) => {
+  const handleSubmitMockOutput = async (paymentId: string, serviceId: string) => {
     if (!detail) return;
-    setBusyAction(`settle-${paymentId}`);
+    setBusyAction(`output-${paymentId}`);
     try {
-      // 1. Run mock computation to acquire proof hash and worker receipt signature
+      // Submission saves the output for review; it does not release escrow.
       const mockResult = await api.runMockService({
         taskId: detail.task.taskId,
         paymentId,
         serviceId,
         payload: { simulatedTask: detail.task.taskId, paymentId },
       });
-      // 2. Submit settlement receipt with cryptographic worker signature
-      const result = await api.settleTaskPayment(detail.task.taskId, paymentId, {
+      await api.submitTaskOutput(detail.task.taskId, paymentId, {
         resultHash: mockResult.resultHash,
+        resultPayload: mockResult.resultPayload,
         workerPubkey: mockResult.workerPubkey,
         workerSignature: mockResult.workerSignature,
+      });
+      props.onToast({ tone: 'ok', text: dict.taskVault.toasts.outputSubmitted });
+      await selectTask(detail.task.taskId);
+    } catch (err) {
+      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : dict.taskVault.toasts.outputFailed });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const reviewKey = (payment: TaskPaymentRecord) =>
+    `${props.owner}:${payment.taskId}:${payment.paymentId}:${payment.delivery?.resultHash}`;
+
+  const handleAcceptPayment = async (payment: TaskPaymentRecord) => {
+    if (!detail || !payment.delivery || !reviewedOutputs.has(reviewKey(payment))) return;
+    const paymentId = payment.paymentId;
+    setBusyAction(`settle-${paymentId}`);
+    try {
+      const provider = getPhantom();
+      if (!props.connected || !provider || provider.publicKey?.toString() !== detail.task.owner) {
+        throw new Error(dict.taskVault.toasts.connectOwnerFirst);
+      }
+      const [taskCapability] = deriveTaskCapabilityPda(new PublicKey(detail.task.owner), detail.task.taskId);
+      const [escrow] = deriveEscrowPda(taskCapability, paymentId);
+      const ownerSignature = await signPhantomMessage(computeTaskAcceptanceMessage({
+        taskCapability, escrow, requestHash: payment.requestHash,
+        resultHash: payment.delivery.resultHash, amountLamports: payment.amountLamports,
+      }));
+      const result = await api.settleTaskPayment(detail.task.taskId, paymentId, {
+        resultHash: payment.delivery.resultHash,
+        workerPubkey: payment.worker,
+        workerSignature: payment.delivery.workerSignature,
+        ownerSignature,
       });
       props.onToast({
         tone: 'ok',
@@ -430,6 +467,7 @@ export function TaskVaultPanel(props: {
     task.status === 'active' && nowSeconds >= task.expiry ? 'expired' : task.status;
 
   const locked = !props.connected;
+  const paymentActionsLocked = locked || Boolean(detail?.task.isClosed) || Boolean(detail && nowSeconds >= detail.task.expiry);
   const createOpen = showCreate || (loaded && tasks.length === 0);
 
   const statusTone = (status: string): 'ok' | 'warn' | 'bad' | 'neutral' => {
@@ -904,16 +942,44 @@ export function TaskVaultPanel(props: {
                                       </button>
                                     ) : receipt.isClosed ? <span>{dict.taskVault.escrows.receiptClosed}</span> : null}
                                   </div>
+                                ) : p.status === 'held' && p.delivery ? (
+                                  <div className="task-output-review">
+                                    <details open>
+                                      <summary>{dict.taskVault.escrows.reviewOutput}</summary>
+                                      <pre>{JSON.stringify(p.delivery.resultPayload, null, 2)}</pre>
+                                    </details>
+                                    <Mono title={p.delivery.resultHash}>{shorten(p.delivery.resultHash, 8)}</Mono>
+                                    <label className="task-output-confirm">
+                                      <input type="checkbox"
+                                        checked={reviewedOutputs.has(reviewKey(p))}
+                                        disabled={Boolean(busyAction) || paymentActionsLocked}
+                                        onChange={(event) => setReviewedOutputs((current) => {
+                                          const next = new Set(current);
+                                          if (event.target.checked) next.add(reviewKey(p));
+                                          else next.delete(reviewKey(p));
+                                          return next;
+                                        })}
+                                      />
+                                      {dict.taskVault.escrows.reviewedConfirmation}
+                                    </label>
+                                    <button type="button" className="link primary-link"
+                                      disabled={Boolean(busyAction) || paymentActionsLocked || !reviewedOutputs.has(reviewKey(p))}
+                                      onClick={() => void handleAcceptPayment(p)}
+                                    >
+                                      {busyAction === `settle-${p.paymentId}` ? dict.taskVault.escrows.settling : dict.taskVault.escrows.acceptAndSettle}
+                                    </button>
+                                    <p className="hint">{dict.taskVault.escrows.reviewLimitation}</p>
+                                  </div>
                                 ) : p.status === 'held' ? (
                                   <button
                                     type="button"
                                     className="link primary-link"
-                                    disabled={Boolean(busyAction) || locked}
-                                    onClick={() => void handleSettleMockPayment(p.paymentId, p.serviceId)}
+                                    disabled={Boolean(busyAction) || paymentActionsLocked}
+                                    onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId)}
                                   >
-                                    {busyAction === `settle-${p.paymentId}`
-                                      ? dict.taskVault.escrows.settling
-                                      : dict.taskVault.escrows.settleWithReceipt}
+                                    {busyAction === `output-${p.paymentId}`
+                                      ? dict.taskVault.escrows.submittingOutput
+                                      : dict.taskVault.escrows.submitOutput}
                                   </button>
                                 ) : (
                                   <span>{dict.taskVault.escrows.refunded}</span>

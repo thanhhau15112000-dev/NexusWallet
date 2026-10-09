@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   Connection,
+  Ed25519Program,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   sendAndConfirmTransaction,
   Transaction,
+  TransactionInstruction,
 } from '@solana/web3.js';
 import {
   TASK_VAULT_PROGRAM_PUBKEY,
@@ -15,7 +17,8 @@ import {
   deriveReceiptPda,
   createAndFundTaskInstruction,
   executeTaskPaymentInstruction,
-  settleWithReceiptInstruction,
+  settleAcceptedOutputInstruction,
+  computeTaskAcceptanceMessage,
   closeReceiptInstruction,
   refundAndCloseInstruction,
   refundExpiredEscrowInstruction,
@@ -23,9 +26,10 @@ import {
   toHex,
 } from '@nexus/shared';
 import { createHash } from 'node:crypto';
+import nacl from 'tweetnacl';
 
 describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
-  const rpcUrl = 'http://127.0.0.1:8899';
+  const rpcUrl = process.env.TASK_VAULT_TEST_RPC_URL ?? 'http://127.0.0.1:8899';
   const connection = new Connection(rpcUrl, 'confirmed');
 
   it('executes full task vault lifecycle on real Solana validator', async (ctx) => {
@@ -187,7 +191,7 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
     const workerBalanceBefore = await connection.getBalance(worker.publicKey);
     const agentBalanceBeforeSettle = await connection.getBalance(agent.publicKey);
 
-    const settleIx = settleWithReceiptInstruction({
+    const settleIx = settleAcceptedOutputInstruction({
       taskCapability: taskCapPda,
       escrow: escrowPda,
       paymentId,
@@ -196,7 +200,23 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
       resultHash,
     });
 
-    const settleTx = new Transaction().add(settleIx);
+    const acceptance = (escrow: PublicKey, amountLamports: number, hash: Uint8Array, signer = owner) => {
+      const message = Buffer.from(computeTaskAcceptanceMessage({ taskCapability: taskCapPda, escrow, requestHash, resultHash: hash, amountLamports }));
+      return Ed25519Program.createInstructionWithPublicKey({ publicKey: signer.publicKey.toBytes(), message, signature: nacl.sign.detached(message, signer.secretKey) });
+    };
+    // Calling the program directly without owner acceptance cannot release escrow.
+    await expect(sendAndConfirmTransaction(connection, new Transaction().add(settleIx), [worker], { commitment: 'confirmed' })).rejects.toThrow();
+    const outsider = Keypair.generate();
+    await expect(sendAndConfirmTransaction(connection, new Transaction().add(acceptance(escrowPda, paymentAmount, resultHash, outsider), settleIx), [worker], { commitment: 'confirmed' })).rejects.toThrow(/0x1784/);
+    await expect(sendAndConfirmTransaction(connection, new Transaction().add(acceptance(escrowPda, paymentAmount + 1, resultHash), settleIx), [worker], { commitment: 'confirmed' })).rejects.toThrow(/0x1784/);
+    await expect(sendAndConfirmTransaction(connection, new Transaction().add(acceptance(escrowPda, paymentAmount, createHash('sha256').update('other-output').digest()), settleIx), [worker], { commitment: 'confirmed' })).rejects.toThrow(/0x1784/);
+    const forgedAcceptance = acceptance(escrowPda, paymentAmount, resultHash);
+    forgedAcceptance.data[48] = forgedAcceptance.data.readUInt8(48) ^ 1;
+    await expect(sendAndConfirmTransaction(connection, new Transaction().add(forgedAcceptance, settleIx), [worker], { commitment: 'confirmed' })).rejects.toThrow();
+    const legacySettlement = new TransactionInstruction({ programId: settleIx.programId, keys: settleIx.keys.slice(0, 6), data: Buffer.concat([Buffer.from([88, 243, 178, 201, 225, 254, 125, 117]), Buffer.from(resultHash)]) });
+    await expect(sendAndConfirmTransaction(connection, new Transaction().add(legacySettlement), [worker], { commitment: 'confirmed' })).rejects.toThrow();
+    expect((await connection.getAccountInfo(escrowPda))!.lamports).toBe(escrowAccount!.lamports);
+    const settleTx = new Transaction().add(acceptance(escrowPda, paymentAmount, resultHash), settleIx);
     const settleSig = await sendAndConfirmTransaction(connection, settleTx, [worker], {
       commitment: 'confirmed',
     });
@@ -274,13 +294,14 @@ describe('Phase 1 & On-chain Proof: Real Solana Program Execution', () => {
         commitment: 'confirmed',
       }),
     ).rejects.toThrow(/0x1775/);
-    await sendAndConfirmTransaction(connection, new Transaction().add(settleWithReceiptInstruction({
+    const heldResultHash = createHash('sha256').update('held-result').digest();
+    await sendAndConfirmTransaction(connection, new Transaction().add(acceptance(heldEscrowPda, 100_000_000, heldResultHash), settleAcceptedOutputInstruction({
       taskCapability: taskCapPda,
       escrow: heldEscrowPda,
       paymentId: heldPaymentId,
       worker: worker.publicKey,
       agentSigner: agent.publicKey,
-      resultHash: createHash('sha256').update('held-result').digest(),
+      resultHash: heldResultHash,
     })), [worker], { commitment: 'confirmed' });
 
     // Receipt rent can only return to the worker who paid it.

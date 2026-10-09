@@ -1,5 +1,6 @@
 import {
   Connection,
+  Ed25519Program,
   Keypair,
   PublicKey,
   SystemProgram,
@@ -18,12 +19,14 @@ import {
   refundAndCloseInstruction,
   refundExpiredEscrowInstruction,
   revokeTaskInstruction,
-  settleWithReceiptInstruction,
+  settleAcceptedOutputInstruction,
+  computeTaskAcceptanceMessage,
 } from '@nexus/shared';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import nacl from 'tweetnacl';
 
 const RPC_URL = process.env.HELIUS_DEVNET_RPC || process.env.SOLANA_RPC_URL;
 const OWNER_ADDRESS = '3tQvQJYSbgTa3aR2kbeMkbfEHM9QhggJ197rdFAQ4Fgx';
@@ -78,6 +81,7 @@ type ProbeTask = {
 };
 const tasks: ProbeTask[] = [];
 const receipts: PublicKey[] = [];
+const paymentAmounts = new Map<string, number>();
 
 function digest(value: string): Buffer {
   return createHash('sha256').update(value).digest();
@@ -85,14 +89,14 @@ function digest(value: string): Buffer {
 
 async function submit(
   operation: string,
-  instruction: TransactionInstruction,
+  instruction: TransactionInstruction | TransactionInstruction[],
   feePayer: Keypair,
 ): Promise<string> {
   const blockhash = await connection.getLatestBlockhash('confirmed');
   const transaction = new Transaction({
     feePayer: feePayer.publicKey,
     recentBlockhash: blockhash.blockhash,
-  }).add(instruction);
+  }).add(...(Array.isArray(instruction) ? instruction : [instruction]));
   transaction.sign(feePayer);
   const signature = await connection.sendRawTransaction(transaction.serialize(), {
     maxRetries: 5,
@@ -112,7 +116,7 @@ async function submit(
 
 async function expectRejected(
   operation: string,
-  instruction: TransactionInstruction,
+  instruction: TransactionInstruction | TransactionInstruction[],
   feePayer: Keypair,
   code: string,
 ): Promise<void> {
@@ -120,7 +124,7 @@ async function expectRejected(
   const transaction = new Transaction({
     feePayer: feePayer.publicKey,
     recentBlockhash: blockhash.blockhash,
-  }).add(instruction);
+  }).add(...(Array.isArray(instruction) ? instruction : [instruction]));
   transaction.sign(feePayer);
   const result = await connection.simulateTransaction(transaction, [feePayer]);
   const logs = (result.value.logs ?? []).join('\n');
@@ -155,15 +159,19 @@ function paymentIx(
   });
 }
 
-function settleIx(task: ProbeTask, paymentId: string): TransactionInstruction {
-  return settleWithReceiptInstruction({
+function settleIx(task: ProbeTask, paymentId: string): TransactionInstruction[] {
+  const escrow = deriveEscrowPda(task.capability, paymentId)[0];
+  const amountLamports = paymentAmounts.get(`${task.id}:${paymentId}`);
+  if (amountLamports === undefined) throw new Error(`Missing amount for ${paymentId}`);
+  const message = Buffer.from(computeTaskAcceptanceMessage({ taskCapability: task.capability, escrow, requestHash: digest(`request:${paymentId}`), resultHash: digest(`result:${paymentId}`), amountLamports }));
+  return [Ed25519Program.createInstructionWithPublicKey({ publicKey: owner.publicKey.toBytes(), message, signature: nacl.sign.detached(message, owner.secretKey) }), settleAcceptedOutputInstruction({
     taskCapability: task.capability,
     escrow: deriveEscrowPda(task.capability, paymentId)[0],
     paymentId,
     worker: worker.publicKey,
     agentSigner: agent.publicKey,
     resultHash: digest(`result:${paymentId}`),
-  });
+  })];
 }
 
 function closeReceiptIx(task: ProbeTask, paymentId: string): TransactionInstruction {
@@ -178,6 +186,7 @@ function closeReceiptIx(task: ProbeTask, paymentId: string): TransactionInstruct
 async function executePayment(task: ProbeTask, label: string, amountLamports: number): Promise<string> {
   const paymentId = `payment-${label}-${randomUUID()}`;
   task.paymentIds.push(paymentId);
+  paymentAmounts.set(`${task.id}:${paymentId}`, amountLamports);
   await submit(`execute-${label}`, paymentIx(task, paymentId, amountLamports), agent);
   return paymentId;
 }

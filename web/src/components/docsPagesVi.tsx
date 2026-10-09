@@ -356,7 +356,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <p>
               Thay vì để agent chi tiêu tự do, chủ ví nạp vốn cho một <strong>Task Capability</strong>: một ngân sách,
               một hạn mức mỗi lần chi, một thời hạn và tùy chọn một worker và dịch vụ được phép. Agent chỉ chuyển được
-              tiền từ vault của tác vụ vào escrow, và escrow chỉ giải phóng cho worker khi có Receipt hợp lệ.
+              tiền từ vault của tác vụ vào escrow. Worker bàn giao output để kiểm tra; chủ ví phải ký nghiệm thu đúng output và khoản thanh toán trước khi trả tiền.
             </p>
           ),
         },
@@ -371,12 +371,14 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 nếu không thì tác vụ chỉ được mô phỏng.
               </li>
               <li>
-                <strong>Giải ngân.</strong> Chuyển một khoản vào escrow cho một worker. Worker và dịch vụ phải khớp giới
+                <strong>Giữ tiền trong Escrow.</strong> Chuyển một khoản vào escrow cho một worker. Worker và dịch vụ phải khớp giới
                 hạn của tác vụ, và số tiền phải nằm trong hạn mức mỗi lần chi cùng ngân sách còn lại.
               </li>
               <li>
-                <strong>Quyết toán bằng Receipt.</strong> Worker ký Receipt để nhận tiền trước khi tác vụ hết hạn; Escrow được giải
-                phóng theo Receipt đó. Receipt không chứng minh chất lượng công việc. Bản demo dùng mock Worker do server quản lý.
+                <strong>Bàn giao output.</strong> Mock Worker tạo output và ký hash của nội dung đó. Output được lưu để kiểm tra; tiền vẫn giữ trong Escrow.
+              </li>
+              <li>
+                <strong>Nghiệm thu và trả tiền.</strong> Đọc output đã bàn giao, xác nhận đồng ý nghiệm thu và ký bằng ví chủ sở hữu trước khi tác vụ hết hạn. Program kiểm tra chữ ký cho đúng output, Escrow và số tiền. Chất lượng do chủ ví kiểm tra; chưa có xác minh độc lập hoặc phân xử tranh chấp. Nếu không nghiệm thu, tiền giữ đến expiry rồi có thể hoàn về chủ ví. Chưa hỗ trợ thay thế output hoặc luồng sửa lại.
               </li>
               <li>
                 <strong>Đóng.</strong> <em>Thu hồi quyền chi</em> dừng các khoản thanh toán mới. <em>Hoàn tiền và đóng Task Vault</em> trả ngân sách chưa phân bổ về cho chủ ví khi không còn Escrow đang giữ. Sau expiry, Escrow còn giữ cần được hoàn riêng; màn hình hiện chưa hỗ trợ thao tác này.
@@ -394,7 +396,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 điều kiện ngân sách và trạng thái nhưng chỉ lưu bản ghi local, không chuyển SOL trên Devnet; được gắn nhãn <em>Mô phỏng</em>.
               </p>
               <Callout tone="note" title="Hành động on-chain cần ví của bạn">
-                Tạo, thu hồi và đóng một tác vụ on-chain đều do ví chủ sở hữu ký. Trình duyệt phải có Phantom.
+                Tạo, nghiệm thu output, thu hồi và đóng tác vụ đều cần ví chủ sở hữu. Trình duyệt phải có Phantom.
               </Callout>
               <TabLink tab="tasks" label="Task Vault" ctx={ctx} />
             </>

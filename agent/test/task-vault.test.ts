@@ -21,7 +21,7 @@ import {
   deriveReceiptPda,
   createAndFundTaskInstruction,
   executeTaskPaymentInstruction,
-  settleWithReceiptInstruction,
+  settleAcceptedOutputInstruction,
   closeReceiptInstruction,
   revokeTaskInstruction,
   refundAndCloseInstruction,
@@ -395,10 +395,10 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       expect(ix.data.length).toBe(8 + 32 + 8 + 32 + 32);
     });
 
-    it('builds valid settle_with_receipt instruction', () => {
+    it('builds owner-gated settle_accepted_output instruction', () => {
       const [capPda] = deriveTaskCapabilityPda(owner, taskId);
       const [escrowPda] = deriveEscrowPda(capPda, paymentId);
-      const ix = settleWithReceiptInstruction({
+      const ix = settleAcceptedOutputInstruction({
         taskCapability: capPda,
         escrow: escrowPda,
         paymentId,
@@ -408,7 +408,7 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       });
 
       expect(ix.programId.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
-      expect(ix.keys).toHaveLength(6);
+      expect(ix.keys).toHaveLength(7);
       expect(ix.keys[3]!.pubkey.toBase58()).toBe(worker.toBase58());
       expect(ix.keys[3]!.isSigner).toBe(true);
       expect(ix.keys[4]!.pubkey.toBase58()).toBe(agent.toBase58());
