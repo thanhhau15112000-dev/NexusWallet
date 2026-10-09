@@ -412,7 +412,7 @@ export function TaskVaultPanel(props: {
       const res = await api.refundTask(taskId, txSignature);
       props.onToast({
         tone: 'ok',
-        text: interpolate(dict.taskVault.toasts.vaultClosedRefunded, {
+        text: interpolate(txSignature ? dict.taskVault.toasts.vaultClosedRefunded : dict.taskVault.toasts.vaultClosedSimulated, {
           amount: (res.refundedLamports / LAMPORTS_PER_SOL).toFixed(4),
         }),
       });
@@ -705,7 +705,7 @@ export function TaskVaultPanel(props: {
                     </strong>
                     {detail.task.isClosed ? (
                       <span className="stat-label">
-                        {dict.taskVault.detail.refunded}: {(refundedLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
+                        {detail.task.isSimulated === false ? dict.taskVault.detail.refunded : dict.taskVault.detail.refundedSimulated}: {(refundedLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                       </span>
                     ) : null}
                   </div>
@@ -830,6 +830,7 @@ export function TaskVaultPanel(props: {
 
               {/* Escrow & Payment List */}
               <Card title={dict.taskVault.escrows.title} titleIcon={<Clock size={16} />}>
+                <p className="card-desc">{dict.taskVault.escrows.proofHint}</p>
                 {detail.payments.length === 0 ? (
                   <div className="empty-state">{dict.taskVault.escrows.empty}</div>
                 ) : (

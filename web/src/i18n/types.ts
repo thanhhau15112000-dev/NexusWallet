@@ -81,6 +81,7 @@ export type TranslationDictionary = {
   };
   toasts: {
     confirmed: string;
+    balanceRead: string;
     approvalRequired: string;
     denied: string;
     executionFailed: string;
@@ -164,6 +165,7 @@ export type TranslationDictionary = {
     title: string;
     placeholderDefault: string;
     placeholderExample: string;
+    presetCommand: string;
     run: string;
     running: string;
     autoHint: string;
@@ -323,6 +325,7 @@ export type TranslationDictionary = {
     clipboardUnavailable: string;
   },
   taskVault: {
+    errors: Record<string, string>;
     connectToOperate: string;
     create: {
       title: string;
@@ -365,6 +368,7 @@ export type TranslationDictionary = {
       totalSpent: string;
       remaining: string;
       refunded: string;
+      refundedSimulated: string;
       perPaymentCap: string;
       allowedWorker: string;
       allowedService: string;
@@ -397,6 +401,7 @@ export type TranslationDictionary = {
       colStatus: string;
       colAction: string;
       proof: string;
+      proofHint: string;
       receiptLocked: string;
       receiptWorkerOnly: string;
       receiptClosed: string;
@@ -436,6 +441,7 @@ export type TranslationDictionary = {
       taskRevoked: string;
       revokeFailed: string;
       vaultClosedRefunded: string;
+      vaultClosedSimulated: string;
       refundFailed: string;
       loadFailed: string;
       detailFailed: string;

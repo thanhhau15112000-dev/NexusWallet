@@ -33,17 +33,17 @@ export function ConsolePanel(props: {
   const presets = label
     ? [
         {
-          text: `Send ${under} SOL to ${label}`,
+          text: interpolate(dict.console.presetCommand, { amount: under, recipient: label }),
           hint: dict.console.autoHint,
           tone: 'ok' as const,
         },
         {
-          text: `Send ${over} SOL to ${label}`,
+          text: interpolate(dict.console.presetCommand, { amount: over, recipient: label }),
           hint: dict.console.approvalHint,
           tone: 'warn' as const,
         },
         {
-          text: `Send ${under} SOL to ${OFF_ALLOWLIST_ADDRESS}`,
+          text: interpolate(dict.console.presetCommand, { amount: under, recipient: OFF_ALLOWLIST_ADDRESS }),
           hint: dict.console.deniedHint,
           tone: 'bad' as const,
         },

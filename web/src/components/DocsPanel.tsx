@@ -300,9 +300,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           title: 'Presets',
           body: (
             <p>
-              Once a recipient is allowlisted, the AI Commands page shows three presets: one under the limit (Auto),
-              one above it (Approval), and one to an address that is never allowlisted (Denied). They are the fastest
-              way to see all three verdicts. <TabLink tab="commands" label="AI Commands" ctx={ctx} />
+              Once a recipient is allowlisted, the AI Commands page shows three presets: one within the per-transaction limit,
+              one above that limit, and one to an address outside the allowlist. Results also depend on balance, the 24-hour
+              limit and whether the agent is frozen. <TabLink tab="commands" label="AI Commands" ctx={ctx} />
             </p>
           ),
         },
@@ -382,11 +382,11 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 match the task limits, and the amount must fit the cap and the remaining budget.
               </li>
               <li>
-                <strong>Settle with receipt.</strong> The worker returns a signed receipt; escrow is released to it.
+                <strong>Settle with receipt.</strong> The Worker signs a Receipt before task expiry to receive the Escrow funds. A Receipt does not prove work quality. This demo uses a mock Worker managed by the server.
               </li>
               <li>
                 <strong>Close.</strong> <em>Revoke Task</em> stops new payments. <em>Refund &amp; Close</em> returns the
-                unspent budget to the owner once no escrow is still held.
+                unallocated budget to the owner once no Escrow is held. After expiry, held Escrows must be refunded separately; this screen does not support that action yet.
               </li>
             </Steps>
           ),
@@ -397,8 +397,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <>
               <p>
-                On-chain tasks show a <em>Devnet Tx</em> badge and link to Explorer. Simulated tasks keep the same state
-                machine off-chain and are labelled <em>Simulated</em>.
+                On-chain tasks show a <em>Devnet Tx</em> badge and link to Explorer. Simulated tasks check budget and
+                state conditions in local records, without transferring SOL on Devnet, and are labelled <em>Simulated</em>.
               </p>
               <Callout tone="note" title="On-chain actions need your wallet">
                 Creating, revoking and closing an on-chain task are signed by the owner wallet. Phantom must be

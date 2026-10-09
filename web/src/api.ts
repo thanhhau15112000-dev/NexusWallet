@@ -126,6 +126,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (response.status === 429 && code === 'seed_cap_reached') {
       throw new ApiError(getCurrentDictionary().apiErrors.seedCapReached, response.status, code);
     }
+    if (path === '/api/tasks' || path.startsWith('/api/tasks/')) {
+      const messages = getCurrentDictionary().taskVault.errors;
+      const localized = messages[message ?? ''] ?? messages[code];
+      if (localized) throw new ApiError(localized, response.status, code);
+    }
     throw new ApiError(message ?? `${code} (${response.status})`, response.status, code);
   }
   return body as T;

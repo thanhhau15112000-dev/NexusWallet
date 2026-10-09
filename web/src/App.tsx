@@ -317,7 +317,7 @@ export function App() {
     (request: PaymentRequest): Toast => {
       switch (request.status) {
         case 'confirmed':
-          return { tone: 'ok', text: dict.toasts.confirmed };
+          return { tone: 'ok', text: request.decision?.resolved?.type === 'get_balance' ? dict.toasts.balanceRead : dict.toasts.confirmed };
         case 'pending_approval':
           return { tone: 'warn', text: dict.toasts.approvalRequired };
         case 'denied':
