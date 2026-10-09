@@ -172,6 +172,11 @@ export type TranslationDictionary = {
     noPresets: string;
     desc: string;
     presetsTitle: string;
+    lastTitle: string;
+    sendHint: string;
+    mcpNote: string;
+    openPolicy: string;
+    connectToUse: string;
   };
   requests: {
     title: string;
@@ -318,6 +323,7 @@ export type TranslationDictionary = {
     clipboardUnavailable: string;
   },
   taskVault: {
+    connectToOperate: string;
     create: {
       title: string;
       taskId: string;
@@ -339,7 +345,11 @@ export type TranslationDictionary = {
       refresh: string;
       empty: string;
       cap: string;
+      newTask: string;
+      hideForm: string;
     };
+    statuses: { active: string; completed: string; revoked: string; expired: string };
+    escrowStatuses: { held: string; settled: string; refunded: string };
     detail: {
       taskTitle: string;
       defaultTitle: string;
@@ -365,6 +375,8 @@ export type TranslationDictionary = {
       devnetTxLabel: string;
       copyCapPda: string;
       copyVaultPda: string;
+      technicalDetails: string;
+      expiredNote: string;
     };
     payment: {
       title: string;
@@ -389,6 +401,9 @@ export type TranslationDictionary = {
       receiptWorkerOnly: string;
       receiptClosed: string;
       closeReceipt: string;
+      closeReceiptHint: string;
+      receiptLockedHint: string;
+      receiptWorkerOnlyHint: string;
       closingReceipt: string;
       settleWithReceipt: string;
       settling: string;

@@ -42,7 +42,7 @@ export function describeAction(request: PaymentRequest, labels: ActionLabels): s
  * Localized text for a request error, keyed by its code. Falls back to the raw message for unknown
  * codes, and for requests stored before `details` existed when a placeholder cannot be filled.
  */
-function localizeError(
+export function localizeError(
   error: NonNullable<PaymentRequest['error']>,
   templates: Record<string, string>,
   interpolate: (template: string, params: Record<string, string | number>) => string,
