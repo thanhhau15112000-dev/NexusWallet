@@ -68,6 +68,7 @@ flowchart LR
   Decision -->|deny| Stop[No transaction signing]
   Signer --> Chain[Solana Devnet]
   UI --> Vault[Anchor smart contract: capability / escrow / receipt]
+  MCP -->|escrow trong capability đã cấp| Vault
   Vault --> Chain
 ```
 
