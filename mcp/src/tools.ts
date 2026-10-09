@@ -2,7 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { AGENT_ERROR_REMEDIATION, type PaymentRequest, type Policy, type RequestStatus } from '@nexus/shared';
+import {
+  AGENT_ERROR_REMEDIATION,
+  TASK_STATUSES,
+  type PaymentRequest,
+  type Policy,
+  type RequestStatus,
+  type TaskCapabilityRecord,
+  type TaskPaymentRecord,
+  type TaskReceiptRecord,
+} from '@nexus/shared';
 import { ApiError, ApiUnreachableError, McpSetupError, type NexusApi } from './api.js';
 import type { McpConfig } from './config.js';
 
@@ -28,6 +37,12 @@ const INSTRUCTIONS = [
   'Recipients outside the allowlist are denied. Call nexuspay_get_status to see the allowlist labels.',
   'If a transfer returns outcome_unknown, call it again with the same idempotencyKey; do not change the amount.',
   'If a transfer returns AGENT_FROZEN, the owner has locked the agent; stop proposing transfers and ask the owner to unfreeze it in the dashboard.',
+  'For Task Vault, read the task first: the owner funds it and delegates a budget, payment cap, expiry, worker and service.',
+  'nexuspay_execute_task_payment moves funds into escrow only; the worker must sign a receipt to receive them.',
+  'Task Vault limits reject payments outside the capability; they do not enter the transfer approval queue.',
+  'Keep the same paymentId and all parameters after an uncertain outcome; never use a new paymentId to retry.',
+  'Tasks and payments marked simulated do not move SOL. The current on-chain demo uses a server-held mock worker.',
+  'You cannot create or fund tasks, revoke them, run the mock worker, settle escrows or refund through MCP.',
 ].join(' ');
 
 type StateResponse = {
@@ -139,6 +154,30 @@ export function summarizeRequest(request: PaymentRequest, dashboardUrl: string) 
 function amountInput(description: string) {
   return z.number().min(1e-9).max(1_000_000_000).describe(description);
 }
+
+type TaskDetailResponse = {
+  task: TaskCapabilityRecord;
+  payments: TaskPaymentRecord[];
+  receipts: TaskReceiptRecord[];
+};
+
+/** Local records, with expiry made explicit; these reads do not reconcile chain state. */
+function summarizeTask(task: TaskCapabilityRecord) {
+  const expired = Math.floor(Date.now() / 1000) >= task.expiry;
+  return {
+    ...task,
+    status: task.status === 'active' && expired ? 'expired' : task.status,
+    expired,
+    remainingBudgetLamports: Math.max(0, task.budgetLamports - task.spentLamports),
+    mode: task.isSimulated === false ? 'devnet' : 'simulated',
+    source: 'agent_local_record',
+  };
+}
+
+// A task ID is a single URL segment. Reject dot segments and slashes before encoding.
+const taskIdInput = z.string().trim().min(1).max(64).regex(/^(?!\.{1,2}$)[^/\\]+$/);
+const paymentIdInput = z.string().trim().min(1).max(64)
+  .describe('A unique ID for this payment within the task. Reuse it with identical parameters after an uncertain outcome.');
 
 const idempotencyKeyInput = z
   .string()
@@ -257,6 +296,116 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
         return ok(summarizeRequest(request, config.dashboardUrl));
       } catch (err) {
         return handleError(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'nexuspay_list_tasks',
+    {
+      title: 'List delegated Task Vault budgets',
+      description:
+        'List this owner\'s Task Vault records with remaining budget in lamports, per-payment cap, expiry and allowed worker/service. Results explicitly distinguish simulated records from Devnet tasks; local records are not a fresh chain reconciliation.',
+      inputSchema: {
+        limit: z.number().int().min(1).max(50).default(10),
+        status: z.enum(TASK_STATUSES).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ limit, status }) => {
+      try {
+        const { tasks } = await api.get<{ tasks: TaskCapabilityRecord[] }>('/api/tasks');
+        const summaries = tasks.map(summarizeTask).filter((task) => !status || task.status === status);
+        return ok({ tasks: summaries.slice(0, limit), matchingCount: summaries.length });
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'nexuspay_get_task',
+    {
+      title: 'Get a Task Vault and its escrow outcomes',
+      description:
+        'Read one task, its escrow payments and receipts for this owner. Use before payment and after an uncertain submission. A held payment has not paid the worker; a receipt records a signed result hash, not verified work quality.',
+      inputSchema: { taskId: taskIdInput },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ taskId }) => {
+      try {
+        const detail = await api.get<TaskDetailResponse>(`/api/tasks/${encodeURIComponent(taskId)}`);
+        return ok({ ...detail, task: summarizeTask(detail.task) });
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'nexuspay_execute_task_payment',
+    {
+      title: 'Create an escrow from a delegated Task Vault',
+      description:
+        'Move a task budget into escrow on Devnet (or simulate for a simulated task). The task must be open, active and unexpired; the agent must be unfrozen. Budget, cap, worker and service restrictions are enforced by the API and the on-chain program for Devnet tasks. This does not settle or pay the worker. The agent wallet pays transaction fees and escrow rent. The on-chain demo currently supports only the configured mock worker.',
+      inputSchema: {
+        taskId: taskIdInput,
+        paymentId: paymentIdInput,
+        worker: z.string().trim().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/)
+          .describe('Exact worker public key allowed by the task; no labels.'),
+        serviceId: z.string().trim().min(1).max(64).describe('Exact service ID allowed by the task.'),
+        amountLamports: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER)
+          .describe('Integer lamports, not SOL. 1 SOL = 1000000000 lamports.'),
+        requestHash: z.string().trim().regex(/^[0-9a-f]{64}$/)
+          .describe('Lowercase SHA-256 hex digest of the service request payload.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ taskId, ...payment }) => {
+      const path = `/api/tasks/${encodeURIComponent(taskId)}`;
+      const ids = { taskId, paymentId: payment.paymentId };
+      const outcomeUnknown = () => fail(
+        'outcome_unknown',
+        'The escrow may have been submitted. Read nexuspay_get_task using this taskId. Keep the same paymentId and identical parameters; never create a new paymentId to retry. If no local record appears, ask the owner to reconcile the escrow on Devnet before starting another payment.',
+        ids,
+      );
+      const recordedResult = (detail: TaskDetailResponse): CallToolResult | null => {
+        const existing = detail.payments.find((item) => item.paymentId === payment.paymentId);
+        if (!existing) return null;
+        if (existing.worker !== payment.worker || existing.serviceId !== payment.serviceId
+          || existing.amountLamports !== payment.amountLamports || existing.requestHash !== payment.requestHash) {
+          return fail('IDEMPOTENCY_CONFLICT', 'This paymentId already belongs to a different payment. Do not reuse it with changed parameters.', ids);
+        }
+        return ok({ task: summarizeTask(detail.task), payment: existing, reused: true });
+      };
+      let paymentSubmissionAttempted = false;
+      try {
+        // A recorded retry is a read, including after freeze, revoke or task closure.
+        const existing = recordedResult(await api.get<TaskDetailResponse>(path));
+        if (existing) return existing;
+        paymentSubmissionAttempted = true;
+        const result = await api.post<{ task: TaskCapabilityRecord; payment: TaskPaymentRecord }>(
+          `${path}/payments`, payment,
+        );
+        return ok({ task: summarizeTask(result.task), payment: result.payment, reused: false });
+      } catch (err) {
+        // Keep the API's existing duplicate rejection. Recover an already-recorded identical
+        // payment for MCP callers without submitting another transaction or changing its ID.
+        if (err instanceof ApiError && err.code === 'payment_exists') {
+          try {
+            const detail = await api.get<TaskDetailResponse>(path);
+            return recordedResult(detail) ?? outcomeUnknown();
+          } catch (readError) {
+            return handleError(readError, ids);
+          }
+        }
+        // A failed initial GET cannot have created an escrow. Once POST starts, the
+        // API's 502 does not distinguish pre-send errors from an unconfirmed send.
+        if (paymentSubmissionAttempted
+          && (err instanceof ApiUnreachableError || (err instanceof ApiError && err.status >= 500))) {
+          return outcomeUnknown();
+        }
+        return handleError(err, ids);
       }
     },
   );

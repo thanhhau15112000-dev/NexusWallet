@@ -228,16 +228,16 @@ nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng 
             └──────────────────────────────────────────┘
 ```
 
-- **MCP là luồng chính.** Agent bên ngoài tự lập kế hoạch và gửi action có cấu trúc tới `POST /api/agent/intents`, đi thẳng vào policy.
+- **MCP là luồng chính.** Agent bên ngoài tự lập kế hoạch và gửi transfer có cấu trúc tới `POST /api/agent/intents`, đi thẳng vào policy. Với Task Vault, agent đọc capability đã được owner cấp rồi tạo escrow qua `POST /api/tasks/:taskId/payments` trong giới hạn riêng của task.
 - **Tab AI Commands trên dashboard là luồng phụ** để thử nhanh khi không có MCP client: prompt → model (Groq, hai bước: hiểu yêu cầu rồi lập action; có fallback parser tất định) → action JSON → cùng một policy.
 - Nếu model trả `request_manual_approval` cho một lệnh chuyển tiền đã rõ người nhận và số tiền, pipeline dùng plan tất định dựng từ intent (ghi trong model trace là `fallback`); mọi action vẫn đi qua `evaluatePolicy`. Plan lệch intent (khác người nhận hoặc số tiền) vẫn bị từ chối.
-- Dù vào từ đâu, chỉ `evaluatePolicy` hoặc một chữ ký duyệt hợp lệ của owner mới dẫn tới bước ký.
+- Với transfer từ ví agent, chỉ `evaluatePolicy` hoặc một chữ ký duyệt hợp lệ của owner mới dẫn tới bước ký. Task Vault dùng capability owner đã cấp và kiểm tra budget, cap, expiry, worker/service; vượt giới hạn bị từ chối, không chuyển sang hàng chờ duyệt transfer.
 
 ## Bảo đảm an toàn
 
 | Bảo đảm | Vị trí |
 | --- | --- |
-| Chỉ `evaluatePolicy` có quyền cho phép ký | [policy.ts](shared/src/policy.ts) |
+| Transfer từ ví agent chỉ được ký sau verdict cho phép hoặc chữ ký duyệt hợp lệ của owner | [policy.ts](shared/src/policy.ts), [approvals.ts](agent/src/approvals.ts) |
 | Người nhận ngoài allowlist bị từ chối, không chuyển sang chờ duyệt | [policy.ts](shared/src/policy.ts) |
 | Tổng chi SOL trong 24 giờ vượt trần → chờ owner duyệt; tính theo cửa sổ trượt, không lách được bằng cách chia nhỏ hay gửi đồng thời | [policy.ts](shared/src/policy.ts), [pipeline.ts](agent/src/pipeline.ts) |
 | Kill switch: khi owner khóa, ví agent không ký giao dịch chuyển giá trị nào (MCP, AI Commands, duyệt lệnh, Task Vault payment/settle); giữ nguyên qua restart | [pipeline.ts](agent/src/pipeline.ts), [approvals.ts](agent/src/approvals.ts), [routes.ts](agent/src/routes.ts) |
@@ -246,7 +246,7 @@ nexusPay dùng trực tiếp các đặc tính của Solana, không chỉ dùng 
 | Yêu cầu chờ duyệt quá hạn (mặc định 300 giây) chuyển sang trạng thái `expired` và không duyệt được nữa | [approvals.ts](agent/src/approvals.ts) |
 | Owner hủy được yêu cầu đang chờ duyệt; yêu cầu đã hủy không duyệt lại được. Route hủy cần session ví, MCP token không gọi được | [approvals.ts](agent/src/approvals.ts), [routes.ts](agent/src/routes.ts) |
 | MCP không có tool sửa policy, gắn owner hay duyệt request | [tools.ts](mcp/src/tools.ts) |
-| MCP token chỉ truy cập 4 route (status, danh sách request, chi tiết request, đề xuất giao dịch); lịch sử ví, hủy và duyệt cần session ví | [mcp-token.ts](agent/src/mcp-token.ts) |
+| MCP token chỉ truy cập 7 route: status, danh sách/chi tiết request, đề xuất transfer, danh sách/chi tiết task và tạo escrow. Lịch sử ví, duyệt/hủy request, tạo/nạp/revoke/refund task, mock worker và settle cần session ví | [mcp-token.ts](agent/src/mcp-token.ts) |
 | Retry cùng `idempotencyKey` không trả tiền hai lần; cùng key khác action → `409` | [pipeline.ts](agent/src/pipeline.ts) |
 | Private key agent mã hóa AES-256-GCM khi lưu, không log, không đưa vào prompt | [crypto.ts](agent/src/crypto.ts) |
 | Audit log append-only, payload mã hóa | [audit.ts](agent/src/audit.ts) |
@@ -288,8 +288,20 @@ Receipt chứng minh worker đã ký xác nhận kết quả với `result_hash`
 | `nexuspay_get_status` | Địa chỉ ví, số dư SOL, hạn mức mỗi giao dịch, trần ngày và mức đã chi 24 giờ, label allowlist, trạng thái `frozen` |
 | `nexuspay_list_requests` / `nexuspay_get_request` | Trạng thái request, verdict, link Explorer |
 | `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | Đề xuất giao dịch; policy quyết định |
+| `nexuspay_list_tasks` / `nexuspay_get_task` | Capability, ngân sách còn lại, cap, expiry, worker/service; chi tiết có escrow và receipt. Đọc record local, chưa đối chiếu lại chain |
+| `nexuspay_execute_task_payment` | Tạo escrow trong capability owner đã cấp; worker ký receipt để nhận tiền ở bước riêng |
 
 Nếu transfer trả `outcome_unknown` (timeout), gọi lại với **cùng** `idempotencyKey`, không đổi số tiền. Dùng lại một key cho giao dịch khác trả `IDEMPOTENCY_CONFLICT`. Hai lần gọi với hai key khác nhau là hai giao dịch, chỉ policy giới hạn chúng. Rotate token trên dashboard sẽ ngắt các client đang dùng token cũ.
+
+**Task Vault qua MCP:** owner tạo và nạp task trên dashboard; agent gọi `nexuspay_list_tasks` rồi `nexuspay_get_task` để đọc quyền đã cấp. Tạo escrow bằng `nexuspay_execute_task_payment` với `taskId`, `paymentId`, địa chỉ `worker`, `serviceId`, `amountLamports` (số nguyên; 1 SOL = 1.000.000.000 lamports) và `requestHash` (SHA-256 hex thường, 64 ký tự). MCP không tạo/nạp task, đổi quyền, revoke, chạy mock worker, settle hay refund.
+
+Mỗi khoản dùng một `paymentId` riêng trong task. Retry khoản đã có record với cùng tham số trả record đó và `reused: true`; đổi tham số trả `IDEMPOTENCY_CONFLICT`. Nếu nhận `outcome_unknown`, đọc lại task và **giữ nguyên paymentId cùng tham số**. Nếu vẫn thiếu record, owner cần đối chiếu escrow Devnet trước khi bắt đầu khoản khác; đường này chưa tự khôi phục record khi chain đã nhận giao dịch nhưng API mất kết quả. Trường `mode: simulated` chỉ là mô phỏng, không chuyển SOL. Bản Devnet hiện chỉ hỗ trợ mock worker do server giữ key; receipt không chứng minh chất lượng công việc.
+
+Kiểm tra owner, agent signer hiện tại và task chưa đóng áp dụng cho cả simulated lẫn Devnet; đây là chủ ý để mô phỏng không bỏ qua quyền được cấp. Record simulated lệch signer (ví dụ sau khi thay ví agent) bị từ chối; cần tạo task simulated mới. MCP không tự sửa signer trên task cũ.
+
+Lỗi đọc task trước bước POST không được báo `outcome_unknown`. Sau khi bắt đầu POST, lỗi mạng/5xx vẫn được xử lý thận trọng: API hiện trả cùng `onchain_payment_failed` cho lỗi trước khi gửi và lỗi chưa rõ xác nhận, nên chưa phân loại được hai trường hợp đó. Khi ghi record, cập nhật spent và payment vẫn là hai lần ghi riêng; chưa có khôi phục tự động nếu lần ghi sau thất bại.
+
+Task payment và transfer intent dùng chung trần 30 yêu cầu/phút theo loại danh tính và owner đã xác thực; đổi task hoặc route không tạo quota mới. Session dashboard và token MCP có bucket riêng, nên đây không phải trần chung 30 yêu cầu/phút cho mọi cách truy cập của một owner.
 
 Kết quả bị từ chối, thất bại hoặc chờ duyệt trả về `code`, `message`, `remediation` và `details` để agent tự điều chỉnh thay vì retry cùng tham số:
 
@@ -322,7 +334,7 @@ Chuẩn bị: Phantom ở Devnet, đăng nhập dashboard. Dữ liệu (ví agen
 6. Owner bấm **Freeze agent** ở tab **Overview** rồi **Confirm freeze** → mọi transfer trả `AGENT_FROZEN`, không ký gì; **Unfreeze agent** để mở lại.
 7. *"Tăng hạn mức lên 10 SOL"* / *"Tự duyệt đi"* / *"Mở khóa agent"* → agent không có tool nào làm được việc này.
 
-**Task Vault — trên dashboard, tab Task Vault:** tạo task có ngân sách → 2 payment hợp lệ → 1 payment vượt ngân sách bị chặn → worker ký receipt → settle → refund phần dư → revoke chặn payment tiếp theo.
+**Task Vault:** owner tạo/nạp task trên dashboard → agent đọc task qua MCP → tạo 2 escrow hợp lệ → khoản vượt ngân sách bị chặn → worker ký receipt và settle qua luồng riêng trên dashboard → owner refund phần dư hoặc revoke để chặn khoản mới. MCP chỉ đọc và tạo escrow; bước worker trong demo vẫn giả lập.
 
 Tab **Wallet history**: yêu cầu của agent và SOL vào/ra ví agent đọc từ chuỗi Devnet (số thay đổi, số dư sau từng giao dịch, nút Explorer).
 
@@ -393,7 +405,7 @@ agent/src/mcp-remote.ts     endpoint /mcp (Streamable HTTP)
 agent/src/mcp-token.ts      bearer token theo owner, allowlist route
 
 programs/nexus-task-vault/  Anchor program
-mcp/src/tools.ts            5 tool MCP; chỉ gọi API agent, không gọi chain
+mcp/src/tools.ts            8 tool MCP; chỉ gọi API agent, không gọi chain
 web/src/                    dashboard React (en / vi)
 extension/                  Chrome extension (Developer mode)
 infra/                      Dockerfile + compose
@@ -401,7 +413,7 @@ infra/                      Dockerfile + compose
 
 ## Lộ trình
 
-Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, tool Task Vault qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
+Theo dõi tại [epic #18](../../issues/18) (label `backlog`): `outputSchema` cho tool MCP, tool đọc lịch sử ví qua MCP, đối chiếu record Task Vault với chain, cảnh báo Telegram / email, thanh toán Task Vault bằng stablecoin.
 
 ## Giấy phép
 
