@@ -317,7 +317,7 @@ export function App() {
     (request: PaymentRequest): Toast => {
       switch (request.status) {
         case 'confirmed':
-          return { tone: 'ok', text: dict.toasts.confirmed };
+          return { tone: 'ok', text: request.decision?.resolved?.type === 'get_balance' ? dict.toasts.balanceRead : dict.toasts.confirmed };
         case 'pending_approval':
           return { tone: 'warn', text: dict.toasts.approvalRequired };
         case 'denied':
@@ -432,7 +432,7 @@ export function App() {
     }
   };
 
-  const runCommand = async (prompt: string) => {
+  const runCommand = async (prompt: string): Promise<string | null> => {
     setFlag('command', true);
     const retry =
       commandRetry.current?.prompt === prompt
@@ -443,11 +443,13 @@ export function App() {
       commandRetry.current = null;
       setToast(summarise(res.request));
       await refresh();
+      return res.request.id;
     } catch (err) {
       // If the response was lost after the server accepted the request, a
       // manual retry must reuse the same idempotency key.
       commandRetry.current = retry;
       setToast({ tone: 'bad', text: errorText(err) });
+      return null;
     } finally {
       setFlag('command', false);
     }
@@ -686,7 +688,14 @@ export function App() {
         {panel(
           'commands',
           <div className="page-stack">
-            <ConsolePanel state={state} busy={Boolean(busy.command)} onRun={runCommand} />
+            <ConsolePanel
+              state={state}
+              busy={Boolean(busy.command)}
+              requests={requests}
+              connected={Boolean(wallet)}
+              onRun={runCommand}
+              onOpenPolicy={() => setActiveTab('policy')}
+            />
             <McpConnectPanel />
           </div>,
         )}
@@ -713,6 +722,7 @@ export function App() {
           'tasks',
           <TaskVaultPanel
             owner={state.owner}
+            connected={Boolean(wallet)}
             agentPubkey={state.agent.pubkey}
             mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
             rpcUrl={state.rpcUrl}

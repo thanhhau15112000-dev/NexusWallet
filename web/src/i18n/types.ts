@@ -81,6 +81,7 @@ export type TranslationDictionary = {
   };
   toasts: {
     confirmed: string;
+    balanceRead: string;
     approvalRequired: string;
     denied: string;
     executionFailed: string;
@@ -164,6 +165,7 @@ export type TranslationDictionary = {
     title: string;
     placeholderDefault: string;
     placeholderExample: string;
+    presetCommand: string;
     run: string;
     running: string;
     autoHint: string;
@@ -172,6 +174,11 @@ export type TranslationDictionary = {
     noPresets: string;
     desc: string;
     presetsTitle: string;
+    lastTitle: string;
+    sendHint: string;
+    mcpNote: string;
+    openPolicy: string;
+    connectToUse: string;
   };
   requests: {
     title: string;
@@ -318,6 +325,8 @@ export type TranslationDictionary = {
     clipboardUnavailable: string;
   },
   taskVault: {
+    errors: Record<string, string>;
+    connectToOperate: string;
     create: {
       title: string;
       taskId: string;
@@ -339,7 +348,11 @@ export type TranslationDictionary = {
       refresh: string;
       empty: string;
       cap: string;
+      newTask: string;
+      hideForm: string;
     };
+    statuses: { active: string; completed: string; revoked: string; expired: string };
+    escrowStatuses: { held: string; settled: string; refunded: string };
     detail: {
       taskTitle: string;
       defaultTitle: string;
@@ -355,6 +368,7 @@ export type TranslationDictionary = {
       totalSpent: string;
       remaining: string;
       refunded: string;
+      refundedSimulated: string;
       perPaymentCap: string;
       allowedWorker: string;
       allowedService: string;
@@ -365,6 +379,8 @@ export type TranslationDictionary = {
       devnetTxLabel: string;
       copyCapPda: string;
       copyVaultPda: string;
+      technicalDetails: string;
+      expiredNote: string;
     };
     payment: {
       title: string;
@@ -385,10 +401,14 @@ export type TranslationDictionary = {
       colStatus: string;
       colAction: string;
       proof: string;
+      proofHint: string;
       receiptLocked: string;
       receiptWorkerOnly: string;
       receiptClosed: string;
       closeReceipt: string;
+      closeReceiptHint: string;
+      receiptLockedHint: string;
+      receiptWorkerOnlyHint: string;
       closingReceipt: string;
       settleWithReceipt: string;
       settling: string;
@@ -421,6 +441,7 @@ export type TranslationDictionary = {
       taskRevoked: string;
       revokeFailed: string;
       vaultClosedRefunded: string;
+      vaultClosedSimulated: string;
       refundFailed: string;
       loadFailed: string;
       detailFailed: string;

@@ -300,9 +300,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           title: 'Presets',
           body: (
             <p>
-              Once a recipient is allowlisted, the AI Commands page shows three presets: one under the limit (Auto),
-              one above it (Approval), and one to an address that is never allowlisted (Denied). They are the fastest
-              way to see all three verdicts. <TabLink tab="commands" label="AI Commands" ctx={ctx} />
+              Once a recipient is allowlisted, the AI Commands page shows three presets: one within the per-transaction limit,
+              one above that limit, and one to an address outside the allowlist. Results also depend on balance, the 24-hour
+              limit and whether the agent is frozen. <TabLink tab="commands" label="AI Commands" ctx={ctx} />
             </p>
           ),
         },
@@ -382,11 +382,11 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 match the task limits, and the amount must fit the cap and the remaining budget.
               </li>
               <li>
-                <strong>Settle with receipt.</strong> The worker returns a signed receipt; escrow is released to it.
+                <strong>Settle with receipt.</strong> The Worker signs a Receipt before task expiry to receive the Escrow funds. A Receipt does not prove work quality. This demo uses a mock Worker managed by the server.
               </li>
               <li>
                 <strong>Close.</strong> <em>Revoke Task</em> stops new payments. <em>Refund &amp; Close</em> returns the
-                unspent budget to the owner once no escrow is still held.
+                unallocated budget to the owner once no Escrow is held. After expiry, held Escrows must be refunded separately; this screen does not support that action yet.
               </li>
             </Steps>
           ),
@@ -397,8 +397,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <>
               <p>
-                On-chain tasks show a <em>Devnet Tx</em> badge and link to Explorer. Simulated tasks keep the same state
-                machine off-chain and are labelled <em>Simulated</em>.
+                On-chain tasks show a <em>Devnet Tx</em> badge and link to Explorer. Simulated tasks check budget and
+                state conditions in local records, without transferring SOL on Devnet, and are labelled <em>Simulated</em>.
               </p>
               <Callout tone="note" title="On-chain actions need your wallet">
                 Creating, revoking and closing an on-chain task are signed by the owner wallet. Phantom must be
@@ -481,12 +481,20 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   <tr><td><code>nexuspay_get_request</code></td><td>One request, for example to see whether you approved it.</td></tr>
                   <tr><td><code>nexuspay_transfer_sol</code></td><td>Propose a SOL transfer. The policy decides.</td></tr>
                   <tr><td><code>nexuspay_transfer_spl</code></td><td>Propose an SPL token transfer. Recipient and mint must be allowlisted.</td></tr>
+                  <tr><td><code>nexuspay_list_tasks</code></td><td>Read delegated Task Vault records, remaining budgets, caps and expiry.</td></tr>
+                  <tr><td><code>nexuspay_get_task</code></td><td>Read a task, its Escrows and Receipts. Local records are not a fresh chain reconciliation.</td></tr>
+                  <tr><td><code>nexuspay_execute_task_payment</code></td><td>Create an Escrow within an existing capability. Worker settlement is a separate step.</td></tr>
                 </tbody>
               </table>
               <p>
-                There is no tool to change the policy, bind an owner or approve a request. The MCP token only reaches
-                wallet status, the request list, one request, and new transfer proposals. Policy, approvals, funding
-                and Task Vault actions still need your wallet session in this dashboard.
+                MCP can read wallet status, requests and tasks, propose transfers and create Escrows within a delegated
+                capability. Policy changes, approvals, task creation/funding, revocation, settlement, refunds and
+                agent freeze/unfreeze still require the owner&apos;s wallet session.
+              </p>
+              <p>
+                Task payments use capability limits and do not enter the transfer approval queue. Keep the same{' '}
+                <code>paymentId</code> and parameters when retrying an uncertain outcome. Simulated tasks do not
+                transfer SOL; the Devnet demo currently uses a server-held Mock Worker.
               </p>
             </>
           ),
