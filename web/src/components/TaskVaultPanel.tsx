@@ -30,6 +30,8 @@ import { useI18n } from '../i18n/context.js';
 
 export function TaskVaultPanel(props: {
   owner: string | null;
+  /** Wallet currently connected in this browser; actions that act as the owner need it. */
+  connected: boolean;
   agentPubkey: string;
   mockWorkerPubkey: string | null;
   rpcUrl: string;
@@ -427,6 +429,7 @@ export function TaskVaultPanel(props: {
   const effectiveStatus = (task: TaskCapabilityRecord) =>
     task.status === 'active' && nowSeconds >= task.expiry ? 'expired' : task.status;
 
+  const locked = !props.connected;
   const createOpen = showCreate || (loaded && tasks.length === 0);
 
   const statusTone = (status: string): 'ok' | 'warn' | 'bad' | 'neutral' => {
@@ -459,6 +462,7 @@ export function TaskVaultPanel(props: {
 
   return (
     <div className="task-vault-container">
+      {locked ? <p className="hint-warn" role="status">{dict.taskVault.connectToOperate}</p> : null}
       <div className="vault-grid">
         {/* Left Column: Create Task & Task Selector */}
         <div className="vault-sidebar">
@@ -551,7 +555,7 @@ export function TaskVaultPanel(props: {
               <button
                 type="submit"
                 className="primary"
-                disabled={busyAction === 'create' || !props.owner}
+                disabled={busyAction === 'create' || !props.owner || locked}
               >
                 {busyAction === 'create' ? dict.taskVault.create.submittingBtn : dict.taskVault.create.submitBtn}
               </button>
@@ -653,7 +657,7 @@ export function TaskVaultPanel(props: {
                       <button
                         type="button"
                         className="bad-button"
-                        disabled={Boolean(busyAction)}
+                        disabled={Boolean(busyAction) || locked}
                         onClick={() => void handleRevoke(detail.task.taskId)}
                       >
                         {dict.taskVault.detail.revoke}
@@ -663,7 +667,7 @@ export function TaskVaultPanel(props: {
                       <button
                         type="button"
                         className="secondary"
-                        disabled={Boolean(busyAction) || hasHeldEscrow}
+                        disabled={Boolean(busyAction) || hasHeldEscrow || locked}
                         aria-describedby={hasHeldEscrow ? 'refund-blocked-note' : undefined}
                         onClick={() => void handleRefund(detail.task.taskId)}
                       >
@@ -816,7 +820,7 @@ export function TaskVaultPanel(props: {
                     <button
                       type="submit"
                       className="primary"
-                      disabled={busyAction === 'execute_payment'}
+                      disabled={busyAction === 'execute_payment' || locked}
                     >
                       {busyAction === 'execute_payment' ? dict.taskVault.payment.submittingBtn : dict.taskVault.payment.submitBtn}
                     </button>
@@ -891,7 +895,7 @@ export function TaskVaultPanel(props: {
                                         type="button"
                                         className="link primary-link"
                                         title={dict.taskVault.escrows.closeReceiptHint}
-                                        disabled={Boolean(busyAction)}
+                                        disabled={Boolean(busyAction) || locked}
                                         onClick={() => void handleCloseReceipt(receipt.paymentId, receipt.worker)}
                                       >
                                         <XCircle size={14} />
@@ -903,7 +907,7 @@ export function TaskVaultPanel(props: {
                                   <button
                                     type="button"
                                     className="link primary-link"
-                                    disabled={Boolean(busyAction)}
+                                    disabled={Boolean(busyAction) || locked}
                                     onClick={() => void handleSettleMockPayment(p.paymentId, p.serviceId)}
                                   >
                                     {busyAction === `settle-${p.paymentId}`

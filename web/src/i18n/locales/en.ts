@@ -173,9 +173,10 @@ export const en: TranslationDictionary = {
     desc: 'Type a payment command in plain language. The agent plans it and your policy decides: signed at once, held for your approval, or refused.',
     presetsTitle: 'Sample commands',
     lastTitle: 'Latest command',
-    sendHint: 'Ctrl + Enter to send',
+    sendHint: 'Enter to send, Shift + Enter for a new line',
     mcpNote: 'You can also connect your own AI client over MCP; the setup is below.',
     openPolicy: 'Open Policy',
+    connectToUse: 'Wallet disconnected. Connect your wallet to give commands.',
   },
   requests: {
     title: 'Requests',
@@ -322,6 +323,7 @@ export const en: TranslationDictionary = {
     clipboardUnavailable: 'Clipboard is not available; select the text and copy it manually',
   },
   taskVault: {
+    connectToOperate: 'Wallet disconnected. Connect your wallet to create tasks or act on them.',
     create: {
       title: 'Fund New Task Capability',
       taskId: 'Task ID / Nonce',

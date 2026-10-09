@@ -173,9 +173,10 @@ export const vi: TranslationDictionary = {
     desc: 'Gõ lệnh thanh toán bằng ngôn ngữ thường, ví dụ: gửi 0.05 SOL cho một người nhận. Agent lập kế hoạch, quy tắc chi tiêu quyết định: ký ngay, chờ bạn duyệt hoặc từ chối.',
     presetsTitle: 'Lệnh mẫu',
     lastTitle: 'Lệnh vừa gửi',
-    sendHint: 'Ctrl + Enter để gửi',
+    sendHint: 'Enter để gửi, Shift + Enter để xuống dòng',
     mcpNote: 'Bạn cũng có thể kết nối ứng dụng AI của mình qua MCP; hướng dẫn ở bên dưới.',
     openPolicy: 'Mở Quy tắc chi tiêu',
+    connectToUse: 'Ví chưa được kết nối. Hãy kết nối ví để ra lệnh.',
   },
   requests: {
     title: 'Yêu cầu thanh toán',
@@ -322,6 +323,7 @@ export const vi: TranslationDictionary = {
     clipboardUnavailable: 'Không thể truy cập bộ nhớ tạm; vui lòng bôi đen và sao chép thủ công',
   },
   taskVault: {
+    connectToOperate: 'Ví chưa được kết nối. Hãy kết nối ví để tạo tác vụ hoặc thao tác trên tác vụ.',
     create: {
       title: 'Tạo ngân sách cho tác vụ',
       taskId: 'Mã tác vụ',

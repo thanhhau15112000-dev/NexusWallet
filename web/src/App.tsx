@@ -692,6 +692,7 @@ export function App() {
               state={state}
               busy={Boolean(busy.command)}
               requests={requests}
+              connected={Boolean(wallet)}
               onRun={runCommand}
               onOpenPolicy={() => setActiveTab('policy')}
             />
@@ -721,6 +722,7 @@ export function App() {
           'tasks',
           <TaskVaultPanel
             owner={state.owner}
+            connected={Boolean(wallet)}
             agentPubkey={state.agent.pubkey}
             mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
             rpcUrl={state.rpcUrl}

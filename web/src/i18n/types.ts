@@ -176,6 +176,7 @@ export type TranslationDictionary = {
     sendHint: string;
     mcpNote: string;
     openPolicy: string;
+    connectToUse: string;
   };
   requests: {
     title: string;
@@ -322,6 +323,7 @@ export type TranslationDictionary = {
     clipboardUnavailable: string;
   },
   taskVault: {
+    connectToOperate: string;
     create: {
       title: string;
       taskId: string;
