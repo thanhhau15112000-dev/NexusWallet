@@ -60,6 +60,11 @@ export type TranslationDictionary = {
     colTime: string;
   };
   boot: {
+    heroTitle: string;
+    authNote: string;
+    testFunds: string;
+    connectionHint: string;
+    signInFailed: string;
     serviceUnavailable: string;
     loading: string;
     signInRequired: string;

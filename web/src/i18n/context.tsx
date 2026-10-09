@@ -24,10 +24,7 @@ function getInitialLanguage(): Locale {
   } catch {
     // localStorage blocked
   }
-  if (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi')) {
-    return 'vi';
-  }
-  return 'en';
+  return 'vi';
 }
 
 /** Dictionary for the language the dashboard currently shows, for code that runs outside React (the API client). */
