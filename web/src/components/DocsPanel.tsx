@@ -492,8 +492,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 agent freeze/unfreeze still require the owner&apos;s wallet session.
               </p>
               <p>
-                Task payments use capability limits and do not enter the transfer approval queue. Keep the same
-                <code> paymentId </code> and parameters when retrying an uncertain outcome. Simulated tasks do not
+                Task payments use capability limits and do not enter the transfer approval queue. Keep the same{' '}
+                <code>paymentId</code> and parameters when retrying an uncertain outcome. Simulated tasks do not
                 transfer SOL; the Devnet demo currently uses a server-held Mock Worker.
               </p>
             </>
