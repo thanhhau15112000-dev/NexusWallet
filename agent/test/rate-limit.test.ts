@@ -75,6 +75,10 @@ async function startHostedApp(options: RateLimitOptions = {}, remoteTrust = fals
     saltPath: join(dataDir, 'audit-salt'),
   };
   const ctx = createContext(config);
+  // Rate-limit assertions must not depend on public RPC latency.
+  // Zero also keeps the faucet handler off the transaction path: it ignores
+  // the malformed body used by the threshold test and checks funder balance.
+  vi.spyOn(ctx.connection, 'getBalance').mockResolvedValue(0);
   const app = Fastify({ trustProxy: remoteTrust ? trustProxySetting(config) : false });
   await app.register(cookie, { secret: config.SESSION_COOKIE_SECRET });
   registerRateLimit(app, ctx, options);
@@ -103,6 +107,36 @@ async function login(app: HostedApp, owner: Keypair): Promise<string> {
 }
 
 describe('rate limit on sensitive routes', () => {
+  it('shares the propose allowance across task payments and intents, per identity kind and owner', async () => {
+    const { app } = await startHostedApp({ now: () => 0 });
+    try {
+      const cookieA = await login(app, Keypair.generate());
+      const cookieB = await login(app, Keypair.generate());
+      const mintToken = async (cookieHeader: string) => (
+        await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })
+      ).json().token as string;
+      const tokenA = await mintToken(cookieA);
+      const tokenB = await mintToken(cookieB);
+      const payment = {
+        paymentId: 'no-tx', worker: Keypair.generate().publicKey.toBase58(),
+        serviceId: 'service', amountLamports: 1, requestHash: 'request',
+      };
+      const pay = (headers: Record<string, string>, taskId = 'missing') => app.inject({
+        method: 'POST', url: `/api/tasks/${taskId}/payments`, headers, payload: payment,
+      });
+      const tokenHeaders = { authorization: `Bearer ${tokenA}` };
+      const cap = DEFAULT_RATE_RULES['POST /api/tasks/:taskId/payments']!.limit;
+      expect(DEFAULT_RATE_RULES['POST /api/tasks/:taskId/payments']).toEqual(DEFAULT_RATE_RULES['POST /api/agent/intents']);
+      for (let i = 0; i < cap; i++) expect((await pay(tokenHeaders, `missing-${i}`)).statusCode).toBe(404);
+      expect((await pay(tokenHeaders)).statusCode).toBe(429);
+      expect((await app.inject({ method: 'POST', url: '/api/agent/intents', headers: tokenHeaders, payload: {} })).statusCode).toBe(429);
+      expect((await pay({ authorization: `Bearer ${tokenB}` })).statusCode).toBe(404);
+      expect((await pay({ cookie: cookieA })).statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('answers 429 with Retry-After above the challenge threshold and recovers when the window passes', async () => {
     let now = Date.now();
     const { app } = await startHostedApp({ now: () => now });

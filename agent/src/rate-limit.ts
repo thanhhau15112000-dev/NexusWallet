@@ -23,6 +23,8 @@ const HOUR = 60 * MINUTE;
 
 const authRule = (id: string): RateRule => ({ id, limit: 10, windowMs: MINUTE, by: 'ip' });
 const faucetRule = (id: string): RateRule => ({ id, limit: 5, windowMs: HOUR, by: 'ip' });
+// Transfers and task escrows share this ceiling per identity kind + verified owner.
+// Session and token buckets remain separate, matching the existing read allowances.
 const proposeRule: RateRule = { id: 'propose', limit: 30, windowMs: MINUTE, by: 'owner' };
 
 /**
@@ -42,6 +44,7 @@ export const DEFAULT_RATE_RULES: Record<string, RateRule> = {
   'POST /api/agent/claim-seed': faucetRule('claim-seed'),
   'POST /api/agent/airdrop': faucetRule('airdrop'),
   'POST /api/agent/intents': proposeRule,
+  'POST /api/tasks/:taskId/payments': proposeRule,
   'POST /api/commands': proposeRule,
   'POST /mcp': { id: 'mcp', limit: 600, windowMs: MINUTE, by: 'owner' },
 };

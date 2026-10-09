@@ -56,7 +56,8 @@ function toWebRequest(req: FastifyRequest): Request {
 /**
  * Remote MCP endpoint (Streamable HTTP, stateless). An AI client connects with the URL and
  * `Authorization: Bearer <MCP token>`; the token is the only credential it accepts, and the
- * tools behind it can only read status/requests and propose transfers through the policy.
+ * tools behind it read status/requests/tasks, propose policy-gated transfers and create
+ * escrows within an owner's delegated Task Vault budget.
  */
 export function registerRemoteMcp(app: FastifyInstance, ctx: AppContext): void {
   const dashboardUrl = ctx.config.allowedOrigins[0] ?? 'http://localhost:5173';

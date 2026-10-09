@@ -68,11 +68,12 @@ flowchart LR
   Decision -->|deny| Stop[No transaction signing]
   Signer --> Chain[Solana Devnet]
   UI --> Vault[Anchor smart contract: capability / escrow / receipt]
+  MCP -->|escrow trong capability đã cấp| Vault
   Vault --> Chain
 ```
 
 - MCP gửi action trực tiếp; AI Commands chuyển prompt thành action qua model hoặc deterministic parser. Model không nhận private key.
-- Hosted mode tạo context riêng cho từng ví owner. MCP token chỉ gọi được các route trạng thái, request và đề xuất; không sửa policy, duyệt hoặc mở khóa.
+- Hosted mode tạo context riêng cho từng ví owner. MCP token chỉ gọi được 7 route: trạng thái, request, đề xuất transfer, đọc task và tạo escrow trong capability đã cấp; không sửa policy, duyệt, mở khóa, tạo/nạp/revoke/refund task hay settle.
 - Owner approval signature bind request, amount, recipient, policy version, nonce và TTL. Approval TTL mặc định là 300 giây; authentication session TTL mặc định là 30 phút. Wallet authentication và transaction authorization là hai flow riêng.
 - JSON Store persist qua temporary file + rename; audit payload dùng AES-256-GCM và SHA-256 hash chaining. Đây là server-side state, không phải immutable on-chain ledger.
 
@@ -87,7 +88,7 @@ flowchart LR
 | **Idempotency** | Với structured transfer action, `idempotencyKey` nhận diện retry cùng action; key khác action trả `IDEMPOTENCY_CONFLICT` khi record còn được giữ lại |
 | **Retention / rolling 24-hour window** | Request retention mặc định là 200. Khi prune, giao dịch SOL/SPL đã hoặc có thể đã chuyển tiền trong 24 giờ và request chưa kết thúc được giữ lại, nên SOL spending accounting và idempotency key của chúng không mất trong cửa sổ 24 giờ ([store.test.ts](agent/test/store.test.ts)) |
 | **Deterministic fallback parser** | AI Commands có deterministic parser khi không dùng model provider; action vẫn qua schema validation và `evaluatePolicy` |
-| **Rate limit / seed cap** | Fixed-window limit theo route: đăng nhập 10/phút/IP, seed/airdrop 5/giờ/IP, đề xuất chuyển tiền 30/phút/owner, các route `/api` còn lại 240/phút/owner. Vượt giới hạn trả `RATE_LIMITED` kèm `retryAfterSeconds`. Seed từ master funder tối đa `SEED_CAP_PER_DAY` (mặc định 50) mỗi 24 giờ cho toàn server, giữ chỗ trước khi gửi giao dịch. Counter rate limit nằm trong memory, reset khi restart; không thay thế WAF/CDN |
+| **Rate limit / seed cap** | Fixed-window limit theo route: đăng nhập 10/phút/IP, seed/airdrop 5/giờ/IP, đề xuất chuyển tiền và tạo escrow Task Vault dùng chung 30/phút/owner (bucket session và token MCP tách nhau), các route `/api` còn lại 240/phút/owner. Vượt giới hạn trả `RATE_LIMITED` kèm `retryAfterSeconds`. Seed từ master funder tối đa `SEED_CAP_PER_DAY` (mặc định 50) mỗi 24 giờ cho toàn server, giữ chỗ trước khi gửi giao dịch. Counter rate limit nằm trong memory, reset khi restart; không thay thế WAF/CDN |
 | **Multi-tenant / single-instance** | Context riêng theo owner; Store JSON và session hiện phục vụ một instance, chưa có transaction chung cho nhiều replica |
 
 Nguồn: [`crypto.ts`](agent/src/crypto.ts), [`audit.ts`](agent/src/audit.ts), [`pipeline.ts`](agent/src/pipeline.ts), [`mcp-remote.ts`](agent/src/mcp-remote.ts), [`store.ts`](agent/src/store.ts), [`rate-limit.ts`](agent/src/rate-limit.ts), [`seed-ledger.ts`](agent/src/seed-ledger.ts), [`mcp-token.ts`](agent/src/mcp-token.ts).
@@ -116,8 +117,20 @@ Endpoint hosted: `https://nexuspay-56wn.onrender.com/mcp`. Đăng nhập dashboa
 | `nexuspay_get_status` | Ví agent, số dư, policy, mức SOL đã chi và trạng thái khóa |
 | `nexuspay_list_requests` / `nexuspay_get_request` | Trạng thái đề xuất và link Explorer |
 | `nexuspay_transfer_sol` / `nexuspay_transfer_spl` | Đề xuất chuyển tiền qua Payment Guard |
+| `nexuspay_list_tasks` / `nexuspay_get_task` | Capability, ngân sách còn lại, cap, expiry, worker/service; chi tiết có escrow và receipt. Đọc record local, chưa đối chiếu lại chain |
+| `nexuspay_execute_task_payment` | Tạo escrow trong capability owner đã cấp; worker ký receipt để nhận tiền ở bước riêng |
 
 Nếu kết quả là `outcome_unknown`, đối chiếu request và Explorer; retry cùng action với **cùng** `idempotencyKey`. Hai key khác nhau được xem là hai đề xuất. Nếu nhận `RATE_LIMITED`, chờ `retryAfterSeconds` rồi retry với cùng key, không đổi số tiền. Cơ chế này không bảo đảm idempotency vô thời hạn khi request record đã bị prune.
+
+**Task Vault qua MCP:** owner tạo và nạp task trên dashboard; agent gọi `nexuspay_list_tasks` rồi `nexuspay_get_task` để đọc quyền đã cấp. Tạo escrow bằng `nexuspay_execute_task_payment` với `taskId`, `paymentId`, địa chỉ `worker`, `serviceId`, `amountLamports` (số nguyên; 1 SOL = 1.000.000.000 lamports) và `requestHash` (SHA-256 hex thường, 64 ký tự). MCP không tạo/nạp task, đổi quyền, revoke, chạy mock worker, settle hay refund.
+
+Mỗi khoản dùng một `paymentId` riêng trong task. Retry khoản đã có record với cùng tham số trả record đó và `reused: true`; đổi tham số trả `IDEMPOTENCY_CONFLICT`. Nếu nhận `outcome_unknown`, đọc lại task và **giữ nguyên paymentId cùng tham số**. Nếu vẫn thiếu record, owner cần đối chiếu escrow Devnet trước khi bắt đầu khoản khác; đường này chưa tự khôi phục record khi chain đã nhận giao dịch nhưng API mất kết quả. Trường `mode: simulated` chỉ là mô phỏng, không chuyển SOL. Bản Devnet hiện chỉ hỗ trợ mock worker do server giữ key; receipt không chứng minh chất lượng công việc.
+
+Kiểm tra owner, agent signer hiện tại và task chưa đóng áp dụng cho cả simulated lẫn Devnet; đây là chủ ý để mô phỏng không bỏ qua quyền được cấp. Record simulated lệch signer (ví dụ sau khi thay ví agent) bị từ chối; cần tạo task simulated mới. MCP không tự sửa signer trên task cũ.
+
+Lỗi đọc task trước bước POST không được báo `outcome_unknown`. Sau khi bắt đầu POST, lỗi mạng/5xx vẫn được xử lý thận trọng: API hiện trả cùng `onchain_payment_failed` cho lỗi trước khi gửi và lỗi chưa rõ xác nhận, nên chưa phân loại được hai trường hợp đó. Khi ghi record, cập nhật spent và payment vẫn là hai lần ghi riêng; chưa có khôi phục tự động nếu lần ghi sau thất bại.
+
+Task payment và transfer intent dùng chung trần 30 yêu cầu/phút theo loại danh tính và owner đã xác thực; đổi task hoặc route không tạo quota mới. Session dashboard và token MCP có bucket riêng, nên đây không phải trần chung 30 yêu cầu/phút cho mọi cách truy cập của một owner.
 
 Local có bản stdio: `pnpm mcp:build`, sau đó `pnpm mcp:install -- --client codex|claude-desktop|antigravity`. Cấu hình và lỗi theo client: [MCP troubleshooting](docs/mcp-troubleshooting.md).
 
@@ -180,7 +193,7 @@ Bảng xếp theo **potential impact từ cao xuống thấp**: quyền ký và 
 | --- | --- | --- | --- |
 | **1. Server-custodial signing / runtime compromise** | Nếu attacker chiếm agent process hoặc lấy keystore kèm passphrase, có thể sử dụng agent private key ngoài `evaluatePolicy`, approval và kill switch. Process giữ signer của các tenant đang load, master funder và mock worker: blast radius có thể vượt một owner. Với Task Vault, agent signer vẫn bị ràng buộc bởi smart contract hiện hành | **INTENTIONAL custody model; SOURCE ONLY**, confidence cao về key custody ([context](agent/src/context.ts), [crypto](agent/src/crypto.ts)); chưa tái hiện compromise | Giữ Devnet scope; nếu chuyển sang tài sản thật, thiết kế on-chain spending authority và owner recovery, isolate signer/trust domain. AES-256-GCM encryption at rest không thay thế runtime isolation |
 | **2. Smart contract upgrade authority** | Nếu upgrade authority còn active và bị compromise/lạm dụng, program có thể bị thay thế; budget/allowlist/refund invariant và tài sản trong Task Vault phụ thuộc code mới | **NEEDS DECISION; bằng chứng Devnet lịch sử 28/09** tại [#6](https://github.com/thanhhau15112000-dev/NexusWallet/issues/6). Confidence trung về trạng thái authority hiện tại: chưa refresh on-chain trong audit này; không có bằng chứng khai thác | Công bố authority và source/binary mapping; quyết định multisig/timelock hoặc revoke upgrade authority sau khi xác minh program và recovery contract |
-| **3. MCP Bearer token bị lộ** | Token bị lộ thì attacker có thể impersonate MCP client của owner, đọc request và submit transfer trong scope token. Không có quyền đổi policy/approve/unfreeze qua MCP token | **MITIGATED một phần; CONTRACT-TEST VERIFIED**: hosted lưu hash token at rest và chỉ hiển thị token một lần ([mcp-token](agent/src/mcp-token.ts), PR [#79](https://github.com/thanhhau15112000-dev/NexusWallet/pull/79)); file plaintext bản cũ được ghi lại thành hash ở lần đọc đầu | Hash storage không ngăn dùng một valid token đã bị đánh cắp: rotate khi lộ, không đưa token vào ảnh chụp/repo |
+| **3. MCP Bearer token bị lộ** | Token bị lộ thì attacker có thể impersonate MCP client của owner, đọc request và task, submit transfer qua policy và tạo escrow trong budget Task Vault owner đã cấp (trong cap, expiry, worker/service của task). Không có quyền đổi policy/approve/unfreeze, settle hay refund qua MCP token | **MITIGATED một phần; CONTRACT-TEST VERIFIED**: hosted lưu hash token at rest và chỉ hiển thị token một lần ([mcp-token](agent/src/mcp-token.ts), PR [#79](https://github.com/thanhhau15112000-dev/NexusWallet/pull/79)); file plaintext bản cũ được ghi lại thành hash ở lần đọc đầu | Hash storage không ngăn dùng một valid token đã bị đánh cắp: rotate khi lộ, không đưa token vào ảnh chụp/repo |
 | **4. SPL chỉ có per-transaction cap** | Agent/token holder có thể submit nhiều transfer hợp lệ dưới cap tới recipient/mint allowlisted và tiêu hết SPL balance mà không chạm aggregate daily cap. Đây là thiếu aggregate budget enforcement, không phải bypass SOL daily cap | **INTENTIONAL scope limitation; SOURCE ONLY**, confidence cao ([policy](shared/src/policy.ts)); chưa thực hiện chuỗi SPL transfer trên chain | Cần quyết định per-mint rolling-window budget hoặc task budget trước khi claim kiểm soát tổng chi SPL |
 | **5. Keystore/state recovery** | Mất keystore hoặc passphrase và không có backup khiến owner có thể mất khả năng truy cập tài sản agent wallet. Mất Store có thể reset policy, spending accounting và idempotency. Tài sản còn trên chain không bảo đảm key recovery | **NEEDS DECISION recovery contract; SOURCE ONLY**, confidence cao về storage dependency; chưa chạy disaster-recovery test ([crypto](agent/src/crypto.ts), [Store](agent/src/store.ts)) | Persistent storage, encrypted backup, secret recovery policy và restore drill; thiết kế owner recovery độc lập server. Đây là storage/key-management risk, không phải hạn chế riêng của hosting provider |
 | **6. Request flooding / Sybil seed depletion** | Flooding có thể làm tăng RPC/disk/CPU load và gián đoạn login/transfer; nhiều owner claim seed có thể làm cạn master funder SOL Devnet | **MITIGATED ở tầng ứng dụng; CONTRACT-TEST VERIFIED**: fixed-window rate limit theo IP/owner cho route nhạy cảm, trả `RATE_LIMITED` kèm `retryAfterSeconds` ([rate-limit](agent/src/rate-limit.ts), PR [#76](https://github.com/thanhhau15112000-dev/NexusWallet/pull/76)); tổng seed tối đa `SEED_CAP_PER_DAY` (mặc định 50) mỗi 24 giờ ([seed-ledger](agent/src/seed-ledger.ts), PR [#77](https://github.com/thanhhau15112000-dev/NexusWallet/pull/77)). Chưa load-test trên hosted | Counter nằm trong memory một process, reset khi restart; không có CDN/WAF nên không hấp thụ flood tầng mạng (DDoS/botnet). Cần WAF/CDN hoặc owner allowlist nếu mở rộng |
@@ -225,7 +238,7 @@ Khi demo lỗi: kiểm tra mạng Phantom, số dư agent kể cả phí/rent, a
 
 ## Hướng phát triển
 
-Ưu tiên tiếp theo là kiểm chứng restore và reconciliation Task Vault; sau đó load-test hosted, WAF/CDN và QA client/dashboard thực tế. Stablecoin và công cụ Task Vault qua MCP thuộc phạm vi mở rộng, không phải chức năng hiện tại.
+Ưu tiên tiếp theo là kiểm chứng restore và reconciliation Task Vault; sau đó load-test hosted, WAF/CDN và QA client/dashboard thực tế. Stablecoin thuộc phạm vi mở rộng, không phải chức năng hiện tại.
 
 Theo dõi: [roadmap #18](https://github.com/thanhhau15112000-dev/NexusWallet/issues/18), [hardening #75](https://github.com/thanhhau15112000-dev/NexusWallet/issues/75), [demo #66](https://github.com/thanhhau15112000-dev/NexusWallet/issues/66).
 

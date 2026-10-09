@@ -65,6 +65,41 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
     return { app, masterCtx, ownerPubkey, cookieHeader };
   }
 
+  it.each([
+    ['owner', 403, 'task_owner_mismatch'],
+    ['signer', 409, 'agent_signer_mismatch'],
+    ['closed', 400, 'payment_rejected'],
+  ])('rejects simulated task payment with invalid %s without mutating records', async (guard, status, error) => {
+    const { app, masterCtx, ownerPubkey, cookieHeader } = await setupApp();
+    try {
+      const taskId = `guard-${guard}`;
+      const created = await app.inject({ method: 'POST', url: '/api/tasks', headers: { cookie: cookieHeader }, payload: {
+        taskId, budgetLamports: 100, perPaymentCapLamports: 50,
+        expiry: Math.floor(Date.now() / 1000) + 3600, isSimulated: true,
+      } });
+      expect(created.statusCode).toBe(200);
+      const userCtx = masterCtx.getUserContext!(ownerPubkey);
+      const original = userCtx.store.getTask(taskId)!;
+      const other = bs58.encode(nacl.sign.keyPair().publicKey);
+      const blockedTask = {
+        ...original, ...(guard === 'owner' ? { owner: other } : {}),
+        ...(guard === 'signer' ? { agentSigner: other } : {}),
+        ...(guard === 'closed' ? { isClosed: true } : {}),
+      };
+      userCtx.store.setTask(blockedTask, { allowOverwrite: true });
+      const response = await app.inject({ method: 'POST', url: `/api/tasks/${taskId}/payments`, headers: { cookie: cookieHeader }, payload: {
+        paymentId: 'pay-blocked', worker: other, serviceId: 'service', amountLamports: 20, requestHash: 'request',
+      } });
+      expect(response.statusCode).toBe(status);
+      expect(response.json().error).toBe(error);
+      expect(userCtx.store.getTask(taskId)).toEqual(blockedTask);
+      expect(userCtx.store.getPayments(taskId)).toEqual([]);
+      expect(userCtx.store.getReceipts(taskId)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('executes full task lifecycle: fund -> two payments -> overbudget rejected -> settle -> refund', async () => {
     const { app, masterCtx, ownerPubkey, cookieHeader } = await setupApp();
 

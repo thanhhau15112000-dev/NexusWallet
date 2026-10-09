@@ -213,14 +213,17 @@ describe('loadMcpConfig', () => {
 });
 
 describe('nexusPay MCP tools', () => {
-  it('lists five tools and marks transfers as destructive', async () => {
+  it('lists eight tools and marks transfers as destructive', async () => {
     const client = await connect(vi.fn());
     const { tools } = await client.listTools();
 
     expect(tools.map((tool) => tool.name).sort()).toEqual([
+      'nexuspay_execute_task_payment',
       'nexuspay_get_request',
       'nexuspay_get_status',
+      'nexuspay_get_task',
       'nexuspay_list_requests',
+      'nexuspay_list_tasks',
       'nexuspay_transfer_sol',
       'nexuspay_transfer_spl',
     ]);
@@ -790,6 +793,170 @@ describe('nexusPay MCP tools', () => {
 
     const result = await client.callTool({ name: 'nexuspay_get_request', arguments: { requestId: '../state' } });
 
+    expect(result.isError).toBe(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('Task Vault MCP tools', () => {
+  const paymentInput = {
+    taskId: 'task-mcp', paymentId: 'pay-mcp', worker: OWNER,
+    serviceId: 'service-summary', amountLamports: 30, requestHash: 'a'.repeat(64),
+  };
+  function taskRecord(overrides: Record<string, unknown> = {}) {
+    return {
+      owner: OWNER, agentSigner: OWNER, taskId: paymentInput.taskId,
+      budgetLamports: 100, spentLamports: 10, perPaymentCapLamports: 40,
+      expiry: Math.floor(Date.now() / 1000) + 3600, status: 'active',
+      allowedWorker: OWNER, allowedServiceId: paymentInput.serviceId,
+      isSimulated: true, ...overrides,
+    };
+  }
+  const paymentRecord = { ...paymentInput, status: 'held', isSimulated: true };
+  function detail(payments: unknown[] = [], taskOverrides: Record<string, unknown> = {}) {
+    return { task: taskRecord(taskOverrides), payments, receipts: [] };
+  }
+  async function call(fetchImpl: Fetch, name: string, args: Record<string, unknown>) {
+    const client = await connect(fetchImpl);
+    try {
+      return await client.callTool({ name, arguments: args });
+    } finally {
+      await client.close();
+    }
+  }
+
+  it('lists filtered tasks with effective expiry, remaining budget, mode and limit', async () => {
+    const fetchImpl = vi.fn(async () => json(200, { tasks: [
+      taskRecord(), taskRecord({ taskId: 'old-task', expiry: 1 }),
+      taskRecord({ taskId: 'devnet-task', isSimulated: false }),
+    ] }));
+    const result = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_list_tasks', { status: 'active', limit: 1 }));
+    expect(result.matchingCount).toBe(2);
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0]).toMatchObject({ remainingBudgetLamports: 90, mode: 'simulated', source: 'agent_local_record' });
+    expect(fetchImpl.mock.calls[0]).toMatchObject([
+      `${config.apiUrl}/api/tasks`, { method: 'GET', headers: { authorization: `Bearer ${TOKEN}` } },
+    ]);
+    const expired = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_list_tasks', { status: 'expired' }));
+    expect(expired.tasks).toHaveLength(1);
+    expect(expired.tasks[0]).toMatchObject({ taskId: 'old-task', status: 'expired', expired: true });
+    const all = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_list_tasks', {}));
+    expect(all.tasks[2].mode).toBe('devnet');
+  });
+
+  it('gets an encoded task ID with its payments and receipts', async () => {
+    const receipt = { paymentId: 'settled-payment', resultHash: 'b'.repeat(64) };
+    const fetchImpl = vi.fn(async (_url: unknown, _init?: RequestInit) => json(200, { ...detail([paymentRecord]), receipts: [receipt] }));
+    const result = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_get_task', { taskId: 'task: report' }));
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(`${config.apiUrl}/api/tasks/task%3A%20report`);
+    expect(result).toMatchObject({ payments: [paymentRecord], receipts: [receipt], task: { mode: 'simulated' } });
+  });
+
+  it('returns a missing task error without proposing a payment', async () => {
+    const fetchImpl = vi.fn(async () => json(404, { error: 'task_not_found' }));
+    const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_get_task', { taskId: 'missing' });
+    expect(result.isError).toBe(true);
+    expect(parse(result).code).toBe('task_not_found');
+  });
+
+  it('reads first, then posts exactly the payment and returns the held escrow', async () => {
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? json(200, { task: taskRecord({ spentLamports: 40 }), payment: paymentRecord })
+        : json(200, detail()));
+    const result = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', paymentInput));
+    const { taskId, ...body } = paymentInput;
+    expect(fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST']);
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe(`${config.apiUrl}/api/tasks/${taskId}/payments`);
+    expect(JSON.parse(fetchImpl.mock.calls[1]?.[1]?.body as string)).toEqual(body);
+    expect(result).toMatchObject({ reused: false, payment: { status: 'held' }, task: { remainingBudgetLamports: 60 } });
+  });
+
+  it.each(['held', 'settled', 'refunded'])('reuses a recorded %s payment after task closure without POST', async (status) => {
+    const fetchImpl = vi.fn(async () => json(200, detail([{ ...paymentRecord, status }], { isClosed: true })));
+    const result = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', paymentInput));
+    expect(result).toMatchObject({ reused: true, payment: { status } });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { amountLamports: 31 }, { worker: '11111111111111111111111111111111' },
+    { serviceId: 'other-service' }, { requestHash: 'b'.repeat(64) },
+  ])('rejects changed parameters on a recorded ID: %j', async (changed) => {
+    const fetchImpl = vi.fn(async () => json(200, detail([paymentRecord])));
+    const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', { ...paymentInput, ...changed });
+    expect(result.isError).toBe(true);
+    expect(parse(result).code).toBe('IDEMPOTENCY_CONFLICT');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['same', 'reused'], ['changed', 'IDEMPOTENCY_CONFLICT'], ['missing', 'outcome_unknown'],
+  ])('handles a concurrent payment_exists with %s record', async (record, expected) => {
+    let reads = 0;
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      if (init?.method === 'POST') return json(409, { error: 'payment_exists' });
+      reads++;
+      const payments = reads === 1 || record === 'missing' ? []
+        : [{ ...paymentRecord, ...(record === 'changed' ? { amountLamports: 31 } : {}) }];
+      return json(200, detail(payments));
+    });
+    const result = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', paymentInput));
+    expect(expected === 'reused' ? result.reused : result.code).toBe(expected === 'reused' ? true : expected);
+    expect(fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST', 'GET']);
+  });
+
+  it('reports the read error when duplicate recovery cannot read the task', async () => {
+    let reads = 0;
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      if (init?.method === 'POST') return json(409, { error: 'payment_exists' });
+      return ++reads === 1 ? json(200, detail()) : json(401, { error: 'authentication_required' });
+    });
+    const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', paymentInput);
+    expect(result.isError).toBe(true);
+    expect(parse(result)).toMatchObject({ code: 'mcp_token_rejected', taskId: paymentInput.taskId, paymentId: paymentInput.paymentId });
+  });
+
+  it.each([
+    [400, 'payment_rejected'], [403, 'unauthorized_worker'], [409, 'AGENT_FROZEN'],
+  ])('preserves definite API rejection %s/%s', async (status, code) => {
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) =>
+      init?.method === 'POST' ? json(status as number, { error: code }) : json(200, detail()));
+    const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', paymentInput);
+    expect(result.isError).toBe(true);
+    expect(parse(result).code).toBe(code);
+  });
+
+  it.each(['server', 'onchain', 'network', 'timeout'])('keeps the payment ID for an uncertain POST: %s', async (failure) => {
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      if (init?.method !== 'POST') return json(200, detail());
+      if (failure === 'server') return json(500, { error: 'internal_error' });
+      if (failure === 'onchain') return json(502, { error: 'onchain_payment_failed' });
+      throw failure === 'timeout' ? new DOMException('timed out', 'TimeoutError') : new TypeError('fetch failed');
+    });
+    const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', paymentInput);
+    expect(result.isError).toBe(true);
+    expect(parse(result)).toMatchObject({ code: 'outcome_unknown', taskId: paymentInput.taskId, paymentId: paymentInput.paymentId });
+    expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it.each(['server', 'network'])('does not claim an uncertain payment when the initial GET fails: %s', async (failure) => {
+    const fetchImpl = vi.fn(async () => {
+      if (failure === 'server') return json(503, { error: 'read_unavailable' });
+      throw new TypeError('fetch failed');
+    });
+    const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', paymentInput);
+    expect(result.isError).toBe(true);
+    expect(parse(result).code).toBe(failure === 'server' ? 'read_unavailable' : 'agent_unreachable');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { amountLamports: 0 }, { amountLamports: 1.5 }, { amountLamports: Number.MAX_SAFE_INTEGER + 1 },
+    { requestHash: 'not-sha256' }, { taskId: '..' }, { taskId: 'a/b' },
+  ])('rejects malformed payment inputs before reaching the API: %j', async (invalid) => {
+    const fetchImpl = vi.fn();
+    const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_execute_task_payment', { ...paymentInput, ...invalid });
     expect(result.isError).toBe(true);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
