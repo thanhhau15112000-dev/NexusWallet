@@ -22,8 +22,9 @@ import { createContext } from '../src/context.js';
 import { loadConfig } from '../src/config.js';
 import { registerRoutes } from '../src/routes.js';
 import { SESSION_COOKIE_NAME } from '../src/sessions.js';
+import { submitOutput } from './task-output-helpers.js';
 
-const RPC_URL = 'http://127.0.0.1:8899';
+const RPC_URL = process.env.TASK_VAULT_TEST_RPC_URL ?? 'http://127.0.0.1:8899';
 const SERVICE_ID = 'task-vault-local-e2e';
 
 describe('Task Vault API with the local Solana program', () => {
@@ -161,15 +162,12 @@ describe('Task Vault API with the local Solana program', () => {
           payload: { taskId, paymentId, serviceId: SERVICE_ID, payload: { paymentId } },
         });
         const serviceResult = JSON.parse(serviceResponse.body);
+        const acceptedOutput = await submitOutput(app, cookieHeader, taskId, paymentId, worker.secretKey, owner.secretKey, serviceResult.resultPayload);
         return app.inject({
           method: 'POST',
           url: `/api/tasks/${taskId}/payments/${paymentId}/settle`,
           headers: { cookie: cookieHeader },
-          payload: {
-            resultHash: serviceResult.resultHash,
-            workerPubkey: serviceResult.workerPubkey,
-            workerSignature: serviceResult.workerSignature,
-          },
+          payload: acceptedOutput,
         });
       };
 
