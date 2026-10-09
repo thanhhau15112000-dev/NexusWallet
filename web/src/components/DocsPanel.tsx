@@ -481,12 +481,20 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   <tr><td><code>nexuspay_get_request</code></td><td>One request, for example to see whether you approved it.</td></tr>
                   <tr><td><code>nexuspay_transfer_sol</code></td><td>Propose a SOL transfer. The policy decides.</td></tr>
                   <tr><td><code>nexuspay_transfer_spl</code></td><td>Propose an SPL token transfer. Recipient and mint must be allowlisted.</td></tr>
+                  <tr><td><code>nexuspay_list_tasks</code></td><td>Read delegated Task Vault records, remaining budgets, caps and expiry.</td></tr>
+                  <tr><td><code>nexuspay_get_task</code></td><td>Read a task, its Escrows and Receipts. Local records are not a fresh chain reconciliation.</td></tr>
+                  <tr><td><code>nexuspay_execute_task_payment</code></td><td>Create an Escrow within an existing capability. Worker settlement is a separate step.</td></tr>
                 </tbody>
               </table>
               <p>
-                There is no tool to change the policy, bind an owner or approve a request. The MCP token only reaches
-                wallet status, the request list, one request, and new transfer proposals. Policy, approvals, funding
-                and Task Vault actions still need your wallet session in this dashboard.
+                MCP can read wallet status, requests and tasks, propose transfers and create Escrows within a delegated
+                capability. Policy changes, approvals, task creation/funding, revocation, settlement, refunds and
+                agent freeze/unfreeze still require the owner&apos;s wallet session.
+              </p>
+              <p>
+                Task payments use capability limits and do not enter the transfer approval queue. Keep the same
+                <code> paymentId </code> and parameters when retrying an uncertain outcome. Simulated tasks do not
+                transfer SOL; the Devnet demo currently uses a server-held Mock Worker.
               </p>
             </>
           ),

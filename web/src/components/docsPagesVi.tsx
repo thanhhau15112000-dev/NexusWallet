@@ -473,12 +473,20 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   <tr><td><code>nexuspay_get_request</code></td><td>Một yêu cầu, ví dụ để xem bạn đã duyệt hay chưa.</td></tr>
                   <tr><td><code>nexuspay_transfer_sol</code></td><td>Đề xuất chuyển SOL. Chính sách quyết định.</td></tr>
                   <tr><td><code>nexuspay_transfer_spl</code></td><td>Đề xuất chuyển token SPL. Người nhận và mint phải nằm trong danh sách cho phép.</td></tr>
+                  <tr><td><code>nexuspay_list_tasks</code></td><td>Đọc Task Vault đã được cấp quyền, ngân sách còn lại, cap và expiry.</td></tr>
+                  <tr><td><code>nexuspay_get_task</code></td><td>Đọc task, Escrow và Receipt. Record local chưa được reconcile lại với chain.</td></tr>
+                  <tr><td><code>nexuspay_execute_task_payment</code></td><td>Tạo Escrow trong capability đã cấp. Worker nhận tiền ở bước settlement riêng.</td></tr>
                 </tbody>
               </table>
               <p>
-                Không có công cụ nào để đổi chính sách, liên kết chủ sở hữu hay duyệt một yêu cầu. MCP token chỉ truy
-                cập được trạng thái ví, danh sách yêu cầu, một yêu cầu và các đề xuất chuyển tiền mới. Chính sách, phê
-                duyệt, nạp vốn và các hành động Task Vault vẫn cần phiên ví của bạn trên dashboard này.
+                MCP có thể đọc trạng thái ví, request và task, đề xuất transfer và tạo Escrow trong capability đã cấp.
+                Đổi chính sách, ký duyệt, tạo/nạp task, thu hồi quyền, settlement, refund và khóa/mở khóa agent
+                vẫn cần phiên ví chủ sở hữu.
+              </p>
+              <p>
+                Task payment kiểm tra giới hạn của capability và không vào hàng chờ duyệt transfer. Khi retry kết quả
+                chưa rõ, giữ nguyên <code>paymentId</code> và các tham số. Task mô phỏng không chuyển SOL;
+                bản Devnet hiện sử dụng Mock Worker do server giữ signer.
               </p>
             </>
           ),

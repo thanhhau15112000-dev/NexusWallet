@@ -918,7 +918,7 @@ const inFlightClaims = new Set<string>();
     paymentId: z.string().trim().min(1).max(64),
     worker: PubkeySchema,
     serviceId: z.string().trim().min(1).max(64),
-    amountLamports: z.number().int().positive(),
+    amountLamports: z.number().int().positive().safe(),
     requestHash: z.string().trim().min(1),
     txSignature: z.string().trim().optional(),
     isSimulated: z.boolean().optional(),
@@ -940,6 +940,18 @@ const inFlightClaims = new Set<string>();
 
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
+
+    // Simulation does not bypass delegation: records must belong to this owner
+    // and the current agent signer, just as a Devnet capability must.
+    if (task.owner !== userCtx.store.getOwner()) {
+      return reply.status(403).send({ error: 'task_owner_mismatch' });
+    }
+    if (task.agentSigner !== userCtx.agentPubkey) {
+      return reply.status(409).send({ error: 'agent_signer_mismatch' });
+    }
+    if (task.isClosed) {
+      return reply.status(400).send({ error: 'payment_rejected', message: 'task is closed' });
+    }
 
     if (userCtx.store.getPayment(taskId, body.paymentId)) {
       return reply.status(409).send({ error: 'payment_exists', message: `Payment ${body.paymentId} already exists` });
@@ -980,9 +992,6 @@ const inFlightClaims = new Set<string>();
     let txSignature: string | undefined;
     if (!isSimulated) {
       const mockWorker = getMockWorkerKeypair(userCtx);
-      if (task.agentSigner !== userCtx.agentPubkey) {
-        return reply.status(409).send({ error: 'agent_signer_mismatch' });
-      }
       if (body.worker !== mockWorker.publicKey.toBase58()) {
         return reply.status(400).send({
           error: 'unsupported_onchain_worker',

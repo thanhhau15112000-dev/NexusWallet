@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import { Keypair } from '@solana/web3.js';
@@ -29,6 +29,8 @@ async function startApp(overrides: { authRequired?: boolean } = {}) {
     saltPath: join(dataDir, 'audit-salt'),
   };
   const ctx = createContext(config);
+  // Auth/scope tests need deterministic balance reads, not a live Devnet RPC.
+  vi.spyOn(ctx.connection, 'getBalance').mockResolvedValue(0);
   const app = Fastify();
   await app.register(cookie, { secret: config.SESSION_COOKIE_SECRET });
   registerAuthHook(app, ctx);
@@ -48,6 +50,58 @@ async function login(app: Awaited<ReturnType<typeof startApp>>['app'], owner: Ke
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
 describe('MCP token authentication', () => {
+  it.each([false, true])('allows only delegated task reads/payments and isolates tenants (hosted=%s)', async (authRequired) => {
+    const { app, ctx } = await startApp({ authRequired });
+    try {
+      const ownerA = Keypair.generate();
+      const ownerB = Keypair.generate();
+      const worker = Keypair.generate().publicKey.toBase58();
+      const cookieA = await login(app, ownerA);
+      const cookieB = await login(app, ownerB);
+      const mintToken = async (cookieHeader: string) => (
+        await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })
+      ).json().token as string;
+      const tokenA = await mintToken(cookieA);
+      const tokenB = await mintToken(cookieB);
+      const expiry = Math.floor(Date.now() / 1000) + 3600;
+      for (const [taskId, cookieHeader] of [['task-a', cookieA], ['task-b', cookieB]]) {
+        const created = await app.inject({ method: 'POST', url: '/api/tasks', headers: { cookie: cookieHeader }, payload: {
+          taskId, budgetLamports: 100, perPaymentCapLamports: 50, expiry,
+          allowedWorker: worker, allowedServiceId: 'service-a', isSimulated: true,
+        } });
+        expect(created.statusCode).toBe(200);
+      }
+      const listed = await app.inject({ method: 'GET', url: '/api/tasks', headers: bearer(tokenA) });
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json().tasks.map((task: { taskId: string }) => task.taskId)).toEqual(['task-a']);
+      const read = await app.inject({ method: 'GET', url: '/api/tasks/task-a', headers: bearer(tokenA) });
+      expect(read.statusCode).toBe(200);
+      expect(read.json().task.owner).toBe(ownerA.publicKey.toBase58());
+      expect((await app.inject({ method: 'GET', url: '/api/tasks/task-b', headers: bearer(tokenA) })).statusCode).toBe(404);
+      expect((await app.inject({ method: 'GET', url: '/api/tasks/task-a', headers: bearer(tokenB) })).statusCode).toBe(404);
+      const payment = { paymentId: 'payment-a', worker, serviceId: 'service-a', amountLamports: 40, requestHash: 'a'.repeat(64) };
+      const paid = await app.inject({ method: 'POST', url: '/api/tasks/task-a/payments', headers: bearer(tokenA), payload: payment });
+      expect(paid.statusCode).toBe(200);
+      expect(paid.json()).toMatchObject({ task: { spentLamports: 40 }, payment: { status: 'held', isSimulated: true } });
+      expect((await app.inject({ method: 'POST', url: '/api/tasks/task-a/payments', headers: bearer(tokenB), payload: payment })).statusCode).toBe(404);
+      expect(ctx.getUserContext!(ownerB.publicKey.toBase58()).store.getTask('task-b')?.spentLamports).toBe(0);
+
+      for (const url of [
+        '/api/tasks', '/api/tasks/task-a/revoke', '/api/tasks/task-a/refund',
+        '/api/tasks/task-a/payments/payment-a/settle', '/api/tasks/mock-service/run',
+        '/api/tasks/task-a/receipts/payment-a/close',
+      ]) {
+        const denied = await app.inject({ method: 'POST', url, headers: bearer(tokenA), payload: {} });
+        expect(denied.statusCode, url).toBe(401);
+        expect(denied.json().error, url).toBe('authentication_required');
+      }
+      expect(ctx.getUserContext!(ownerA.publicKey.toBase58()).store.getPayment('task-a', 'payment-a')?.status).toBe('held');
+      expect(ctx.getUserContext!(ownerA.publicKey.toBase58()).store.getTask('task-a')?.status).toBe('active');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('hands a tenant token to the wallet session and accepts it only on MCP routes', async () => {
     const { app, ctx } = await startApp();
     try {
@@ -83,10 +137,10 @@ describe('MCP token authentication', () => {
       // Outside the MCP scope the token is not a session, including path tricks around allowed routes.
       for (const [method, url] of [
         ['GET', '/api/state/'],
-        ['GET', '/api/requests/../tasks'],
-        ['GET', '/api/requests/%2E%2E/tasks'],
-        ['GET', '/api/actions/../tasks'],
-        ['GET', '/api/tasks'],
+        ['GET', '/api/requests/../audit'],
+        ['GET', '/api/requests/%2E%2E/audit'],
+        ['GET', '/api/actions/../audit'],
+        ['POST', '/api/tasks'],
         ['PUT', '/api/policy'],
         ['POST', '/api/owner'],
         ['GET', '/api/mcp/config'],
@@ -128,7 +182,7 @@ describe('MCP token authentication', () => {
       expect(mcp.url).toBe(`${ctx.config.allowedOrigins[0]}/mcp`);
       expect((await app.inject({ method: 'GET', url: '/api/state', headers: bearer(mcp.token) })).statusCode).toBe(200);
       for (const [method, url] of [
-        ['GET', '/api/tasks'],
+        ['POST', '/api/tasks'],
         ['PUT', '/api/policy'],
         ['GET', '/api/mcp/config'],
         ['POST', '/api/mcp/token/rotate'],

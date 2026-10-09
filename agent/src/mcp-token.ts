@@ -10,8 +10,9 @@ import { dirname, resolve } from 'node:path';
 const TOKEN_FILE = 'mcp-token';
 const BEARER = /^Bearer (nxp_([1-9A-HJ-NP-Za-km-z]{32,44})_[A-Za-z0-9_-]{43})$/;
 
-// The MCP server only reads state and requests and proposes intents. Policy, approvals,
-// owner binding, funding and task vault actions stay behind a wallet-signed session.
+// MCP reads state, requests and tasks, proposes transfers and spends delegated task budgets.
+// Policy, approvals, owner binding, task funding/revocation and worker settlement
+// stay behind a wallet-signed session.
 // Matched against the registered route pattern, not the raw URL, so path tricks such as
 // dot segments, encodings or trailing slashes cannot widen the scope.
 const MCP_ROUTES = new Set([
@@ -19,6 +20,9 @@ const MCP_ROUTES = new Set([
   'GET /api/requests',
   'GET /api/requests/:id',
   'POST /api/agent/intents',
+  'GET /api/tasks',
+  'GET /api/tasks/:taskId',
+  'POST /api/tasks/:taskId/payments',
 ]);
 
 function tokenPath(usersDir: string, owner: string): string {
