@@ -48,7 +48,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 ].join('\n')}
               />
               <p>
-                Khi chưa có API key của model, agent dùng một bộ phân tích xác định thay thế. Các yêu cầu đó hiện
+                Khi chưa có API key của model, agent dùng một deterministic parser dự phòng. Các yêu cầu đó hiện
                 {' '}<code>[fallback]</code> trong model trace; việc áp dụng chính sách vẫn như nhau.
               </p>
             </>
@@ -67,10 +67,10 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </thead>
               <tbody>
                 <tr><td>Tổng quan</td><td>Xem ví agent, kết nối ví chủ sở hữu, nạp vốn cho agent.</td></tr>
-                <tr><td>Kho tác vụ</td><td>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</td></tr>
-                <tr><td>Ra lệnh AI</td><td>Yêu cầu agent kiểm tra số dư hoặc gửi SOL bằng văn bản thường.</td></tr>
-                <tr><td>Chính sách</td><td>Đặt hạn mức mỗi giao dịch và danh sách người nhận được phép.</td></tr>
-                <tr><td>Phê duyệt</td><td>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</td></tr>
+                <tr><td>Task Vault</td><td>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</td></tr>
+                <tr><td>Yêu cầu thanh toán</td><td>Yêu cầu agent kiểm tra số dư hoặc gửi SOL bằng văn bản thường.</td></tr>
+                <tr><td>Chính sách chi tiêu</td><td>Đặt hạn mức mỗi giao dịch và danh sách người nhận được phép.</td></tr>
+                <tr><td>Chờ duyệt</td><td>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</td></tr>
                 <tr><td>Nhật ký kiểm toán</td><td>Đọc nhật ký chỉ ghi thêm về các quyết định và lần thực thi.</td></tr>
               </tbody>
             </table>
@@ -106,9 +106,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </li>
               <li>
                 <strong>Đặt chính sách.</strong> Đặt <em>Hạn mức mỗi giao dịch</em> là <code>0.1</code> SOL, bấm
-                {' '}<em>Dùng ví cá nhân</em> để đưa ví của bạn vào danh sách cho phép với tên <code>my-wallet</code>,
+                {' '}<em>Dùng ví chủ sở hữu</em> để đưa ví của bạn vào danh sách cho phép với tên <code>my-wallet</code>,
                 rồi bấm Lưu.{' '}
-                <TabLink tab="policy" label="Chính sách" ctx={ctx} />
+                <TabLink tab="policy" label="Chính sách chi tiêu" ctx={ctx} />
               </li>
               <li>
                 <strong>Nạp vốn cho agent.</strong> Nhận seed 0.1 SOL (một lần) hoặc nạp từ ví của bạn.{' '}
@@ -117,7 +117,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               <li>
                 <strong>Chạy một lệnh.</strong> <code>Send 0.05 SOL to my-wallet</code> nằm trong hạn mức, nên agent
                 ký và hiện liên kết Explorer.{' '}
-                <TabLink tab="commands" label="Ra lệnh AI" ctx={ctx} />
+                <TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />
               </li>
               <li>
                 <strong>Thử các kết quả còn lại.</strong> <code>Send 0.5 SOL to my-wallet</code> bị giữ chờ bạn duyệt.
@@ -131,9 +131,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Kiểm tra kết quả',
           body: (
             <p>
-              Mọi yêu cầu đều hiện trong tab Phê duyệt cùng trạng thái và kết luận của chính sách; mọi quyết định đều
+              Mọi yêu cầu đều hiện trong tab Chờ duyệt cùng trạng thái và kết luận của chính sách; mọi quyết định đều
               được ghi vào nhật ký kiểm toán kèm phiên bản chính sách tại thời điểm quyết định.{' '}
-              <TabLink tab="approvals" label="Phê duyệt" ctx={ctx} />
+              <TabLink tab="approvals" label="Chờ duyệt" ctx={ctx} />
             </p>
           ),
         },
@@ -250,7 +250,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 Một lần duyệt gắn với phiên bản chính sách tại lúc yêu cầu bị giữ. Sau khi bạn lưu chính sách mới, việc
                 duyệt một yêu cầu cũ đang giữ sẽ bị từ chối; hãy chạy lại lệnh.
               </Callout>
-              <TabLink tab="policy" label="Chính sách" ctx={ctx} />
+              <TabLink tab="policy" label="Chính sách chi tiêu" ctx={ctx} />
             </>
           ),
         },
@@ -291,10 +291,10 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Lệnh gợi ý',
           body: (
             <p>
-              Khi đã có một người nhận trong danh sách cho phép, trang Ra lệnh AI hiện ba lệnh gợi ý: một lệnh dưới
-              hạn mức (Tự động), một lệnh vượt hạn mức (Cần duyệt) và một lệnh tới địa chỉ không bao giờ nằm trong danh
-              sách (Bị chặn). Đây là cách nhanh nhất để thấy cả ba kết luận.{' '}
-              <TabLink tab="commands" label="Ra lệnh AI" ctx={ctx} />
+              Khi đã có một người nhận trong danh sách cho phép, trang Yêu cầu thanh toán hiện ba lệnh gợi ý: một lệnh dưới
+              hạn mức mỗi giao dịch, một lệnh vượt hạn mức mỗi giao dịch và một lệnh tới địa chỉ ngoài danh
+              sách cho phép. Kết quả còn phụ thuộc vào số dư, hạn mức 24 giờ và trạng thái khóa agent.{' '}
+              <TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />
             </p>
           ),
         },
@@ -313,7 +313,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
     {
       id: 'approvals',
       group: 'Hướng dẫn',
-      title: 'Phê duyệt',
+      title: 'Chờ duyệt',
       summary: 'Duyệt một giao dịch đang chờ bằng chữ ký ví, và chữ ký đó bao phủ những gì.',
       keywords: 'approve sign message expiry owner pending duyệt ký hết hạn',
       sections: [
@@ -322,7 +322,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Duyệt một giao dịch đang chờ',
           body: (
             <Steps>
-              <li>Mở tab Phê duyệt. Các yêu cầu đang giữ có trạng thái <em>Chờ duyệt</em> và thời điểm hết hạn.</li>
+              <li>Mở tab Chờ duyệt. Các yêu cầu đang giữ có trạng thái <em>Chờ duyệt</em> và thời điểm hết hạn.</li>
               <li>Mở <em>Thông điệp ký</em> để đọc nội dung bạn sắp ký: số tiền, người nhận, phiên bản chính sách và thời hạn.</li>
               <li>Bấm <em>Duyệt</em> và ký thông điệp trong ví. Sau đó agent gửi giao dịch.</li>
             </Steps>
@@ -345,9 +345,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
     {
       id: 'task-vault',
       group: 'Hướng dẫn',
-      title: 'Kho tác vụ',
-      summary: 'Cấp cho agent một ngân sách tác vụ có giới hạn on-chain và trả worker qua escrow và biên nhận.',
-      keywords: 'escrow receipt worker service capability pda revoke refund settle biên nhận thu hồi hoàn tiền',
+      title: 'Task Vault',
+      summary: 'Cấp cho agent một ngân sách tác vụ có giới hạn on-chain và trả worker qua escrow và Receipt.',
+      keywords: 'escrow receipt worker service capability pda revoke refund settle Receipt thu hồi hoàn tiền',
       sections: [
         {
           id: 'concept',
@@ -356,7 +356,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <p>
               Thay vì để agent chi tiêu tự do, chủ ví nạp vốn cho một <strong>Task Capability</strong>: một ngân sách,
               một hạn mức mỗi lần chi, một thời hạn và tùy chọn một worker và dịch vụ được phép. Agent chỉ chuyển được
-              tiền từ vault của tác vụ vào escrow, và escrow chỉ giải phóng cho worker khi có biên nhận hợp lệ.
+              tiền từ vault của tác vụ vào escrow, và escrow chỉ giải phóng cho worker khi có Receipt hợp lệ.
             </p>
           ),
         },
@@ -367,7 +367,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <Steps>
               <li>
                 <strong>Nạp vốn.</strong> Nhập mã tác vụ, tổng ngân sách, hạn mức mỗi lần chi và thời hạn (1–168 giờ).
-                Chọn <em>Gửi giao dịch on-chain lên Solana Devnet qua ví Phantom</em> để tạo trên Devnet qua ví của bạn;
+                Chọn <em>Ghi tác vụ lên Solana Devnet bằng ví Phantom</em> để tạo trên Devnet qua ví của bạn;
                 nếu không thì tác vụ chỉ được mô phỏng.
               </li>
               <li>
@@ -375,12 +375,11 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 hạn của tác vụ, và số tiền phải nằm trong hạn mức mỗi lần chi cùng ngân sách còn lại.
               </li>
               <li>
-                <strong>Quyết toán kèm biên nhận.</strong> Worker trả về một biên nhận có chữ ký; escrow được giải
-                phóng theo biên nhận đó.
+                <strong>Quyết toán bằng Receipt.</strong> Worker ký Receipt để nhận tiền trước khi tác vụ hết hạn; Escrow được giải
+                phóng theo Receipt đó. Receipt không chứng minh chất lượng công việc. Bản demo dùng mock Worker do server quản lý.
               </li>
               <li>
-                <strong>Đóng.</strong> <em>Thu hồi tác vụ</em> dừng các khoản thanh toán mới. <em>Hoàn tiền &amp; Đóng
-                kho</em> trả ngân sách chưa chi về cho chủ ví khi không còn escrow nào đang giữ.
+                <strong>Đóng.</strong> <em>Thu hồi quyền chi</em> dừng các khoản thanh toán mới. <em>Hoàn tiền và đóng Task Vault</em> trả ngân sách chưa phân bổ về cho chủ ví khi không còn Escrow đang giữ. Sau expiry, Escrow còn giữ cần được hoàn riêng; màn hình hiện chưa hỗ trợ thao tác này.
               </li>
             </Steps>
           ),
@@ -392,12 +391,12 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <>
               <p>
                 Tác vụ on-chain hiện nhãn <em>Giao dịch Devnet</em> và có liên kết Explorer. Tác vụ mô phỏng giữ cùng
-                máy trạng thái nhưng ngoài chain và được gắn nhãn <em>Mô phỏng</em>.
+                điều kiện ngân sách và trạng thái nhưng chỉ lưu bản ghi local, không chuyển SOL trên Devnet; được gắn nhãn <em>Mô phỏng</em>.
               </p>
               <Callout tone="note" title="Hành động on-chain cần ví của bạn">
                 Tạo, thu hồi và đóng một tác vụ on-chain đều do ví chủ sở hữu ký. Trình duyệt phải có Phantom.
               </Callout>
-              <TabLink tab="tasks" label="Kho tác vụ" ctx={ctx} />
+              <TabLink tab="tasks" label="Task Vault" ctx={ctx} />
             </>
           ),
         },
@@ -438,14 +437,14 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           body: (
             <>
               <p>
-                AI client của bạn là bên lập kế hoạch: nó gọi một công cụ với một giao dịch có cấu trúc, và dịch vụ
-                agent chạy giao dịch đó qua cùng chính sách như một lệnh trên dashboard. Trong chính sách thì agent ký;
+                Ứng dụng AI gửi yêu cầu chuyển tiền có cấu trúc qua MCP. Dịch vụ
+                agent kiểm tra cùng chính sách chi tiêu như yêu cầu trên dashboard. Đáp ứng chính sách thì ví agent ký;
                 vượt hạn mức thì yêu cầu chờ bạn duyệt tại đây; người nhận ngoài danh sách cho phép bị từ chối.
               </p>
               <p>
                 Client kết nối tới URL <code>/mcp</code> của agent (Streamable HTTP) với MCP token cá nhân của bạn làm
                 bearer header. Không cài gì lên máy của client: hãy sao chép cấu hình cho client của bạn từ card MCP
-                trên trang <TabLink tab="commands" label="Ra lệnh AI" ctx={ctx} />.
+                trên trang <TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />.
               </p>
               <Callout tone="note" title="URL trỏ tới đâu">
                 Trên dashboard hosted, URL là origin của dashboard, nên máy nào cũng kết nối được. Khi bạn tự chạy cả
@@ -474,12 +473,20 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   <tr><td><code>nexuspay_get_request</code></td><td>Một yêu cầu, ví dụ để xem bạn đã duyệt hay chưa.</td></tr>
                   <tr><td><code>nexuspay_transfer_sol</code></td><td>Đề xuất chuyển SOL. Chính sách quyết định.</td></tr>
                   <tr><td><code>nexuspay_transfer_spl</code></td><td>Đề xuất chuyển token SPL. Người nhận và mint phải nằm trong danh sách cho phép.</td></tr>
+                  <tr><td><code>nexuspay_list_tasks</code></td><td>Đọc Task Vault đã được cấp quyền, ngân sách còn lại, cap và expiry.</td></tr>
+                  <tr><td><code>nexuspay_get_task</code></td><td>Đọc task, Escrow và Receipt. Record local chưa được reconcile lại với chain.</td></tr>
+                  <tr><td><code>nexuspay_execute_task_payment</code></td><td>Tạo Escrow trong capability đã cấp. Worker nhận tiền ở bước settlement riêng.</td></tr>
                 </tbody>
               </table>
               <p>
-                Không có công cụ nào để đổi chính sách, liên kết chủ sở hữu hay duyệt một yêu cầu. MCP token chỉ truy
-                cập được trạng thái ví, danh sách yêu cầu, một yêu cầu và các đề xuất chuyển tiền mới. Chính sách, phê
-                duyệt, nạp vốn và các hành động Kho tác vụ vẫn cần phiên ví của bạn trên dashboard này.
+                MCP có thể đọc trạng thái ví, request và task, đề xuất transfer và tạo Escrow trong capability đã cấp.
+                Đổi chính sách, ký duyệt, tạo/nạp task, thu hồi quyền, settlement, refund và khóa/mở khóa agent
+                vẫn cần phiên ví chủ sở hữu.
+              </p>
+              <p>
+                Task payment kiểm tra giới hạn của capability và không vào hàng chờ duyệt transfer. Khi retry kết quả
+                chưa rõ, giữ nguyên <code>paymentId</code> và các tham số. Task mô phỏng không chuyển SOL;
+                bản Devnet hiện sử dụng Mock Worker do server giữ signer.
               </p>
             </>
           ),
@@ -491,8 +498,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <>
               <Steps>
                 <li>
-                  Đăng nhập dashboard này bằng ví, rồi mở <em>Hiện kết nối của tôi</em> trong card MCP trên trang
-                  {' '}<TabLink tab="commands" label="Ra lệnh AI" ctx={ctx} />. Trên dashboard hosted, bấm
+                  Đăng nhập dashboard này bằng ví, rồi mở <em>Xem cấu hình kết nối</em> trong card MCP trên trang
+                  {' '}<TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />. Trên dashboard hosted, bấm
                   {' '}<em>Tạo token kết nối</em>; token chỉ hiện một lần.
                 </li>
                 <li>
@@ -628,19 +635,19 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <ul>
               <li>
                 Gửi đi dưới dạng bearer token. File token là <code>agent/data/users/&lt;owner&gt;/mcp-token</code>. Trên
-                dashboard hosted, file chỉ chứa bản băm SHA-256 của token: bản thân token chỉ hiện một lần, lúc bạn tạo
+                dashboard hosted, file chỉ chứa SHA-256 hash của token: bản thân token chỉ hiện một lần, lúc bạn tạo
                 hoặc đổi token, và không thể hiện lại. Khi bạn tự chạy hệ thống ở local, file chứa chính token đó, nên
                 server MCP đọc được nó từ thư mục dữ liệu của agent.
               </li>
               <li>
-                <em>Đổi token mới</em> trong card MCP ở trang Ra lệnh AI sẽ thay token. Các client kết nối bằng URL sẽ
+                <em>Tạo token mới</em> trong card MCP ở trang Yêu cầu thanh toán sẽ thay token. Các client kết nối bằng URL sẽ
                 ngừng hoạt động cho tới khi bạn sao chép lại cấu hình của chúng. Bản stdio chạy local đọc lại file khi
                 agent từ chối token cũ nên không cần khởi động lại; token ghim bằng
                 {' '}<code>NEXUS_AGENT_TOKEN</code> không được đọc lại và phải cập nhật thủ công.
               </li>
               <li>
                 File ở local là plaintext trên đĩa, nằm trong cùng ranh giới tin cậy với keystore của agent. Trên Windows,
-                quyền truy cập phụ thuộc vào ACL của thư mục. Việc băm không bảo vệ được token đã sao chép sang client:
+                quyền truy cập phụ thuộc vào ACL của thư mục. Cơ chế hash không bảo vệ được token đã sao chép sang client:
                 hãy đổi token nếu nó bị lộ.
               </li>
             </ul>
@@ -677,7 +684,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
         },
         {
           id: 'retries',
-          title: 'Phê duyệt và thử lại',
+          title: 'Chờ duyệt và thử lại',
           body: (
             <ul>
               <li>
@@ -783,7 +790,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 <tr><td>“Kết nối ví chủ sở hữu” ở nút Duyệt</td><td>Ví đang kết nối không phải ví chủ sở hữu. Hãy chuyển sang ví bạn đã dùng để đăng nhập.</td></tr>
                 <tr><td>Lần duyệt bị từ chối</td><td>Yêu cầu đã hết hạn, hoặc chính sách đã được lưu sau khi yêu cầu bị giữ. Hãy chạy lại lệnh.</td></tr>
                 <tr><td>“Phiên làm việc đã hết hạn”</td><td>Hãy đăng nhập lại bằng ví. Đổi tài khoản ví cũng làm kết thúc phiên.</td></tr>
-                <tr><td>Yêu cầu hiện <code>[fallback]</code></td><td>Chưa cấu hình API key của model. Bộ phân tích xác định xử lý các lệnh đơn giản.</td></tr>
+                <tr><td>Yêu cầu hiện <code>[fallback]</code></td><td>Chưa cấu hình API key của model. Deterministic parser xử lý các lệnh đơn giản.</td></tr>
                 <tr><td>Thực thi thất bại</td><td>Số dư của agent không đủ cho số tiền cộng phí. Hãy nạp vốn cho agent.</td></tr>
               </tbody>
             </table>
