@@ -64,13 +64,15 @@ a:hover {
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -228,7 +230,8 @@ button.link.danger,
 
 /* ------------------------------------------------------------- Inputs */
 
-input {
+input,
+textarea {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
@@ -238,12 +241,14 @@ input {
   padding: 9px 11px;
 }
 
-input:focus {
+input:focus,
+textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgb(23 123 101 / 12%);
 }
 
-input::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: #7d848b;
   opacity: 1;
 }
@@ -2964,4 +2969,90 @@ a.explorer-cta:hover {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 12px;
+}
+
+/* Task Vault: key figures first, technical rows folded away */
+.task-list-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.summary-stat-key strong {
+  font-size: 18px;
+}
+
+.inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-tech {
+  margin-top: 12px;
+}
+
+.task-tech summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-tech summary:hover {
+  color: var(--text);
+}
+
+.task-tech .pda-bindings {
+  margin-top: 8px;
+}
+
+.task-tech .pda-label {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+/* AI Commands: a place to type an instruction */
+.console-input {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.console-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.console-actions .hint {
+  margin-right: auto;
+}
+
+.console-last {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.console-last-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.console-last-prompt {
+  overflow-wrap: anywhere;
+}
+
+.stack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Command, Send } from './icons.js';
+import type { PaymentRequest } from '@nexus/shared';
 import type { AgentState } from '../api.js';
+import { TONE, localizeError } from './RequestList.js';
 import { Card, Pill } from './ui.js';
 import { useI18n } from '../i18n/context.js';
 
@@ -10,10 +12,16 @@ export const OFF_ALLOWLIST_ADDRESS = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YW
 export function ConsolePanel(props: {
   state: AgentState;
   busy: boolean;
-  onRun: (prompt: string) => Promise<void>;
+  requests: PaymentRequest[];
+  /** Resolves to the created request id, or null when the command failed. */
+  onRun: (prompt: string) => Promise<string | null>;
+  onOpenPolicy?: () => void;
 }) {
   const { dict, interpolate } = useI18n();
   const [prompt, setPrompt] = useState('');
+  const [lastId, setLastId] = useState<string | null>(null);
+  // Read the request live so the result follows approval, not the snapshot taken at send time.
+  const last = lastId ? props.requests.find((request) => request.id === lastId) : undefined;
   const limit = props.state.policy.maxSolPerTx;
   const label = props.state.policy.allowedRecipients[0]?.label;
 
@@ -43,22 +51,26 @@ export function ConsolePanel(props: {
   const submit = async (text: string) => {
     const value = text.trim();
     if (!value) return;
-    await props.onRun(value);
-    setPrompt('');
+    const id = await props.onRun(value);
+    // Keep the text after a failure so a manual retry sends the same command.
+    if (id) {
+      setLastId(id);
+      setPrompt('');
+    }
   };
 
   return (
     <Card title={dict.console.title} titleIcon={<Command size={16} />} className="panel-command">
       <p className="card-desc">{dict.console.desc}</p>
       <form
-        className="row"
+        className="stack-form"
         onSubmit={(e) => {
           e.preventDefault();
           void submit(prompt);
         }}
       >
-        <input
-          className="grow"
+        <textarea
+          className="console-input"
           aria-label={dict.console.title}
           placeholder={
             label
@@ -67,16 +79,38 @@ export function ConsolePanel(props: {
           }
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              if (!props.busy) void submit(prompt);
+            }
+          }}
         />
-        <button
-          type="submit"
-          className="primary button-with-icon"
-          disabled={props.busy || !prompt.trim()}
-        >
-          {props.busy ? dict.console.running : dict.console.run}
-          <Send size={15} aria-hidden="true" />
-        </button>
+        <div className="console-actions">
+          <span className="hint">{dict.console.sendHint}</span>
+          <button
+            type="submit"
+            className="primary button-with-icon"
+            disabled={props.busy || !prompt.trim()}
+          >
+            {props.busy ? dict.console.running : dict.console.run}
+            <Send size={15} aria-hidden="true" />
+          </button>
+        </div>
       </form>
+
+      {last ? (
+        <div className="console-last" role="status">
+          <div className="console-last-head">
+            <span className="section-label">{dict.console.lastTitle}</span>
+            <Pill tone={TONE[last.status]}>{dict.requests.statuses[last.status]}</Pill>
+          </div>
+          <span className="console-last-prompt">{last.prompt}</span>
+          {last.error ? (
+            <span className="bad-text">{localizeError(last.error, dict.requests.errors, interpolate)}</span>
+          ) : null}
+        </div>
+      ) : null}
 
       {presets.length > 0 ? (
         <div className="presets">
@@ -95,8 +129,16 @@ export function ConsolePanel(props: {
           ))}
         </div>
       ) : (
-        <p className="empty">{dict.console.noPresets}</p>
+        <div className="stack-form">
+          <p className="empty">{dict.console.noPresets}</p>
+          {props.onOpenPolicy ? (
+            <button type="button" className="link" onClick={props.onOpenPolicy}>
+              {dict.console.openPolicy}
+            </button>
+          ) : null}
+        </div>
       )}
+      <p className="hint">{dict.console.mcpNote}</p>
     </Card>
   );
 }
