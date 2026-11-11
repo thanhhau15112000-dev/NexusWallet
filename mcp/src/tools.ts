@@ -450,5 +450,49 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
       submit({ type: 'transfer_spl', recipient, mint, amount }, idempotencyKey),
   );
 
+  server.registerTool(
+    'nexuspay_execute_solana_action',
+    {
+      title: 'Execute Solana Action (policy-gated & simulated)',
+      description:
+        'Fetch, simulate, and execute a Solana Action / Blink. Simulates the transaction on Devnet to determine exact SOL/token balance changes before signing. Denies transactions targeting non-allowlisted recipients or malicious contracts. Requests owner approval if spending limits are exceeded.',
+      inputSchema: {
+        actionUrl: z.string().url().describe('The URL of the Solana Action API endpoint.'),
+        params: z.record(z.string(), z.unknown()).optional().describe('Optional parameter payload to send in the Action POST request.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ actionUrl, params }) => {
+      try {
+        const result = await api.post<Record<string, unknown>>('/api/agent/actions/execute', { actionUrl, params });
+        return ok(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'nexuspay_inspect_solana_action',
+    {
+      title: 'Inspect and simulate Solana Action without executing',
+      description:
+        'Read metadata and simulate a Solana Action without signing. Returns simulated balance deltas, detected recipients, and RPC simulation logs.',
+      inputSchema: {
+        actionUrl: z.string().url().describe('The URL of the Solana Action API endpoint.'),
+        params: z.record(z.string(), z.unknown()).optional().describe('Optional parameter payload.'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ actionUrl, params }) => {
+      try {
+        const result = await api.post<Record<string, unknown>>('/api/agent/actions/inspect', { actionUrl, params });
+        return ok(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
   return server;
 }

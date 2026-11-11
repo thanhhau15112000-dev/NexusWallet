@@ -213,15 +213,17 @@ describe('loadMcpConfig', () => {
 });
 
 describe('nexusPay MCP tools', () => {
-  it('lists eight tools and marks transfers as destructive', async () => {
+  it('lists ten tools and marks transfers as destructive', async () => {
     const client = await connect(vi.fn());
     const { tools } = await client.listTools();
 
     expect(tools.map((tool) => tool.name).sort()).toEqual([
+      'nexuspay_execute_solana_action',
       'nexuspay_execute_task_payment',
       'nexuspay_get_request',
       'nexuspay_get_status',
       'nexuspay_get_task',
+      'nexuspay_inspect_solana_action',
       'nexuspay_list_requests',
       'nexuspay_list_tasks',
       'nexuspay_transfer_sol',
@@ -795,6 +797,36 @@ describe('nexusPay MCP tools', () => {
 
     expect(result.isError).toBe(true);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('calls nexuspay_execute_solana_action and returns result', async () => {
+    const fetchImpl = vi.fn(async () => json(200, {
+      status: 'completed',
+      signature: 'sig-action-123',
+      solOutflowLamports: 50000000,
+    }));
+    const client = await connect(fetchImpl as unknown as Fetch);
+    const result = parse(await client.callTool({
+      name: 'nexuspay_execute_solana_action',
+      arguments: { actionUrl: 'https://actions.org/api/tip' },
+    }));
+    expect(result.status).toBe('completed');
+    expect(result.signature).toBe('sig-action-123');
+  });
+
+  it('calls nexuspay_inspect_solana_action and returns simulation', async () => {
+    const fetchImpl = vi.fn(async () => json(200, {
+      actionMetadata: { title: 'Tip creator' },
+      simulatedSolOutflowLamports: 50000000,
+      detectedRecipients: ['treasury'],
+    }));
+    const client = await connect(fetchImpl as unknown as Fetch);
+    const result = parse(await client.callTool({
+      name: 'nexuspay_inspect_solana_action',
+      arguments: { actionUrl: 'https://actions.org/api/tip' },
+    }));
+    expect(result.actionMetadata.title).toBe('Tip creator');
+    expect(result.detectedRecipients).toContain('treasury');
   });
 });
 

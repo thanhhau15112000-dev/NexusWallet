@@ -46,6 +46,7 @@ import {
   SeedTransferOutcomeUnknownError,
 } from './funder.js';
 import { IdempotencyConflictError, agentError, runAction, runCommand, type AgentAction } from './pipeline.js';
+import { executeSolanaActionGuard, inspectAndSimulateAction } from './actions-guard.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
@@ -124,6 +125,16 @@ const AgentActionBody = z.object({
     { message: 'request_manual_approval is not an executable action' },
   ),
   idempotencyKey: z.string().trim().max(120).optional(),
+});
+
+const ActionExecuteBody = z.object({
+  actionUrl: z.string().url(),
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+
+const ActionInspectBody = z.object({
+  actionUrl: z.string().url(),
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 
 const OwnerBody = z.object({ pubkey: PubkeySchema });
@@ -729,6 +740,27 @@ const inFlightClaims = new Set<string>();
       }
       throw err;
     }
+  });
+
+  app.post('/api/agent/actions/execute', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const body = ActionExecuteBody.parse(req.body);
+    const result = await executeSolanaActionGuard(userCtx, body.actionUrl, body.params);
+    if (result.status === 'denied') {
+      const status = result.code === 'AGENT_FROZEN' ? 409 : 403;
+      return reply.status(status).send(result);
+    }
+    if (result.status === 'pending_approval') {
+      return reply.status(202).send(result);
+    }
+    return reply.status(200).send(result);
+  });
+
+  app.post('/api/agent/actions/inspect', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const body = ActionInspectBody.parse(req.body);
+    const result = await inspectAndSimulateAction(userCtx, body.actionUrl, body.params);
+    return reply.status(200).send(result);
   });
 
   // Public devnet RPC rate-limits, so repeated polls of the same page share one read for a few seconds.
