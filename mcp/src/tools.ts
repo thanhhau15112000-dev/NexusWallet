@@ -450,5 +450,67 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
       submit({ type: 'transfer_spl', recipient, mint, amount }, idempotencyKey),
   );
 
+  server.registerTool(
+    'nexuspay_x402_fetch',
+    {
+      title: 'Fetch URL with x402 payment support',
+      description:
+        'Fetch an HTTP resource. If the endpoint responds with HTTP 402 Payment Required, automatically negotiate the x402 challenge against the nexusPay spending policy, sign and settle the payment if allowed, and retry the request to retrieve the data.',
+      inputSchema: {
+        url: z.string().url().describe('The HTTP or HTTPS URL to fetch.'),
+        method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().default('GET'),
+        headers: z.record(z.string(), z.string()).optional().describe('Optional request headers.'),
+        body: z.string().optional().describe('Optional request body.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ url, method, headers, body }) => {
+      try {
+        const result = await api.post<{
+          status: number;
+          headers: Record<string, string>;
+          data: unknown;
+          payment?: { status: string; signature?: string; requestId?: string };
+          error?: { code: string; message: string; remediation?: string; details?: Record<string, unknown> };
+        }>('/api/agent/x402/fetch', { url, method, headers, body });
+
+        if (result.error) {
+          return fail(result.error.code, result.error.message, {}, {
+            remediation: result.error.remediation,
+            details: result.error.details,
+          });
+        }
+        return ok(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'nexuspay_x402_resolve',
+    {
+      title: 'Resolve x402 challenge',
+      description:
+        'Evaluate and sign an x402 payment challenge (base64 PAYMENT-REQUIRED header or JSON payload) through the nexusPay Payment Guard. Returns the payment signature header to include on retry.',
+      inputSchema: {
+        challenge: z.string().describe('The raw JSON or base64-encoded PAYMENT-REQUIRED challenge.'),
+        resourceUrl: z.string().url().optional().describe('The URL of the resource being paid for.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ challenge, resourceUrl }) => {
+      try {
+        const result = await api.post<Record<string, unknown>>('/api/agent/x402/resolve', {
+          challenge,
+          resourceUrl,
+        });
+        return ok(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
   return server;
 }

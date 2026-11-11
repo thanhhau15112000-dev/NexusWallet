@@ -20,6 +20,8 @@ const MCP_ROUTES = new Set([
   'GET /api/requests',
   'GET /api/requests/:id',
   'POST /api/agent/intents',
+  'POST /api/agent/x402/resolve',
+  'POST /api/agent/x402/fetch',
   'GET /api/tasks',
   'GET /api/tasks/:taskId',
   'POST /api/tasks/:taskId/payments',
