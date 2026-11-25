@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from './icons.js';
-import { LAMPORTS_PER_SOL, type PaymentRequest, type RequestStatus } from '@nexus/shared';
+import { type PaymentRequest, type RequestStatus } from '@nexus/shared';
 import { Card, Empty, Mono, Pill, shorten } from './ui.js';
+import { Badge } from './ui/badge.js';
+import { Button } from './ui/button.js';
+import { cn } from '../lib/utils.js';
 import { useI18n } from '../i18n/context.js';
 
 export const TONE: Record<RequestStatus, string> = {
@@ -58,12 +61,6 @@ export function localizeError(
   return interpolate(template, params);
 }
 
-function formatTrace(request: PaymentRequest): string {
-  const trace = request.modelTrace;
-  if (!trace) return '-';
-  return `${trace.stage1.name}:${trace.stage1.model} ${trace.stage1.ms}ms → ${trace.stage2.name}:${trace.stage2.model} ${trace.stage2.ms}ms`;
-}
-
 function RequestRow(props: {
   request: PaymentRequest;
   now: number;
@@ -84,85 +81,124 @@ function RequestRow(props: {
   const displayedStatus = approvalExpired ? 'expired' : request.status;
 
   return (
-    <li id={`request-${request.id}`} className={props.focused ? 'request focused' : 'request'}>
-      <div className="request-head">
-        <Pill tone={TONE[displayedStatus]}>{dict.requests.statuses[displayedStatus]}</Pill>
-        <span className="prompt">{request.prompt}</span>
-        <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
+    <li
+      id={`request-${request.id}`}
+      className={cn(
+        'space-y-2.5 px-4 py-3.5 transition-colors',
+        props.focused && 'bg-accent-soft/40 ring-1 ring-inset ring-accent',
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Pill tone={TONE[displayedStatus]}>{dict.requests.statuses[displayedStatus]}</Pill>
+          <span className="truncate text-sm font-medium text-ink" title={request.prompt}>
+            {request.prompt}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
+          <span className="font-mono text-[11px] tabular-nums">
+            {new Date(request.createdAt).toLocaleTimeString()}
+          </span>
+        </div>
       </div>
 
-      <div className="request-summary">
-        <Mono>{describeAction(request, dict.requests.actions)}</Mono>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <Mono className="text-ink">{describeAction(request, dict.requests.actions)}</Mono>
         {request.execution ? (
-          <a href={request.execution.explorerUrl} target="_blank" rel="noreferrer" className="link">
+          <a
+            href={request.execution.explorerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-accent hover:underline"
+          >
             {dict.requests.explorer}
           </a>
         ) : null}
       </div>
 
       {request.error ? (
-        <p className="request-error">{localizeError(request.error, dict.requests.errors, interpolate)}</p>
+        <p className="rounded-md border border-bad-line bg-bad-soft px-2.5 py-1.5 text-xs text-bad">
+          {localizeError(request.error, dict.requests.errors, interpolate)}
+        </p>
       ) : null}
-      {approvalExpired ? <p className="request-error">{dict.requests.expiredNotice}</p> : null}
+      {approvalExpired ? (
+        <p className="rounded-md border border-warn-line bg-warn-soft px-2.5 py-1.5 text-xs text-warn">
+          {dict.requests.expiredNotice}
+        </p>
+      ) : null}
 
       {request.status === 'pending_approval' && request.approval && !approvalExpired ? (
-        <div className="approval">
-          <div className="approval-bar">
-            <button
+        <div className="space-y-2 rounded-md border border-warn-line bg-warn-soft/50 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
               type="button"
-              className="primary button-with-icon"
+              variant="default"
+              size="sm"
               disabled={!props.canApprove || props.busy}
               onClick={() => props.onApprove(request)}
             >
+              <ShieldCheck size={14} aria-hidden="true" />
               {props.busy ? dict.requests.waitingForWallet : dict.requests.approve}
-              <ShieldCheck size={15} aria-hidden="true" />
-            </button>
-            <button type="button" className="danger-outline" disabled={props.busy} onClick={() => props.onCancel(request)}>
+            </Button>
+            <Button
+              type="button"
+              variant="destructiveOutline"
+              size="sm"
+              disabled={props.busy}
+              onClick={() => props.onCancel(request)}
+            >
               {dict.requests.cancel}
-            </button>
-            <span className="hint">
+            </Button>
+            <span className="ml-auto font-mono text-[11px] text-muted tabular-nums">
               {dict.requests.expires} {new Date(request.approval.payload.expiresAt).toLocaleTimeString()}
             </span>
           </div>
-          {!props.canApprove ? <p className="hint warn">{dict.requests.connectOwnerWallet}</p> : null}
-          <details className="request-details">
-            <summary>{dict.requests.message}</summary>
-            <pre>{request.approval.message}</pre>
+          {!props.canApprove ? (
+            <p className="text-xs font-medium text-warn">{dict.requests.connectOwnerWallet}</p>
+          ) : null}
+          <details className="text-xs">
+            <summary className="cursor-pointer font-medium text-muted hover:text-ink">
+              {dict.requests.message}
+            </summary>
+            <pre className="mt-2 overflow-x-auto rounded border border-line bg-panel p-2.5 font-mono text-[11px] text-ink">
+              {request.approval.message}
+            </pre>
           </details>
         </div>
       ) : null}
 
       {request.approval?.signature ? (
-        <p className="hint">
-          {dict.requests.approvedBy} <Mono>{shorten(request.approval.signerPubkey ?? '', 6)}</Mono>{' '}
-          {new Date(request.approval.signedAt ?? '').toLocaleTimeString()}
+        <p className="text-[11px] text-muted">
+          {dict.requests.approvedBy}{' '}
+          <Mono className="text-ink">{shorten(request.approval.signerPubkey ?? '', 6)}</Mono>{' '}
+          <span className="font-mono tabular-nums">
+            {new Date(request.approval.signedAt ?? '').toLocaleTimeString()}
+          </span>
         </p>
       ) : null}
 
-      <details className="request-details">
-        <summary>{dict.requests.details}</summary>
-        <div className="detail-grid">
+      <details className="text-xs">
+        <summary className="cursor-pointer text-[11px] font-medium text-muted hover:text-ink">
+          {dict.requests.details}
+        </summary>
+        <div className="mt-2 space-y-1.5 rounded-md border border-line bg-surface-muted/50 p-2.5 text-[11px]">
           {decision ? (
-            <div>
-              <span className="tag">{dict.requests.policyTag} v{decision.policyVersion}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="neutral" className="font-mono">v{decision.policyVersion}</Badge>
               <Pill tone={verdictTone(decision.verdict)}>{decision.verdict}</Pill>
-              <span className="reasons">{decision.reasons.join('; ')}</span>
-            </div>
-          ) : null}
-          <div>
-            <span className="tag">{dict.requests.modelsTag}</span>
-            <Mono>{formatTrace(request)}</Mono>
-          </div>
-          {request.balanceLamports !== null ? (
-            <div>
-              <span className="tag">{dict.requests.balanceTag}</span>
-              <Mono>{(request.balanceLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL</Mono>
+              <span className="text-muted">{decision.reasons.join('; ')}</span>
             </div>
           ) : null}
           {request.execution ? (
-            <div>
-              <span className="tag">{dict.requests.signatureTag}</span>
-              <a href={request.execution.explorerUrl} target="_blank" rel="noreferrer" className="mono">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-muted">{dict.requests.signatureTag}:</span>
+              <a
+                href={request.execution.explorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-accent hover:underline"
+              >
                 {shorten(request.execution.signature, 10)}
               </a>
             </div>
@@ -194,11 +230,13 @@ export function RequestList(props: {
     scrolledTo.current = props.focusId;
     document.getElementById(`request-${props.focusId}`)?.scrollIntoView({ block: 'center' });
   }, [props.focusId, focusLoaded]);
+
   useEffect(() => {
     if (!props.requests.some((request) => request.status === 'pending_approval' && request.approval)) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [props.requests]);
+
   const canApprove = Boolean(props.wallet && props.wallet === props.owner);
   const recentRequests = props.requests.slice(0, 6);
   const visibleRequests = showAll
@@ -215,13 +253,12 @@ export function RequestList(props: {
   return (
     <Card
       title={dict.requests.title}
-      className="panel-requests"
-      actions={<span className="version">{props.requests.length}</span>}
+      actions={<Badge variant="neutral" className="font-mono">{props.requests.length}</Badge>}
     >
       {props.requests.length === 0 ? (
         <Empty>{dict.requests.noRequests}</Empty>
       ) : (
-        <ul className="request-list">
+        <ul className="divide-y divide-line rounded-md border border-line">
           {visibleRequests.map((request) => (
             <RequestRow
               key={request.id}
@@ -237,11 +274,11 @@ export function RequestList(props: {
         </ul>
       )}
       {props.requests.length > 6 ? (
-        <button type="button" className="link list-toggle" onClick={() => setShowAll(!showAll)}>
+        <Button type="button" variant="link" size="sm" className="text-xs" onClick={() => setShowAll(!showAll)}>
           {showAll
             ? dict.requests.showRecent
             : interpolate(dict.requests.showAll, { count: props.requests.length })}
-        </button>
+        </Button>
       ) : null}
     </Card>
   );

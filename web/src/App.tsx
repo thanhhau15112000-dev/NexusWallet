@@ -43,11 +43,19 @@ import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { LanguageToggle } from './components/SettingsMenu.js';
 import { BootScreen } from './components/BootScreen.js';
 import { Mono, Pill, shorten } from './components/ui.js';
+import { Button } from './components/ui/button.js';
+import { Badge } from './components/ui/badge.js';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './components/ui/dialog.js';
+import { cn } from './lib/utils.js';
 import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
-
-const REPO_URL = 'https://github.com/thanhhau15112000-dev/NexusWallet#readme';
 
 type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'history' | 'audit' | 'docs';
 
@@ -78,26 +86,28 @@ function WalletOptions(props: {
 }) {
   const { dict } = useI18n();
   if (!props.choices.length) {
-    return <p className="wallet-picker-empty">{dict.walletModal.noWallet}</p>;
+    return <p className="py-2 text-xs text-muted">{dict.walletModal.noWallet}</p>;
   }
 
   return (
-    <div className="wallet-picker-options" aria-label={dict.walletModal.availableWallets}>
+    <div className="flex flex-col gap-2" aria-label={dict.walletModal.availableWallets}>
       {props.choices.map((choice) => (
         <button
           key={choice.id}
           type="button"
-          className="wallet-option"
+          className="flex w-full cursor-pointer items-center gap-3 rounded-md border border-line bg-panel px-3 py-2.5 text-left text-sm font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface-muted disabled:pointer-events-none disabled:opacity-50"
           disabled={props.busy}
           onClick={() => props.onSelect(choice)}
         >
           {choice.icon ? (
-            <img src={choice.icon} alt="" />
+            <img src={choice.icon} alt="" className="h-5 w-5 rounded" />
           ) : (
-            <span className="wallet-option-fallback"><WalletIcon size={17} aria-hidden="true" /></span>
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-surface-muted text-muted">
+              <WalletIcon size={14} aria-hidden="true" />
+            </span>
           )}
-          <span>{choice.name}</span>
-          <span className="wallet-option-action">{dict.walletModal.continue}</span>
+          <span className="flex-1">{choice.name}</span>
+          <span className="text-xs font-medium text-accent">{dict.walletModal.continue}</span>
         </button>
       ))}
     </div>
@@ -526,7 +536,6 @@ export function App() {
             onSelect={(choice) => void connect(choice)}
           />
         }
-        repoUrl={REPO_URL}
       />
     );
   }
@@ -552,7 +561,7 @@ export function App() {
       id={`feature-panel-${tab}`}
       role="tabpanel"
       aria-labelledby={`feature-tab-${tab}`}
-      className="tab-panel"
+      className="space-y-4"
       hidden={activeTab !== tab}
     >
       {content}
@@ -560,28 +569,46 @@ export function App() {
   );
 
   return (
-    <div className="shell">
-      <aside className={navOpen ? 'sidebar is-open' : 'sidebar'}>
-        <div className="brand">
-          <img className="brand-logo" src="/brand/logo.svg" alt="" width={32} height={32} />
-          <span className="brand-name">nexusPay</span>
-          <span className="brand-network-tag">{state.cluster}</span>
-          <button
+    <div className="min-h-screen bg-bg text-ink lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
+      <aside className="flex flex-col border-b border-obsidian-line bg-obsidian text-obsidian-ink lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r">
+        <div className="flex items-center gap-2.5 border-b border-obsidian-line px-4 py-3.5">
+          <img src="/brand/logo.svg" alt="" width={26} height={26} className="h-6.5 w-6.5 shrink-0" />
+          <span className="text-[15px] font-semibold tracking-tight text-obsidian-ink">nexusPay</span>
+          <Badge variant="signal" className="ml-auto font-mono text-[10px] uppercase">
+            {state.cluster}
+          </Badge>
+          <Button
             type="button"
-            className="nav-toggle"
+            variant="darkOutline"
+            size="icon"
+            className="lg:hidden"
             aria-expanded={navOpen}
             aria-controls="side-nav"
             aria-label={navOpen ? dict.nav.closeMenu : dict.nav.openMenu}
             onClick={() => setNavOpen((open) => !open)}
           >
-            {navOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
-          </button>
+            {navOpen ? <X size={17} aria-hidden="true" /> : <Menu size={17} aria-hidden="true" />}
+          </Button>
         </div>
 
-        <nav id="side-nav" className="side-nav" role="tablist" aria-orientation="vertical" aria-label="App features">
+        <nav
+          id="side-nav"
+          className={cn(
+            'flex-1 overflow-y-auto px-2.5 py-3.5 space-y-4',
+            navOpen ? 'block' : 'hidden lg:block',
+          )}
+          role="tablist"
+          aria-orientation="vertical"
+          aria-label="App features"
+        >
           {NAV_GROUPS.map((group) => (
-            <div key={group} className="side-nav-group" role="presentation">
-              <span className="side-nav-heading" role="presentation">{dict.nav[group]}</span>
+            <div key={group} className="space-y-0.5" role="presentation">
+              <span
+                className="block px-2.5 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-obsidian-muted"
+                role="presentation"
+              >
+                {dict.nav[group]}
+              </span>
               {FEATURE_TABS.filter((tab) => tab.group === group).map((tab) => {
                 const Icon = tab.icon;
                 const index = FEATURE_TABS.indexOf(tab);
@@ -595,17 +622,24 @@ export function App() {
                     aria-selected={selected}
                     aria-controls={`feature-panel-${tab.id}`}
                     tabIndex={selected ? 0 : -1}
-                    className={`side-nav-item${selected ? ' is-active' : ''}`}
+                    className={cn(
+                      'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors',
+                      selected
+                        ? 'bg-obsidian-raised font-semibold text-obsidian-ink shadow-[inset_2px_0_0_0_var(--color-signal)] [&_svg]:text-signal'
+                        : 'font-medium text-obsidian-muted hover:bg-obsidian-raised/60 hover:text-obsidian-ink',
+                    )}
                     onClick={() => {
                       setActiveTab(tab.id);
                       setNavOpen(false);
                     }}
                     onKeyDown={(event) => selectTabWithKeyboard(event, index)}
                   >
-                    <Icon size={16} aria-hidden="true" />
-                    <span>{dict.tabs[tab.id]}</span>
+                    <Icon size={15} className="shrink-0" aria-hidden="true" />
+                    <span className="flex-1 truncate">{dict.tabs[tab.id]}</span>
                     {tab.id === 'approvals' && pendingApprovals > 0 ? (
-                      <span className="side-nav-badge">{pendingApprovals}</span>
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-signal px-1.5 font-mono text-[10px] font-bold text-obsidian tabular-nums">
+                        {pendingApprovals}
+                      </span>
                     ) : null}
                   </button>
                 );
@@ -614,29 +648,44 @@ export function App() {
           ))}
         </nav>
 
-        <div className="sidebar-owner">
+        <div className={cn('border-t border-obsidian-line p-3 space-y-2.5', navOpen ? 'block' : 'hidden lg:block')}>
           {wallet ? (
             <>
-              <div className="owner-row">
-                <span className="owner-avatar" aria-hidden="true">
-                  <WalletIcon size={16} />
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-obsidian-line bg-obsidian-raised text-signal"
+                  aria-hidden="true"
+                >
+                  <WalletIcon size={15} />
                 </span>
-                <div className="owner-meta">
-                  <span className="owner-label">{dict.wallet.title}</span>
-                  <Mono title={wallet}>{shorten(wallet, 4)}</Mono>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-obsidian-muted">{dict.wallet.title}</span>
+                    {ownerRole}
+                  </div>
+                  <Mono title={wallet} className="block truncate text-obsidian-ink">
+                    {shorten(wallet, 5)}
+                  </Mono>
                 </div>
-                {ownerRole}
               </div>
-              <button type="button" className="sidebar-logout button-with-icon" onClick={() => void disconnect()}>
-                <LogOut size={14} aria-hidden="true" />
+              <Button
+                type="button"
+                variant="darkOutline"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => void disconnect()}
+              >
+                <LogOut size={13} aria-hidden="true" />
                 {authRequired ? dict.wallet.logout : dict.wallet.disconnect}
-              </button>
+              </Button>
             </>
           ) : (
-            <>
-              <button
+            <div className="space-y-1.5">
+              <Button
                 type="button"
-                className="primary"
+                variant="default"
+                size="sm"
+                className="w-full"
                 disabled={!walletChoices.length || Boolean(busy.connect)}
                 onClick={() => {
                   setNavOpen(false);
@@ -644,29 +693,43 @@ export function App() {
                 }}
               >
                 {busy.connect ? dict.wallet.connecting : dict.wallet.connectWallet}
-              </button>
-              {!walletChoices.length ? <span className="hint">{dict.wallet.installPhantom}</span> : null}
-            </>
+              </Button>
+              {!walletChoices.length ? (
+                <p className="text-[11px] text-obsidian-muted">{dict.wallet.installPhantom}</p>
+              ) : null}
+            </div>
           )}
         </div>
       </aside>
 
-      <main className="main">
-        <header className="page-head">
-          <div className="page-title">
-            <h1>{dict.tabs[activeTab]}</h1>
-            <p>{dict.pageDesc[activeTab]}</p>
-          </div>
-          <div className="page-tools">
-            <span className={`service-state${offline ? ' is-offline' : ''}`}>
-              <Activity size={14} aria-hidden="true" />
+      <main className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+          <h1 className="text-xl font-semibold tracking-tight text-ink">{dict.tabs[activeTab]}</h1>
+          <div className="flex items-center gap-2.5">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-wider',
+                offline
+                  ? 'border-bad-line bg-bad-soft text-bad'
+                  : 'border-line bg-panel text-muted',
+              )}
+            >
+              <span
+                className={cn('h-1.5 w-1.5 rounded-full', offline ? 'bg-bad' : 'bg-accent')}
+                aria-hidden="true"
+              />
+              <Activity size={12} className={offline ? 'text-bad' : 'text-accent'} aria-hidden="true" />
               {offline ? dict.topbar.offline : dict.topbar.ready}
             </span>
             <LanguageToggle />
           </div>
         </header>
 
-        {offline ? <div className="banner bad">{interpolate(dict.walletModal.serviceUnavailable, { offline })}</div> : null}
+        {offline ? (
+          <div className="mb-4 rounded-md border border-bad-line bg-bad-soft px-3.5 py-2.5 text-xs font-medium text-bad">
+            {interpolate(dict.walletModal.serviceUnavailable, { offline })}
+          </div>
+        ) : null}
 
         {panel(
           'wallet',
@@ -687,7 +750,7 @@ export function App() {
 
         {panel(
           'commands',
-          <div className="page-stack">
+          <div className="space-y-4">
             <ConsolePanel
               state={state}
               busy={Boolean(busy.command)}
@@ -737,39 +800,38 @@ export function App() {
         {panel('docs', <DocsPanel onOpenTab={setActiveTab} />)}
       </main>
 
-      {walletPickerOpen ? (
+      <Dialog
+        open={walletPickerOpen}
+        onOpenChange={(open) => {
+          if (!busy.connect) setWalletPickerOpen(open);
+        }}
+      >
+        <DialogContent closeLabel={dict.walletModal.close} disableClose={Boolean(busy.connect)}>
+          <DialogHeader>
+            <DialogTitle>{dict.walletModal.title}</DialogTitle>
+            <DialogDescription>{dict.walletModal.desc}</DialogDescription>
+          </DialogHeader>
+          <WalletOptions
+            choices={walletChoices}
+            busy={Boolean(busy.connect)}
+            onSelect={(choice) => void connect(choice)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {toast ? (
         <div
-          className="wallet-dialog-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !busy.connect) setWalletPickerOpen(false);
-          }}
+          role="status"
+          className={cn(
+            'fixed bottom-5 right-5 z-50 max-w-sm rounded-md border px-3.5 py-2.5 text-xs font-medium shadow-md',
+            toast.tone === 'ok' && 'border-accent-line bg-panel text-ink',
+            toast.tone === 'warn' && 'border-warn-line bg-warn-soft text-warn',
+            toast.tone === 'bad' && 'border-bad-line bg-bad-soft text-bad',
+          )}
         >
-          <section className="wallet-dialog" role="dialog" aria-modal="true" aria-labelledby="wallet-dialog-title">
-            <div className="wallet-dialog-head">
-              <div>
-                <h2 id="wallet-dialog-title">{dict.walletModal.title}</h2>
-                <p>{dict.walletModal.desc}</p>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                aria-label={dict.walletModal.close}
-                disabled={Boolean(busy.connect)}
-                onClick={() => setWalletPickerOpen(false)}
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-            </div>
-            <WalletOptions
-              choices={walletChoices}
-              busy={Boolean(busy.connect)}
-              onSelect={(choice) => void connect(choice)}
-            />
-          </section>
+          {toast.text}
         </div>
       ) : null}
-
-      {toast ? <div className={`toast ${toast.tone}`} role="status">{toast.text}</div> : null}
     </div>
   );
 }

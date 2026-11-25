@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Check, Copy, Plug, ShieldCheck, X } from './icons.js';
 import { api, ApiError, type McpClientConfig, type McpTokenStatus } from '../api.js';
+import { Card } from './ui.js';
+import { Badge } from './ui/badge.js';
+import { Button } from './ui/button.js';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
 import { useI18n } from '../i18n/context.js';
 import type { TranslationDictionary } from '../i18n/types.js';
 
@@ -22,18 +26,15 @@ type CopyTarget = 'url' | ClientId;
 const errorText = (err: unknown, fallback: string) =>
   err instanceof ApiError || err instanceof Error ? err.message : fallback;
 
-// The token stays off the screen (screenshots, screen sharing); Copy still puts the full value on the clipboard.
+// The token stays masked on screen; Copy puts the full value on the clipboard.
 const maskToken = (text: string, token: string) =>
   text.replaceAll(token, `${token.slice(0, token.lastIndexOf('_') + 5)}${'•'.repeat(12)}`);
 
 /**
- * The app's headline feature: connect an AI client to this wallet over the remote MCP
- * endpoint. The client only needs the URL and the owner's MCP token; nothing is installed.
+ * Connect an external AI client to this wallet over the remote MCP endpoint.
  */
 export function McpConnectPanel() {
   const { dict } = useI18n();
-  // `config` holds a token this page can show. A hosted agent only returns one when it creates it, so after a
-  // reload there is just a `status` saying whether a token exists.
   const [config, setConfig] = useState<McpClientConfig | null>(null);
   const [status, setStatus] = useState<McpTokenStatus | null>(null);
   const [client, setClient] = useState<ClientId>('claude-code');
@@ -70,111 +71,89 @@ export function McpConnectPanel() {
   };
 
   const copyButton = (target: CopyTarget, text: string) => (
-    <button type="button" className="mcp-copy-btn" onClick={() => void copy(target, text)}>
-      {copied === target ? <Check size={14} /> : <Copy size={14} />}
+    <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => void copy(target, text)}>
+      {copied === target ? <Check size={12} className="text-accent" /> : <Copy size={12} />}
       {copied === target ? dict.mcp.copied : dict.mcp.copy}
-    </button>
+    </Button>
   );
 
-  const selected = CLIENTS.find((item) => item.id === client) ?? CLIENTS[0]!;
-  const snippet = config ? selected.snippet(config) : '';
   const connection = config ?? status;
   const localOnly = connection ? /^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(connection.url) : false;
 
   return (
-    <section id="mcp-card" className="mcp-card" aria-labelledby="mcp-card-title">
-      <div className="mcp-card-intro">
-        <span className="mcp-eyebrow">
-          <Plug size={14} />
-          {dict.mcp.eyebrow}
-        </span>
-        <h2 id="mcp-card-title">{dict.mcp.title}</h2>
-        <p className="mcp-pitch">{dict.mcp.pitch}</p>
+    <div id="mcp-card">
+      <Card
+        title={dict.mcp.title}
+        titleIcon={<Plug size={15} />}
+        actions={<Badge variant="neutral" className="font-mono text-[10px]">MCP</Badge>}
+      >
+        <div className="space-y-3">
+          {connection ? (
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-surface-muted/70 px-3 py-2">
+                <code className="truncate font-mono text-xs text-ink">{connection.url}</code>
+                {copyButton('url', connection.url)}
+              </div>
+              {localOnly ? (
+                <p className="text-xs text-warn">{dict.mcp.localOnlyNote}</p>
+              ) : null}
+            </div>
+          ) : null}
 
-        <ol className="mcp-steps">
-          <li>
-            <strong>{dict.mcp.step1Title}</strong>
-            <p>{dict.mcp.step1Desc}</p>
-            {connection ? (
-              <>
-                <div className="mcp-command">
-                  <code>{connection.url}</code>
-                  {copyButton('url', connection.url)}
-                </div>
-                {localOnly ? <p className="mcp-warn">{dict.mcp.localOnlyNote}</p> : null}
-              </>
-            ) : null}
-            {config ? (
-              <>
-                <div className="mcp-format-switch" role="group" aria-label={dict.mcp.step1Title}>
-                  {CLIENTS.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      aria-pressed={client === item.id}
-                      onClick={() => setClient(item.id)}
-                    >
-                      {item.name}
-                    </button>
-                  ))}
-                </div>
-                <p>{selected.hint(dict.mcp)}</p>
-                <div className="mcp-code">
-                  <pre>{maskToken(snippet, config.token)}</pre>
-                  {copyButton(client, snippet)}
-                </div>
-                {localOnly ? null : <p className="mcp-warn">{dict.mcp.tokenOnceWarning}</p>}
-              </>
-            ) : status ? (
-              <>
-                <p>{status.hasToken ? dict.mcp.tokenHidden : dict.mcp.noToken}</p>
-                <p className="mcp-warn">{dict.mcp.tokenOnceWarning}</p>
-                {status.hasToken ? <p className="mcp-warn">{dict.mcp.rotateWarning}</p> : null}
-                <button type="button" className="mcp-reveal-btn" disabled={busy} onClick={() => void load(true)}>
-                  {busy ? dict.mcp.rotating : status.hasToken ? dict.mcp.replaceToken : dict.mcp.createToken}
-                </button>
-              </>
-            ) : (
-              <button type="button" className="mcp-reveal-btn" disabled={busy} onClick={() => void load(false)}>
-                {busy ? dict.mcp.loading : dict.mcp.reveal}
-              </button>
-            )}
-            {error ? <p className="mcp-warn">{error}</p> : null}
-          </li>
-          <li>
-            <strong>{dict.mcp.step2Title}</strong>
-            <p>{dict.mcp.step2Desc}</p>
-          </li>
-          <li>
-            <strong>{dict.mcp.step3Title}</strong>
-            <p className="mcp-prompt">&ldquo;{dict.mcp.step3Prompt}&rdquo;</p>
-          </li>
-        </ol>
-      </div>
+          {config ? (
+            <Tabs value={client} onValueChange={(v) => setClient(v as ClientId)}>
+              <TabsList>
+                {CLIENTS.map((item) => (
+                  <TabsTrigger key={item.id} value={item.id}>
+                    {item.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {CLIENTS.map((item) => {
+                const snippet = item.snippet(config);
+                return (
+                  <TabsContent key={item.id} value={item.id} className="space-y-2">
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                      <span>{item.hint(dict.mcp)}</span>
+                      {copyButton(item.id, snippet)}
+                    </div>
+                    <pre className="overflow-x-auto rounded-md border border-line bg-surface-muted p-3 font-mono text-xs text-ink">
+                      {maskToken(snippet, config.token)}
+                    </pre>
+                    {!localOnly ? <p className="text-xs text-warn">{dict.mcp.tokenOnceWarning}</p> : null}
+                  </TabsContent>
+                );
+              })}
+            </Tabs>
+          ) : status ? (
+            <div className="space-y-2 rounded-md border border-line bg-surface-muted/40 p-3 text-xs">
+              <p className="text-ink">{status.hasToken ? dict.mcp.tokenHidden : dict.mcp.noToken}</p>
+              <p className="text-warn">{dict.mcp.tokenOnceWarning}</p>
+              {status.hasToken ? <p className="text-warn">{dict.mcp.rotateWarning}</p> : null}
+              <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => void load(true)}>
+                {busy ? dict.mcp.rotating : status.hasToken ? dict.mcp.replaceToken : dict.mcp.createToken}
+              </Button>
+            </div>
+          ) : (
+            <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => void load(false)}>
+              {busy ? dict.mcp.loading : dict.mcp.reveal}
+            </Button>
+          )}
 
-      <div className="mcp-card-manual">
-        <h3>{dict.mcp.scopeTitle}</h3>
-        <ul className="mcp-scope">
-          <li><Check size={15} />{dict.mcp.scopeStatus}</li>
-          <li><Check size={15} />{dict.mcp.scopeRequests}</li>
-          <li><Check size={15} />{dict.mcp.scopeTransfers}</li>
-          <li className="is-denied"><X size={15} />{dict.mcp.scopeDenied}</li>
-        </ul>
+          {error ? <p className="text-xs text-bad">{error}</p> : null}
 
-        <h3 className="mcp-manual-title">{dict.mcp.tokenTitle}</h3>
-        <p className="mcp-note">
-          <ShieldCheck size={15} />
-          <span>{dict.mcp.securityNote}</span>
-        </p>
-        {config ? (
-          <>
-            <button type="button" className="link" disabled={busy} onClick={() => void load(true)}>
-              {busy ? dict.mcp.rotating : dict.mcp.rotateToken}
-            </button>
-            <p className="mcp-warn">{dict.mcp.rotateWarning}</p>
-          </>
-        ) : null}
-      </div>
-    </section>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line pt-3 text-[11px] text-muted">
+            <span className="inline-flex items-center gap-1 font-semibold text-ink">
+              <ShieldCheck size={13} className="text-accent" aria-hidden="true" />
+              {dict.mcp.scopeTitle}:
+            </span>
+            <span className="inline-flex items-center gap-1"><Check size={12} className="text-accent" />{dict.mcp.scopeStatus}</span>
+            <span className="inline-flex items-center gap-1"><Check size={12} className="text-accent" />{dict.mcp.scopeRequests}</span>
+            <span className="inline-flex items-center gap-1"><Check size={12} className="text-accent" />{dict.mcp.scopeTransfers}</span>
+            <span className="inline-flex items-center gap-1 text-bad"><X size={12} />{dict.mcp.scopeDenied}</span>
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }
