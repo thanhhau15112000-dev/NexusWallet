@@ -37,7 +37,7 @@ export function Card(props: {
   );
 }
 
-export function CopyAddressButton(props: { value: string; label: string; inverted?: boolean }) {
+export function CopyAddressButton(props: { value: string; label: string }) {
   const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const resetTimer = useRef<number | null>(null);
 
@@ -69,18 +69,13 @@ export function CopyAddressButton(props: { value: string; label: string; inverte
         type="button"
         variant="ghost"
         size="icon"
-        className={cn(
-          'h-6 w-6',
-          props.inverted
-            ? 'text-obsidian-muted hover:bg-obsidian-raised hover:text-obsidian-ink'
-            : 'text-muted hover:text-ink',
-        )}
+        className="h-6 w-6 text-muted hover:text-ink"
         aria-label={props.label}
         title={props.label}
         onClick={() => void copy()}
       >
         {status === 'copied' ? (
-          <Check size={13} className={props.inverted ? 'text-signal' : 'text-accent'} aria-hidden="true" />
+          <Check size={13} className="text-accent" aria-hidden="true" />
         ) : (
           <Copy size={13} aria-hidden="true" />
         )}

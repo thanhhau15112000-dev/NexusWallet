@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Activity,
   BookOpen,
   CheckCircle2,
   ClipboardList,
@@ -570,16 +569,16 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-bg text-ink lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
-      <aside className="flex flex-col border-b border-obsidian-line bg-obsidian text-obsidian-ink lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r">
-        <div className="flex items-center gap-2.5 border-b border-obsidian-line px-4 py-3.5">
+      <aside className="flex flex-col border-b border-line bg-panel lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r">
+        <div className="flex items-center gap-2.5 px-5 py-4">
           <img src="/brand/logo.svg" alt="" width={26} height={26} className="h-6.5 w-6.5 shrink-0" />
-          <span className="text-[15px] font-semibold tracking-tight text-obsidian-ink">nexusPay</span>
-          <Badge variant="signal" className="ml-auto font-mono text-[10px] uppercase">
+          <span className="text-base font-semibold [font-stretch:112%] text-ink">nexusPay</span>
+          <Badge variant="ok" className="ml-auto capitalize">
             {state.cluster}
           </Badge>
           <Button
             type="button"
-            variant="darkOutline"
+            variant="outline"
             size="icon"
             className="lg:hidden"
             aria-expanded={navOpen}
@@ -594,7 +593,7 @@ export function App() {
         <nav
           id="side-nav"
           className={cn(
-            'flex-1 overflow-y-auto px-2.5 py-3.5 space-y-4',
+            'flex-1 overflow-y-auto px-3 py-2 space-y-5',
             navOpen ? 'block' : 'hidden lg:block',
           )}
           role="tablist"
@@ -604,7 +603,7 @@ export function App() {
           {NAV_GROUPS.map((group) => (
             <div key={group} className="space-y-0.5" role="presentation">
               <span
-                className="block px-2.5 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-obsidian-muted"
+                className="block px-2.5 pb-1.5 text-xs font-medium text-muted"
                 role="presentation"
               >
                 {dict.nav[group]}
@@ -623,10 +622,10 @@ export function App() {
                     aria-controls={`feature-panel-${tab.id}`}
                     tabIndex={selected ? 0 : -1}
                     className={cn(
-                      'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors',
+                      'flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
                       selected
-                        ? 'bg-obsidian-raised font-semibold text-obsidian-ink shadow-[inset_2px_0_0_0_var(--color-signal)] [&_svg]:text-signal'
-                        : 'font-medium text-obsidian-muted hover:bg-obsidian-raised/60 hover:text-obsidian-ink',
+                        ? 'bg-accent-soft font-semibold text-accent-strong [&_svg]:text-accent'
+                        : 'font-medium text-muted hover:bg-surface-muted hover:text-ink',
                     )}
                     onClick={() => {
                       setActiveTab(tab.id);
@@ -637,7 +636,7 @@ export function App() {
                     <Icon size={15} className="shrink-0" aria-hidden="true" />
                     <span className="flex-1 truncate">{dict.tabs[tab.id]}</span>
                     {tab.id === 'approvals' && pendingApprovals > 0 ? (
-                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-signal px-1.5 font-mono text-[10px] font-bold text-obsidian tabular-nums">
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-apricot px-1.5 text-[11px] font-semibold text-ink tabular-nums">
                         {pendingApprovals}
                       </span>
                     ) : null}
@@ -648,29 +647,29 @@ export function App() {
           ))}
         </nav>
 
-        <div className={cn('border-t border-obsidian-line p-3 space-y-2.5', navOpen ? 'block' : 'hidden lg:block')}>
+        <div className={cn('border-t border-line p-4 space-y-3', navOpen ? 'block' : 'hidden lg:block')}>
           {wallet ? (
             <>
               <div className="flex items-center gap-2.5">
                 <span
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-obsidian-line bg-obsidian-raised text-signal"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent"
                   aria-hidden="true"
                 >
                   <WalletIcon size={15} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-obsidian-muted">{dict.wallet.title}</span>
+                    <span className="text-xs text-muted">{dict.wallet.title}</span>
                     {ownerRole}
                   </div>
-                  <Mono title={wallet} className="block truncate text-obsidian-ink">
+                  <Mono title={wallet} className="block truncate text-ink">
                     {shorten(wallet, 5)}
                   </Mono>
                 </div>
               </div>
               <Button
                 type="button"
-                variant="darkOutline"
+                variant="outline"
                 size="sm"
                 className="w-full justify-center"
                 onClick={() => void disconnect()}
@@ -695,20 +694,20 @@ export function App() {
                 {busy.connect ? dict.wallet.connecting : dict.wallet.connectWallet}
               </Button>
               {!walletChoices.length ? (
-                <p className="text-[11px] text-obsidian-muted">{dict.wallet.installPhantom}</p>
+                <p className="text-xs text-muted">{dict.wallet.installPhantom}</p>
               ) : null}
             </div>
           )}
         </div>
       </aside>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
-        <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
-          <h1 className="text-xl font-semibold tracking-tight text-ink">{dict.tabs[activeTab]}</h1>
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold [font-stretch:112%] text-ink">{dict.tabs[activeTab]}</h1>
           <div className="flex items-center gap-2.5">
             <span
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-wider',
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
                 offline
                   ? 'border-bad-line bg-bad-soft text-bad'
                   : 'border-line bg-panel text-muted',
@@ -718,7 +717,6 @@ export function App() {
                 className={cn('h-1.5 w-1.5 rounded-full', offline ? 'bg-bad' : 'bg-accent')}
                 aria-hidden="true"
               />
-              <Activity size={12} className={offline ? 'text-bad' : 'text-accent'} aria-hidden="true" />
               {offline ? dict.topbar.offline : dict.topbar.ready}
             </span>
             <LanguageToggle />
@@ -823,7 +821,7 @@ export function App() {
         <div
           role="status"
           className={cn(
-            'fixed bottom-5 right-5 z-50 max-w-sm rounded-md border px-3.5 py-2.5 text-xs font-medium shadow-md',
+            'fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border px-4 py-3 text-sm font-medium shadow-lg',
             toast.tone === 'ok' && 'border-accent-line bg-panel text-ink',
             toast.tone === 'warn' && 'border-warn-line bg-warn-soft text-warn',
             toast.tone === 'bad' && 'border-bad-line bg-bad-soft text-bad',

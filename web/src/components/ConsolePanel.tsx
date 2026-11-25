@@ -111,7 +111,7 @@ export function ConsolePanel(props: {
       {last ? (
         <div className="space-y-1.5 rounded-md border border-line bg-surface-muted/60 p-3 text-xs" role="status">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">{dict.console.lastTitle}</span>
+            <span className="text-xs font-medium text-muted">{dict.console.lastTitle}</span>
             <Pill tone={TONE[last.status]}>{dict.requests.statuses[last.status]}</Pill>
           </div>
           <p className="font-mono text-ink">{last.prompt}</p>
@@ -123,7 +123,7 @@ export function ConsolePanel(props: {
 
       {presets.length > 0 ? (
         <div className="space-y-1.5 border-t border-line pt-3">
-          <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted">
+          <span className="block text-xs font-medium text-muted">
             {dict.console.presetsTitle}
           </span>
           <div className="flex flex-col gap-1.5">

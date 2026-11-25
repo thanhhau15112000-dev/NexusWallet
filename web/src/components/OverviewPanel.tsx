@@ -170,11 +170,11 @@ export function OverviewPanel(props: {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ShadcnCard className="border-obsidian-line bg-obsidian text-obsidian-ink shadow-sm">
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+        <ShadcnCard className="border-accent-line bg-accent-soft">
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-obsidian-muted">
-                <Bot size={14} className="text-signal" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-accent-strong">
+                <Bot size={14} className="text-accent" aria-hidden="true" />
                 {dict.overview.agentBalance}
               </span>
               {agent.frozen ? <Pill tone="bad">{dict.agent.frozenStatus}</Pill> : null}
@@ -182,27 +182,27 @@ export function OverviewPanel(props: {
             {agent.rpcError ? (
               <div><Pill tone="bad">{dict.agent.rpcError}</Pill></div>
             ) : (
-              <div className="flex items-baseline gap-1.5 text-3xl font-semibold tracking-tight text-obsidian-ink tabular-nums">
+              <div className="flex items-baseline gap-1.5 text-3xl font-semibold [font-stretch:112%] text-accent-strong tabular-nums">
                 <span>{formatSol(agentBalance)}</span>
-                <span className="font-mono text-xs font-semibold text-signal">SOL</span>
+                <span className="text-sm font-medium text-accent">SOL</span>
               </div>
             )}
-            <div className="flex items-center gap-1 border-t border-obsidian-line pt-2.5 text-xs text-obsidian-muted">
+            <div className="flex items-center gap-1 border-t border-accent-line pt-2.5 text-xs text-muted">
               <a
                 href={agent.explorerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-xs text-signal hover:underline"
+                className="font-mono text-xs text-accent-hover hover:underline"
               >
                 {shorten(agent.pubkey, 6)}
               </a>
-              <CopyAddressButton inverted value={agent.pubkey} label={dict.agent.copyAddress} />
+              <CopyAddressButton value={agent.pubkey} label={dict.agent.copyAddress} />
             </div>
           </CardContent>
         </ShadcnCard>
 
         <ShadcnCard>
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
               <Wallet size={14} aria-hidden="true" />
               {dict.overview.ownerBalance}
@@ -214,7 +214,7 @@ export function OverviewPanel(props: {
             ) : owner.error ? (
               <div><Pill tone="bad">{dict.wallet.rpcError}</Pill></div>
             ) : (
-              <div className="flex items-baseline gap-1.5 text-2xl font-semibold tracking-tight text-ink tabular-nums">
+              <div className="flex items-baseline gap-1.5 text-2xl font-semibold [font-stretch:112%] text-ink tabular-nums">
                 <span>{formatSol(owner.balance)}</span>
                 <span className="text-xs font-medium text-muted">SOL</span>
               </div>
@@ -233,7 +233,7 @@ export function OverviewPanel(props: {
         </ShadcnCard>
 
         <ShadcnCard>
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
             <div className="flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
                 <ShieldCheck size={14} aria-hidden="true" />
@@ -243,7 +243,7 @@ export function OverviewPanel(props: {
                 {dict.overview.editPolicy}
               </Button>
             </div>
-            <div className="flex items-baseline gap-1.5 text-2xl font-semibold tracking-tight text-ink tabular-nums">
+            <div className="flex items-baseline gap-1.5 text-2xl font-semibold [font-stretch:112%] text-ink tabular-nums">
               <span>{policy.maxSolPerTx}</span>
               <span className="text-xs font-medium text-muted">SOL / tx</span>
             </div>
@@ -260,12 +260,12 @@ export function OverviewPanel(props: {
         </ShadcnCard>
 
         <ShadcnCard className={cn(pending > 0 && 'border-warn-line bg-warn-soft/30')}>
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
               <CheckCircle2 size={14} className={pending > 0 ? 'text-warn' : undefined} aria-hidden="true" />
               {dict.overview.pendingApprovals}
             </span>
-            <div className="text-2xl font-semibold tracking-tight text-ink tabular-nums">{pending}</div>
+            <div className="text-2xl font-semibold [font-stretch:112%] text-ink tabular-nums">{pending}</div>
             <div className="flex min-h-[26px] items-center border-t border-line pt-2.5">
               {pending > 0 ? (
                 <Button type="button" variant="default" size="sm" className="h-7 px-2.5 text-xs" onClick={() => props.onOpenTab('approvals')}>

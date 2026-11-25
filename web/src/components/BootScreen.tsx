@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowRight, ShieldCheck, Wallet, X } from 'lucide-react';
+import { ArrowRight, Ban, CheckCircle2, Clock, ShieldCheck, Wallet, X } from 'lucide-react';
 import { useI18n } from '../i18n/context.js';
 import { LanguageToggle } from './SettingsMenu.js';
 import { Mascot } from './Mascot.js';
@@ -19,71 +19,57 @@ export function BootScreen(props: {
   const { dict } = useI18n();
   const { boot } = dict;
 
+  const rules = [
+    { icon: CheckCircle2, tone: 'text-ok', text: boot.introAllow },
+    { icon: Clock, tone: 'text-warn', text: boot.introApproval },
+    { icon: Ban, tone: 'text-bad', text: boot.introDeny },
+  ];
+
   return (
-    <main className="grid min-h-screen grid-cols-1 bg-bg text-ink lg:grid-cols-[1.2fr_1fr]">
-      {/* Left Panel: Dark Obsidian Editorial Cockpit */}
-      <section className="relative flex flex-col justify-between border-b border-obsidian-line bg-obsidian px-6 py-6 text-obsidian-ink bg-[linear-gradient(to_right,rgba(244,243,238,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(244,243,238,0.04)_1px,transparent_1px)] [background-size:48px_48px] sm:px-10 sm:py-8 lg:border-b-0 lg:border-r lg:px-12 lg:py-10">
+    <main className="grid min-h-screen grid-cols-1 bg-bg text-ink lg:grid-cols-[1.15fr_1fr]">
+      <section className="flex flex-col justify-between gap-10 px-6 py-6 sm:px-10 sm:py-8 lg:px-14 lg:py-10">
         <div className="flex items-center justify-between gap-3">
           <div className="flex shrink-0 items-center gap-2.5">
-            <img src="/brand/logo.svg" alt="" width={26} height={26} className="h-6.5 w-6.5 shrink-0" />
-            <span className="text-[15px] font-semibold tracking-tight text-obsidian-ink">nexusPay</span>
-            <Badge variant="signal" className="font-mono text-[10px] uppercase tracking-wider">
-              Devnet
-            </Badge>
+            <img src="/brand/logo.svg" alt="" width={28} height={28} className="h-7 w-7 shrink-0" />
+            <span className="text-base font-semibold [font-stretch:112%] text-ink">nexusPay</span>
+            <Badge variant="ok">Devnet</Badge>
           </div>
           <div className="lg:hidden">
-            <LanguageToggle dark />
+            <LanguageToggle />
           </div>
         </div>
 
-        <div className="my-10 max-w-xl space-y-4 lg:my-auto">
-          <p className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-signal">
-            <span className="h-1.5 w-1.5 rounded-full bg-signal" aria-hidden="true" />
-            SOLANA // PAYMENT GUARD
-          </p>
-          <h1 className="text-3xl font-semibold leading-[1.08] tracking-[-0.03em] text-obsidian-ink text-balance sm:text-4xl lg:text-[42px]">
+        <div className="max-w-xl space-y-6">
+          <h1 className="text-4xl font-semibold leading-[1.1] [font-stretch:115%] text-ink text-balance sm:text-5xl">
             {boot.heroTitle}
           </h1>
+          <p className="max-w-md text-base text-muted">{boot.introTagline}</p>
+          <ul className="space-y-3 border-t border-line pt-6">
+            {rules.map(({ icon: Icon, tone, text }) => (
+              <li key={text} className="flex items-start gap-3 text-sm text-ink">
+                <Icon size={18} className={`mt-0.5 shrink-0 ${tone}`} aria-hidden="true" />
+                <span>{text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 border-t border-obsidian-line pt-5 font-mono">
-          <div className="space-y-0.5">
-            <span className="block text-[10px] text-signal">01</span>
-            <span className="block text-[11px] font-semibold uppercase tracking-wider text-obsidian-ink">POLICY</span>
-            <span className="hidden text-[10px] text-obsidian-muted sm:block">PER-TX · 24H</span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="block text-[10px] text-signal">02</span>
-            <span className="block text-[11px] font-semibold uppercase tracking-wider text-obsidian-ink">APPROVAL</span>
-            <span className="hidden text-[10px] text-obsidian-muted sm:block">ED25519 OWNER</span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="block text-[10px] text-signal">03</span>
-            <span className="block text-[11px] font-semibold uppercase tracking-wider text-obsidian-ink">RAILS</span>
-            <span className="hidden text-[10px] text-obsidian-muted sm:block">MCP · X402</span>
-          </div>
-        </div>
+        <div className="hidden h-6 lg:block" aria-hidden="true" />
       </section>
 
-      {/* Right Panel: Warm Off-White Action Dock */}
-      <section className="flex flex-col justify-between bg-bg px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
+      <section className="flex flex-col justify-between border-t border-line bg-panel px-6 py-8 sm:px-10 sm:py-10 lg:border-t-0 lg:border-l lg:px-12">
         <div className="hidden justify-end lg:flex">
           <LanguageToggle />
         </div>
 
         <div className="mx-auto my-auto w-full max-w-[380px] space-y-6">
-          <div className="flex items-center justify-between gap-3">
-            <Mascot
-              className="shrink-0 [&_img]:h-11 [&_img]:w-11"
-              pose={props.offline ? 'sleep' : props.needsSignIn ? 'wave' : 'think'}
-              caption={props.offline ? dict.mascot.offline : props.needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
-            />
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-              ACCESS // WALLET
-            </span>
-          </div>
+          <Mascot
+            className="shrink-0 [&_img]:h-12 [&_img]:w-12"
+            pose={props.offline ? 'sleep' : props.needsSignIn ? 'wave' : 'think'}
+            caption={props.offline ? dict.mascot.offline : props.needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
+          />
 
-          <h2 id="login-title" className="text-xl font-semibold tracking-tight text-ink">
+          <h2 id="login-title" className="text-2xl font-semibold [font-stretch:112%] text-ink">
             {props.needsSignIn ? boot.signInRequired : props.offline ? boot.serviceUnavailable : boot.loading}
           </h2>
 
@@ -113,7 +99,7 @@ export function BootScreen(props: {
                 type="button"
                 variant="default"
                 size="lg"
-                className="group h-12 w-full justify-between px-4 text-sm font-semibold"
+                className="group h-12 w-full justify-between rounded-lg px-4 text-sm font-semibold"
                 aria-expanded={props.pickerOpen}
                 aria-controls="login-wallet-options"
                 disabled={!props.hasWallets || props.connecting}
@@ -129,7 +115,7 @@ export function BootScreen(props: {
               {props.pickerOpen ? (
                 <div
                   id="login-wallet-options"
-                  className="rounded-md border border-line bg-panel p-3 shadow-2xs"
+                  className="rounded-lg border border-line bg-bg p-3"
                 >
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-semibold text-ink">{dict.walletModal.title}</span>
@@ -150,12 +136,12 @@ export function BootScreen(props: {
               ) : null}
 
               {!props.hasWallets ? (
-                <p className="rounded-md border border-line bg-panel px-3.5 py-2.5 text-xs text-muted">
+                <p className="rounded-lg border border-line bg-bg px-3.5 py-2.5 text-xs text-muted">
                   {boot.installPhantom}
                 </p>
               ) : null}
 
-              <p className="flex items-center gap-2 border-t border-line pt-4 text-[11px] text-muted">
+              <p className="flex items-center gap-2 border-t border-line pt-4 text-xs text-muted">
                 <ShieldCheck size={14} className="shrink-0 text-accent" aria-hidden="true" />
                 <span>{boot.authNote}</span>
               </p>
