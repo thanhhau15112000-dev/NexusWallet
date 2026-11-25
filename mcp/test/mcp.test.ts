@@ -213,7 +213,7 @@ describe('loadMcpConfig', () => {
 });
 
 describe('nexusPay MCP tools', () => {
-  it('lists eight tools and marks transfers as destructive', async () => {
+  it('lists ten tools and marks transfers as destructive', async () => {
     const client = await connect(vi.fn());
     const { tools } = await client.listTools();
 
@@ -226,6 +226,8 @@ describe('nexusPay MCP tools', () => {
       'nexuspay_list_tasks',
       'nexuspay_transfer_sol',
       'nexuspay_transfer_spl',
+      'nexuspay_x402_fetch',
+      'nexuspay_x402_resolve',
     ]);
     expect(tools.find((tool) => tool.name === 'nexuspay_transfer_sol')?.annotations).toMatchObject({
       destructiveHint: true,
@@ -795,6 +797,37 @@ describe('nexusPay MCP tools', () => {
 
     expect(result.isError).toBe(true);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('calls nexuspay_x402_fetch and returns data on success', async () => {
+    const fetchImpl = vi.fn(async () => json(200, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: { hello: 'world' },
+      payment: { status: 'paid', signature: 'sig-123' },
+    }));
+    const client = await connect(fetchImpl as unknown as Fetch);
+    const result = parse(await client.callTool({
+      name: 'nexuspay_x402_fetch',
+      arguments: { url: 'https://api.example.com/data' },
+    }));
+    expect(result.data).toEqual({ hello: 'world' });
+    expect(result.payment.status).toBe('paid');
+  });
+
+  it('calls nexuspay_x402_resolve and returns challenge result', async () => {
+    const fetchImpl = vi.fn(async () => json(200, {
+      status: 'completed',
+      signature: 'sig-x402',
+      paymentSignatureHeader: 'base64header',
+    }));
+    const client = await connect(fetchImpl as unknown as Fetch);
+    const result = parse(await client.callTool({
+      name: 'nexuspay_x402_resolve',
+      arguments: { challenge: '{"accepts":[]}' },
+    }));
+    expect(result.status).toBe('completed');
+    expect(result.signature).toBe('sig-x402');
   });
 });
 

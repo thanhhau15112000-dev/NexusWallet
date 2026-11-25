@@ -324,6 +324,25 @@ export function toBaseUnits(amount: number, decimals: number): bigint {
   return BigInt(whole + fraction.padEnd(decimals, '0'));
 }
 
+async function resolveSplMint(connection: Connection, mint: string) {
+  const mintKey = new PublicKey(mint);
+  const mintAccount = await withRpcRetry(() => connection.getAccountInfo(mintKey, 'confirmed'));
+  if (!mintAccount) throw new Error(`mint account ${mint} does not exist`);
+  const programId = mintAccount.owner.equals(TOKEN_2022_PROGRAM_ID)
+    ? TOKEN_2022_PROGRAM_ID
+    : mintAccount.owner.equals(TOKEN_PROGRAM_ID)
+      ? TOKEN_PROGRAM_ID
+      : null;
+  if (!programId) throw new Error(`mint ${mint} is owned by an unsupported token program`);
+  const info = await withRpcRetry(() => getMint(connection, mintKey, 'confirmed', programId));
+  return { mintKey, programId, decimals: info.decimals };
+}
+
+export async function getMintDecimals(connection: Connection, mint: string): Promise<number> {
+  const { decimals } = await resolveSplMint(connection, mint);
+  return decimals;
+}
+
 /**
  * SPL transfer for an allowlisted mint. The agent pays rent to create the
  * recipient's associated token account when it does not exist yet.
@@ -336,17 +355,8 @@ export async function transferSpl(params: {
   amount: number;
 }): Promise<TransferResult> {
   const { connection, payer, recipient, mint, amount } = params;
-  const mintKey = new PublicKey(mint);
-  const mintAccount = await withRpcRetry(() => connection.getAccountInfo(mintKey, 'confirmed'));
-  if (!mintAccount) throw new Error(`mint account ${mint} does not exist`);
-  const programId = mintAccount.owner.equals(TOKEN_2022_PROGRAM_ID)
-    ? TOKEN_2022_PROGRAM_ID
-    : mintAccount.owner.equals(TOKEN_PROGRAM_ID)
-      ? TOKEN_PROGRAM_ID
-      : null;
-  if (!programId) throw new Error(`mint ${mint} is owned by an unsupported token program`);
-  const info = await withRpcRetry(() => getMint(connection, mintKey, 'confirmed', programId));
-  const baseUnits = toBaseUnits(amount, info.decimals);
+  const { mintKey, programId, decimals } = await resolveSplMint(connection, mint);
+  const baseUnits = toBaseUnits(amount, decimals);
 
   const sourceAta = await getAssociatedTokenAddress(
     mintKey,
@@ -388,7 +398,7 @@ export async function transferSpl(params: {
         destinationAta,
         payer.publicKey,
         baseUnits,
-        info.decimals,
+        decimals,
         [],
         programId,
       ),

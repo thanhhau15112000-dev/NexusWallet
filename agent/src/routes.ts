@@ -46,6 +46,7 @@ import {
   SeedTransferOutcomeUnknownError,
 } from './funder.js';
 import { IdempotencyConflictError, agentError, runAction, runCommand, type AgentAction } from './pipeline.js';
+import { resolveX402Payment, fetchWithX402 } from './x402.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
 import { LOCAL_ORIGIN_REGEX } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
@@ -124,6 +125,18 @@ const AgentActionBody = z.object({
     { message: 'request_manual_approval is not an executable action' },
   ),
   idempotencyKey: z.string().trim().max(120).optional(),
+});
+
+const X402ResolveBody = z.object({
+  challenge: z.union([z.string(), z.record(z.string(), z.unknown())]),
+  resourceUrl: z.string().url().optional(),
+});
+
+const X402FetchBody = z.object({
+  url: z.string().url(),
+  method: z.string().optional().default('GET'),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.string().optional(),
 });
 
 const OwnerBody = z.object({ pubkey: PubkeySchema });
@@ -729,6 +742,32 @@ const inFlightClaims = new Set<string>();
       }
       throw err;
     }
+  });
+
+  app.post('/api/agent/x402/resolve', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const body = X402ResolveBody.parse(req.body);
+    const result = await resolveX402Payment(userCtx, body.challenge, body.resourceUrl);
+    if (result.status === 'denied') {
+      const status = result.code === 'AGENT_FROZEN' ? 409 : 403;
+      return reply.status(status).send(result);
+    }
+    if (result.status === 'pending_approval') {
+      return reply.status(202).send(result);
+    }
+    return reply.status(200).send(result);
+  });
+
+  app.post('/api/agent/x402/fetch', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const body = X402FetchBody.parse(req.body);
+    const init = {
+      method: body.method,
+      headers: body.headers,
+      body: body.body,
+    };
+    const result = await fetchWithX402(userCtx, body.url, init);
+    return reply.status(200).send(result);
   });
 
   // Public devnet RPC rate-limits, so repeated polls of the same page share one read for a few seconds.
