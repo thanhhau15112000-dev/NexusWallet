@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ClipboardList } from './icons.js';
 import type { AuditEntryView } from '@nexus/shared';
-import { Card, Empty, Mono } from './ui.js';
+import { Card, DateTime, Empty, Mono } from './ui.js';
 import { useI18n } from '../i18n/context.js';
 
 export function AuditPanel(props: { entries: AuditEntryView[] }) {
@@ -32,7 +32,7 @@ export function AuditPanel(props: { entries: AuditEntryView[] }) {
             <li key={entry.id} className="px-3 py-2">
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-center gap-3 text-xs">
-                  <Mono className="text-muted">{new Date(entry.at).toLocaleTimeString()}</Mono>
+                  <Mono className="text-muted"><DateTime value={entry.at} /></Mono>
                   <span className="font-mono font-semibold text-ink">{entry.event}</span>
                   {entry.requestId ? (
                     <Mono title={entry.requestId} className="ml-auto text-muted">

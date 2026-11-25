@@ -27,7 +27,7 @@ import {
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { getPhantom, signPhantomMessage } from '../phantom.js';
 import { api, ApiError } from '../api.js';
-import { Card, CopyAddressButton, Empty, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, DateTime, Empty, Mono, Pill, shorten } from './ui.js';
 import { Button } from './ui/button.js';
 import { Input } from './ui/input.js';
 import {
@@ -795,7 +795,7 @@ export function TaskVaultPanel(props: {
                   <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
                     <span className="block text-[11px] text-muted">{dict.taskVault.detail.expiresAt}</span>
                     <span className="block font-mono text-xs text-ink tabular-nums">
-                      {new Date(detail.task.expiry * 1000).toLocaleString()}
+                      <DateTime value={detail.task.expiry * 1000} />
                     </span>
                   </div>
                 </div>

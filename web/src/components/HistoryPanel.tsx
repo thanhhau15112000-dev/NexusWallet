@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
 import { ChevronLeft, ChevronRight, Clock, ExternalLink, RefreshCw } from './icons.js';
 import { api, type AgentHistoryItem } from '../api.js';
-import { Card, Empty, Pill } from './ui.js';
+import { Card, DateTime, Empty, Pill } from './ui.js';
 import { Button } from './ui/button.js';
 import {
   Table,
@@ -103,7 +103,7 @@ function ChainHistory(props: { active: boolean }) {
               return (
                 <TableRow key={item.signature}>
                   <TableCell className="font-mono text-xs text-muted tabular-nums whitespace-nowrap">
-                    {item.blockTime === null ? '-' : new Date(item.blockTime * 1000).toLocaleString()}
+                    <DateTime value={item.blockTime === null ? null : item.blockTime * 1000} />
                   </TableCell>
                   <TableCell>
                     {item.status === 'failed' ? (

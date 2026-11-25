@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from './icons.js';
 import { type PaymentRequest, type RequestStatus } from '@nexus/shared';
-import { Card, Empty, Mono, Pill, shorten } from './ui.js';
+import { Card, DateTime, Empty, Mono, Pill, shorten } from './ui.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
 import { cn } from '../lib/utils.js';
@@ -98,7 +98,7 @@ function RequestRow(props: {
         <div className="flex items-center gap-2 text-xs text-muted">
           <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
           <span className="font-mono text-[11px] tabular-nums">
-            {new Date(request.createdAt).toLocaleTimeString()}
+            <DateTime value={request.createdAt} />
           </span>
         </div>
       </div>
@@ -151,7 +151,7 @@ function RequestRow(props: {
               {dict.requests.cancel}
             </Button>
             <span className="ml-auto font-mono text-[11px] text-muted tabular-nums">
-              {dict.requests.expires} {new Date(request.approval.payload.expiresAt).toLocaleTimeString()}
+              {dict.requests.expires} <DateTime value={request.approval.payload.expiresAt} />
             </span>
           </div>
           {!props.canApprove ? (
@@ -173,7 +173,7 @@ function RequestRow(props: {
           {dict.requests.approvedBy}{' '}
           <Mono className="text-ink">{shorten(request.approval.signerPubkey ?? '', 6)}</Mono>{' '}
           <span className="font-mono tabular-nums">
-            {new Date(request.approval.signedAt ?? '').toLocaleTimeString()}
+            <DateTime value={request.approval.signedAt} />
           </span>
         </p>
       ) : null}
