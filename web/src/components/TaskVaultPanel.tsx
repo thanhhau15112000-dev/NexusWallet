@@ -930,7 +930,12 @@ export function TaskVaultPanel(props: {
                         const receipt = detail.receipts.find((r) => r.paymentId === p.paymentId);
                         return (
                           <TableRow key={p.paymentId}>
-                            <TableCell><Mono>{p.paymentId}</Mono></TableCell>
+                            <TableCell>
+                              <Mono>{p.paymentId}</Mono>
+                              {p.createdAt ? (
+                                <DateTime value={p.createdAt} className="block font-mono text-[11px] text-muted" />
+                              ) : null}
+                            </TableCell>
                             <TableCell className="font-mono text-xs">{p.serviceId}</TableCell>
                             <TableCell><Mono title={p.worker}>{shorten(p.worker, 4)}</Mono></TableCell>
                             <TableCell className="text-right font-mono text-xs font-semibold tabular-nums whitespace-nowrap">
@@ -957,6 +962,10 @@ export function TaskVaultPanel(props: {
                                   <Mono title={receipt.resultHash}>
                                     {dict.taskVault.escrows.proof} {shorten(receipt.resultHash, 4)}
                                   </Mono>
+                                  <span className="text-muted">
+                                    {dict.taskVault.escrows.settledAt}{' '}
+                                    <DateTime value={receipt.settledAt * 1000} className="font-mono" />
+                                  </span>
                                   {receipt.txSignature ? (
                                     <a href={`https://explorer.solana.com/tx/${receipt.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
                                       <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>

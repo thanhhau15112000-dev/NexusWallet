@@ -198,6 +198,9 @@ export const vi: TranslationDictionary = {
     modelsTag: 'Mô hình',
     balanceTag: 'Số dư',
     signatureTag: 'Chữ ký',
+    createdTag: 'Tạo lúc',
+    updatedTag: 'Cập nhật',
+    confirmedTag: 'Xác nhận lúc',
     explorer: 'Explorer ↗',
     actions: {
       balance: 'Số dư',
@@ -442,6 +445,7 @@ export const vi: TranslationDictionary = {
       colStatus: 'Trạng thái',
       colAction: 'Thao tác',
       proof: 'Receipt',
+      settledAt: 'Tất toán lúc',
       proofHint: 'Quyết toán mới yêu cầu chủ ví ký nghiệm thu output đã bàn giao. Receipt không chứng minh chất lượng được kiểm tra độc lập; Receipt lịch sử có thể chưa có nghiệm thu owner.',
       receiptLocked: 'Chưa thể đóng Receipt khi tác vụ còn hiệu lực',
       receiptWorkerOnly: 'Task Vault đã đóng. Chỉ Worker được đóng Receipt để nhận lại SOL giữ cho tài khoản (rent). Đây không phải phí giao dịch.',

@@ -198,6 +198,9 @@ export const en: TranslationDictionary = {
     modelsTag: 'Models',
     balanceTag: 'Balance',
     signatureTag: 'Signature',
+    createdTag: 'Created',
+    updatedTag: 'Updated',
+    confirmedTag: 'Confirmed',
     explorer: 'Explorer ↗',
     actions: {
       balance: 'Balance',
@@ -442,6 +445,7 @@ export const en: TranslationDictionary = {
       colStatus: 'Status',
       colAction: 'Settlement / Action',
       proof: 'proof',
+      settledAt: 'Settled',
       proofHint: 'New settlements require the owner to sign acceptance of the submitted output. Receipts do not prove independently verified quality; historical receipts may lack owner acceptance.',
       receiptLocked: 'Receipt locked until task ends',
       receiptWorkerOnly: 'Task closed: only the worker can reclaim receipt rent',

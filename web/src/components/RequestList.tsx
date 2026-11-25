@@ -190,6 +190,24 @@ function RequestRow(props: {
               <span className="text-muted">{decision.reasons.join('; ')}</span>
             </div>
           ) : null}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>
+              <span className="font-semibold text-muted">{dict.requests.createdTag}:</span>{' '}
+              <DateTime value={request.createdAt} className="font-mono" />
+            </span>
+            {request.updatedAt !== request.createdAt ? (
+              <span>
+                <span className="font-semibold text-muted">{dict.requests.updatedTag}:</span>{' '}
+                <DateTime value={request.updatedAt} className="font-mono" />
+              </span>
+            ) : null}
+            {request.execution ? (
+              <span>
+                <span className="font-semibold text-muted">{dict.requests.confirmedTag}:</span>{' '}
+                <DateTime value={request.execution.confirmedAt} className="font-mono" />
+              </span>
+            ) : null}
+          </div>
           {request.execution ? (
             <div className="flex items-center gap-2">
               <span className="font-semibold text-muted">{dict.requests.signatureTag}:</span>

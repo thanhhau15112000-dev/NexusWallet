@@ -198,6 +198,9 @@ export type TranslationDictionary = {
     modelsTag: string;
     balanceTag: string;
     signatureTag: string;
+    createdTag: string;
+    updatedTag: string;
+    confirmedTag: string;
     explorer: string;
     actions: {
       balance: string;
@@ -401,6 +404,7 @@ export type TranslationDictionary = {
       colStatus: string;
       colAction: string;
       proof: string;
+      settledAt: string;
       proofHint: string;
       receiptLocked: string;
       receiptWorkerOnly: string;
