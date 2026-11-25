@@ -1,6 +1,7 @@
 import { ArrowDownToLine, CheckCircle2, ExternalLink, Wallet, Zap } from './icons.js';
 import type { AgentState } from '../api.js';
 import { Card } from './ui.js';
+import { Button } from './ui/button.js';
 import { useI18n } from '../i18n/context.js';
 
 export function AgentFundingPanel(props: {
@@ -14,60 +15,65 @@ export function AgentFundingPanel(props: {
   const { agent } = props.state;
 
   return (
-    <Card title={dict.funding.title} titleIcon={<Wallet size={16} />} className="agent-funding-panel">
-      {agent.rpcError ? <p className="hint warn">{agent.rpcError}</p> : null}
+    <Card title={dict.funding.title} titleIcon={<Wallet size={15} />}>
+      {agent.rpcError ? (
+        <p className="rounded-md border border-warn-line bg-warn-soft px-2.5 py-1.5 text-xs text-warn">
+          {agent.rpcError}
+        </p>
+      ) : null}
 
       {props.state.claimedInitialFunding ? (
-        <div className="agent-seed-status" role="status">
-          <CheckCircle2 size={17} aria-hidden="true" />
-          <span>
-            <strong>{dict.funding.initialSeedClaimed}</strong>
-            <small>{dict.funding.seedCredited}</small>
-          </span>
+        <div className="flex items-center gap-2 rounded-md border border-accent-line bg-accent-soft/70 px-3 py-2 text-xs text-accent" role="status">
+          <CheckCircle2 size={15} className="shrink-0" aria-hidden="true" />
+          <span className="font-medium">{dict.funding.initialSeedClaimed}</span>
         </div>
       ) : (
-        <button
+        <Button
           type="button"
-          className="primary button-with-icon"
+          variant="default"
+          size="sm"
           disabled={props.busy}
           onClick={props.onClaimSeed}
           title={dict.funding.claimSeedTitle}
         >
-          <Zap size={15} aria-hidden="true" />
+          <Zap size={13} aria-hidden="true" />
           {dict.funding.claimSeed}
-        </button>
+        </Button>
       )}
 
-      <div className="button-row">
-        <button
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
           type="button"
-          className="button-with-icon"
+          variant="outline"
+          size="sm"
           disabled={props.busy}
           onClick={() => props.onDeposit(0.1)}
           title={dict.funding.depositTitle}
         >
-          <ArrowDownToLine size={15} aria-hidden="true" />
+          <ArrowDownToLine size={13} aria-hidden="true" />
           {dict.funding.deposit}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="button-with-icon"
+          variant="outline"
+          size="sm"
           disabled={props.busy}
           onClick={props.onAirdrop}
           title={dict.funding.airdropTitle}
         >
-          <Zap size={15} aria-hidden="true" />
+          <Zap size={13} aria-hidden="true" />
           {props.busy ? dict.funding.airdropRequesting : dict.funding.airdrop}
-        </button>
-        <a
-          href={`https://faucet.solana.com/?address=${agent.pubkey}`}
-          target="_blank"
-          rel="noreferrer"
-          className="button-link"
-        >
-          {dict.funding.officialFaucet}
-          <ExternalLink size={12} />
-        </a>
+        </Button>
+        <Button type="button" variant="ghost" size="sm" asChild>
+          <a
+            href={`https://faucet.solana.com/?address=${agent.pubkey}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {dict.funding.officialFaucet}
+            <ExternalLink size={12} aria-hidden="true" />
+          </a>
+        </Button>
       </div>
     </Card>
   );

@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { AllowlistEntrySchema, PubkeySchema } from '@nexus/shared';
 import { ShieldCheck, Wallet } from './icons.js';
 import type { AgentState } from '../api.js';
-import { Card, Mono, shorten } from './ui.js';
+import { Card, CopyAddressButton, Mono, shorten } from './ui.js';
+import { Badge } from './ui/badge.js';
+import { Button } from './ui/button.js';
+import { Input } from './ui/input.js';
 import { useI18n } from '../i18n/context.js';
 
 type Entry = { label: string; address: string };
@@ -88,46 +91,49 @@ export function PolicyPanel(props: {
       });
       setDirty(false);
     } catch {
-      // The parent has already surfaced the error. Keep the draft dirty so the
-      // user does not lose an unsaved policy after a failed request.
+      // Keep the draft dirty so unsaved edits are preserved on error.
     }
   };
 
   return (
-    <div className="page-stack">
-      <div className="split-grid policy-grid">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card
           title={dict.overview.spendingLimits}
-          titleIcon={<ShieldCheck size={16} />}
-          actions={<span className="version">v{policy.version}</span>}
+          titleIcon={<ShieldCheck size={15} />}
+          actions={<Badge variant="neutral" className="font-mono">v{policy.version}</Badge>}
         >
-          <label className="field">
-            <span>{dict.policy.maxPerTx}</span>
-            <div className="input-with-suffix">
-              <input
+          <label className="block space-y-1.5">
+            <span className="block text-xs font-medium text-ink">{dict.policy.maxPerTx}</span>
+            <div className="relative">
+              <Input
                 type="number"
                 min="0.000000001"
                 max="1000"
                 step="any"
+                className="pr-12 font-mono tabular-nums"
                 value={maxSol}
                 onChange={(e) => {
                   setMaxSol(e.target.value);
                   setDirty(true);
                 }}
               />
-              <span>SOL</span>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted">
+                SOL
+              </span>
             </div>
-            {maxSolInvalid ? <span className="request-error">{dict.policy.invalidPerTx}</span> : null}
+            {maxSolInvalid ? <p className="text-xs text-bad">{dict.policy.invalidPerTx}</p> : null}
           </label>
 
-          <label className="field">
-            <span>{dict.policy.maxPerDay}</span>
-            <div className="input-with-suffix">
-              <input
+          <label className="block space-y-1.5">
+            <span className="block text-xs font-medium text-ink">{dict.policy.maxPerDay}</span>
+            <div className="relative">
+              <Input
                 type="number"
                 min="0"
                 max="100000"
                 step="0.01"
+                className="pr-12 font-mono tabular-nums"
                 placeholder={dict.policy.unlimitedPlaceholder}
                 value={maxSolDay}
                 onChange={(e) => {
@@ -135,57 +141,66 @@ export function PolicyPanel(props: {
                   setDirty(true);
                 }}
               />
-              <span>SOL</span>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted">
+                SOL
+              </span>
             </div>
-            {maxSolDayInvalid ? <span className="request-error">{dict.policy.invalidPerDay}</span> : null}
+            {maxSolDayInvalid ? <p className="text-xs text-bad">{dict.policy.invalidPerDay}</p> : null}
           </label>
         </Card>
 
         <Card
           title={dict.policy.recipients}
-          titleIcon={<Wallet size={16} />}
-          actions={<span className="count-badge">{recipients.length}</span>}
+          titleIcon={<Wallet size={15} />}
+          actions={<Badge variant="neutral" className="font-mono">{recipients.length}</Badge>}
         >
           {recipients.length === 0 ? (
-            <p className="empty">{dict.policy.noRecipients}</p>
+            <p className="rounded-md border border-dashed border-line px-3 py-4 text-center text-xs text-muted">
+              {dict.policy.noRecipients}
+            </p>
           ) : (
-            <ul className="entry-list">
+            <ul className="divide-y divide-line rounded-md border border-line">
               {recipients.map((entry) => (
-                <li key={entry.address}>
-                  <div>
-                    <strong>{entry.label}</strong>
-                    <Mono title={entry.address}>{shorten(entry.address, 6)}</Mono>
+                <li key={entry.address} className="flex items-center justify-between gap-2 px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-xs font-semibold text-ink">{entry.label}</span>
+                    <Mono title={entry.address} className="text-muted">{shorten(entry.address, 6)}</Mono>
+                    <CopyAddressButton value={entry.address} label={dict.wallet.copyAddress} />
                   </div>
-                  <button
+                  <Button
                     type="button"
-                    className="link danger"
+                    variant="link"
+                    size="sm"
+                    className="text-xs text-bad hover:text-bad"
                     onClick={() => {
                       setRecipients(recipients.filter((r) => r.address !== entry.address));
                       setDirty(true);
                     }}
                   >
                     {dict.policy.remove}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
 
-          <div className="recipient-form">
-            <input
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[120px_minmax(0,1fr)_auto]">
+            <Input
               aria-label={dict.policy.namePlaceholder}
               placeholder={dict.policy.namePlaceholder}
               value={label}
               onChange={(e) => setLabel(e.target.value.trim())}
             />
-            <input
+            <Input
               aria-label={dict.policy.addressPlaceholder}
               placeholder={dict.policy.addressPlaceholder}
+              className="font-mono text-xs"
               value={address}
               onChange={(e) => setAddress(e.target.value.trim())}
             />
-            <button
+            <Button
               type="button"
+              variant="outline"
               disabled={!label || !address || labelInvalid || addressInvalid || duplicateEntry || duplicateLabel}
               onClick={() => {
                 addEntry({ label, address });
@@ -194,34 +209,38 @@ export function PolicyPanel(props: {
               }}
             >
               {dict.policy.addRecipient}
-            </button>
+            </Button>
           </div>
-          {labelInvalid ? <p className="request-error">{dict.policy.invalidLabel}</p> : null}
-          {addressInvalid ? <p className="request-error">{dict.policy.invalidAddress}</p> : null}
-          {duplicateEntry ? <p className="request-error">{dict.policy.duplicateAddress}</p> : null}
-          {duplicateLabel ? <p className="request-error">{dict.policy.duplicateLabel}</p> : null}
-          {existingRecipientInvalid ? <p className="request-error">{dict.policy.invalidSavedRecipient}</p> : null}
-          <button
+
+          {labelInvalid ? <p className="text-xs text-bad">{dict.policy.invalidLabel}</p> : null}
+          {addressInvalid ? <p className="text-xs text-bad">{dict.policy.invalidAddress}</p> : null}
+          {duplicateEntry ? <p className="text-xs text-bad">{dict.policy.duplicateAddress}</p> : null}
+          {duplicateLabel ? <p className="text-xs text-bad">{dict.policy.duplicateLabel}</p> : null}
+          {existingRecipientInvalid ? <p className="text-xs text-bad">{dict.policy.invalidSavedRecipient}</p> : null}
+
+          <Button
             type="button"
-            className="link"
+            variant="link"
+            size="sm"
+            className="text-xs"
             disabled={!props.wallet}
             onClick={() => props.wallet && addEntry({ label: 'my-wallet', address: props.wallet })}
           >
             {dict.policy.useOwnerWallet}
-          </button>
+          </Button>
         </Card>
       </div>
 
-      <div className={dirty ? 'save-bar is-dirty' : 'save-bar'}>
-        {dirty ? <span className="hint">{dict.policy.unsaved}</span> : null}
-        <button
+      <div className="flex items-center justify-end gap-3 border-t border-line pt-3">
+        {dirty ? <span className="text-xs font-medium text-warn">{dict.policy.unsaved}</span> : null}
+        <Button
           type="button"
-          className="primary"
+          variant="default"
           disabled={props.busy || !dirty || maxSolInvalid || maxSolDayInvalid || existingRecipientInvalid}
           onClick={save}
         >
           {props.busy ? dict.policy.saving : dict.policy.save}
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -27,7 +27,18 @@ import {
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { getPhantom, signPhantomMessage } from '../phantom.js';
 import { api, ApiError } from '../api.js';
-import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, Empty, Mono, Pill, shorten } from './ui.js';
+import { Button } from './ui/button.js';
+import { Input } from './ui/input.js';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table.js';
+import { cn } from '../lib/utils.js';
 import { useI18n } from '../i18n/context.js';
 
 export function TaskVaultPanel(props: {
@@ -499,143 +510,157 @@ export function TaskVaultPanel(props: {
   const receiptsClosable = Boolean(detail) && !detail!.task.isClosed && !taskOpen;
 
   return (
-    <div className="task-vault-container">
-      {locked ? <p className="hint-warn" role="status">{dict.taskVault.connectToOperate}</p> : null}
-      <div className="vault-grid">
+    <div className="space-y-4">
+      {locked ? (
+        <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+          {dict.taskVault.connectToOperate}
+        </p>
+      ) : null}
+
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         {/* Left Column: Create Task & Task Selector */}
-        <div className="vault-sidebar">
+        <div className="space-y-4">
           {createOpen ? (
-          <Card
-            title={dict.taskVault.create.title}
-            titleIcon={<Plus size={16} />}
-            className="create-task-card"
-          >
-            <form onSubmit={handleCreateTask} className="task-form">
-              <label>
-                <span>{dict.taskVault.create.taskId}</span>
-                <input
-                  type="text"
-                  value={newTaskId}
-                  onChange={(e) => setNewTaskId(e.target.value)}
-                  placeholder={dict.taskVault.create.taskIdPlaceholder}
-                  required
-                />
-              </label>
-
-              <div className="form-row">
-                <label>
-                  <span>{dict.taskVault.create.totalBudget}</span>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0.01"
-                    value={newBudgetSol}
-                    onChange={(e) => setNewBudgetSol(e.target.value)}
+            <Card title={dict.taskVault.create.title} titleIcon={<Plus size={15} />}>
+              <form onSubmit={handleCreateTask} className="space-y-3">
+                <label className="block space-y-1">
+                  <span className="block text-xs font-medium text-ink">{dict.taskVault.create.taskId}</span>
+                  <Input
+                    type="text"
+                    className="font-mono text-xs"
+                    value={newTaskId}
+                    onChange={(e) => setNewTaskId(e.target.value)}
+                    placeholder={dict.taskVault.create.taskIdPlaceholder}
                     required
                   />
                 </label>
-                <label>
-                  <span>{dict.taskVault.create.perPaymentCap}</span>
-                  <input
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <label className="block space-y-1">
+                    <span className="block text-xs font-medium text-ink">{dict.taskVault.create.totalBudget}</span>
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0.01"
+                      className="font-mono text-xs tabular-nums"
+                      value={newBudgetSol}
+                      onChange={(e) => setNewBudgetSol(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="block text-xs font-medium text-ink">{dict.taskVault.create.perPaymentCap}</span>
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0.01"
+                      className="font-mono text-xs tabular-nums"
+                      value={newCapSol}
+                      onChange={(e) => setNewCapSol(e.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <label className="block space-y-1">
+                    <span className="block text-xs font-medium text-ink">{dict.taskVault.create.allowedWorker}</span>
+                    <Input
+                      type="text"
+                      className="font-mono text-xs"
+                      value={newAllowedWorker}
+                      onChange={(e) => setNewAllowedWorker(e.target.value)}
+                      placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="block text-xs font-medium text-ink">{dict.taskVault.create.allowedService}</span>
+                    <Input
+                      type="text"
+                      className="font-mono text-xs"
+                      value={newAllowedServiceId}
+                      onChange={(e) => setNewAllowedServiceId(e.target.value)}
+                      placeholder={dict.taskVault.create.allowedServicePlaceholder}
+                    />
+                  </label>
+                </div>
+
+                <label className="block space-y-1">
+                  <span className="block text-xs font-medium text-ink">{dict.taskVault.create.expiryDuration}</span>
+                  <Input
                     type="number"
                     step="any"
-                    min="0.01"
-                    value={newCapSol}
-                    onChange={(e) => setNewCapSol(e.target.value)}
+                    min="0.05"
+                    max="168"
+                    className="font-mono text-xs tabular-nums"
+                    value={newHours}
+                    onChange={(e) => setNewHours(e.target.value)}
                     required
                   />
                 </label>
-              </div>
 
-              <div className="form-row">
-                <label>
-                  <span>{dict.taskVault.create.allowedWorker}</span>
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-ink">
                   <input
-                    type="text"
-                    value={newAllowedWorker}
-                    onChange={(e) => setNewAllowedWorker(e.target.value)}
-                    placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-accent"
+                    checked={submitOnchain}
+                    onChange={(e) => setSubmitOnchain(e.target.checked)}
                   />
+                  <span>{dict.taskVault.create.broadcastOnChain}</span>
                 </label>
-                <label>
-                  <span>{dict.taskVault.create.allowedService}</span>
-                  <input
-                    type="text"
-                    value={newAllowedServiceId}
-                    onChange={(e) => setNewAllowedServiceId(e.target.value)}
-                    placeholder={dict.taskVault.create.allowedServicePlaceholder}
-                  />
-                </label>
-              </div>
 
-              <label>
-                <span>{dict.taskVault.create.expiryDuration}</span>
-                <input
-                  type="number"
-                  step="any"
-                  min="0.05"
-                  max="168"
-                  value={newHours}
-                  onChange={(e) => setNewHours(e.target.value)}
-                  required
-                />
-              </label>
-
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={submitOnchain}
-                  onChange={(e) => setSubmitOnchain(e.target.checked)}
-                />
-                <span>{dict.taskVault.create.broadcastOnChain}</span>
-              </label>
-
-              <button
-                type="submit"
-                className="primary"
-                disabled={busyAction === 'create' || !props.owner || locked}
-              >
-                {busyAction === 'create' ? dict.taskVault.create.submittingBtn : dict.taskVault.create.submitBtn}
-              </button>
-              {!props.owner ? (
-                <span className="hint-warn">{dict.taskVault.create.connectHint}</span>
-              ) : null}
-            </form>
-          </Card>
+                <Button
+                  type="submit"
+                  variant="default"
+                  size="sm"
+                  className="w-full"
+                  disabled={busyAction === 'create' || !props.owner || locked}
+                >
+                  {busyAction === 'create' ? dict.taskVault.create.submittingBtn : dict.taskVault.create.submitBtn}
+                </Button>
+                {!props.owner ? (
+                  <p className="text-xs text-warn">{dict.taskVault.create.connectHint}</p>
+                ) : null}
+              </form>
+            </Card>
           ) : null}
 
           <Card
             title={dict.taskVault.list.title}
-            titleIcon={<Layers size={16} />}
+            titleIcon={<Layers size={15} />}
             actions={
-              <div className="task-actions-group">
-                <button
+              <div className="flex items-center gap-1.5">
+                <Button
                   type="button"
-                  className="link button-with-icon"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
                   onClick={() => void loadTasks()}
                   disabled={loading}
                 >
-                  <RefreshCw size={13} className={loading ? 'spinning' : ''} />
+                  <RefreshCw size={12} className={cn(loading && 'animate-spin')} />
                   {dict.taskVault.list.refresh}
-                </button>
+                </Button>
                 {tasks.length > 0 ? (
-                  <button
+                  <Button
                     type="button"
-                    className="primary button-with-icon"
+                    variant="default"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs"
                     aria-expanded={createOpen}
                     onClick={() => setShowCreate((open) => !open)}
                   >
-                    {createOpen ? null : <Plus size={13} />}
+                    {createOpen ? null : <Plus size={12} />}
                     {createOpen ? dict.taskVault.list.hideForm : dict.taskVault.list.newTask}
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             }
           >
             {tasks.length === 0 ? (
-              <div className="empty-state">{dict.taskVault.list.empty}</div>
+              <Empty>{dict.taskVault.list.empty}</Empty>
             ) : (
-              <ul className="task-list">
+              <ul className="space-y-2">
                 {tasks.map((t) => {
                   const isSelected = t.taskId === selectedTaskId;
                   const rowStatus = effectiveStatus(t);
@@ -644,7 +669,12 @@ export function TaskVaultPanel(props: {
                   return (
                     <li
                       key={t.taskId}
-                      className={`task-list-item${isSelected ? ' is-selected' : ''}`}
+                      className={cn(
+                        'cursor-pointer space-y-2 rounded-md border p-3 transition-colors',
+                        isSelected
+                          ? 'border-accent bg-accent-soft/45'
+                          : 'border-line bg-panel hover:border-line-strong hover:bg-surface-muted/50',
+                      )}
                       role="button"
                       tabIndex={0}
                       aria-pressed={isSelected}
@@ -656,23 +686,19 @@ export function TaskVaultPanel(props: {
                         }
                       }}
                     >
-                      <div className="task-item-head">
-                        <strong>{t.taskId}</strong>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-mono text-xs font-semibold text-ink">{t.taskId}</span>
                         <Pill tone={statusTone(rowStatus)}>{dict.taskVault.statuses[rowStatus]}</Pill>
                       </div>
-                      <div className="task-item-progress">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
                         <div
-                          className="progress-bar-fill"
+                          className="h-full rounded-full bg-accent transition-all"
                           style={{ width: `${Math.min(100, (spentSol / budgetSol) * 100)}%` }}
                         />
                       </div>
-                      <div className="task-item-footer">
-                        <span>
-                          {spentSol.toFixed(3)} / {budgetSol.toFixed(3)} SOL
-                        </span>
-                        <span className="task-cap-info">
-                          {dict.taskVault.list.cap} {(t.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(3)}
-                        </span>
+                      <div className="flex items-center justify-between font-mono text-[11px] text-muted tabular-nums">
+                        <span>{spentSol.toFixed(3)} / {budgetSol.toFixed(3)} SOL</span>
+                        <span>{dict.taskVault.list.cap} {(t.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(3)}</span>
                       </div>
                     </li>
                   );
@@ -683,130 +709,149 @@ export function TaskVaultPanel(props: {
         </div>
 
         {/* Right Column: Selected Task Details, Escrows, and Payments */}
-        <div className="vault-main">
+        <div className="space-y-4">
           {detail ? (
             <>
               <Card
                 title={interpolate(dict.taskVault.detail.taskTitle, { taskId: detail.task.taskId })}
-                titleIcon={<Coins size={16} />}
+                titleIcon={<Coins size={15} />}
                 actions={
-                  <div className="task-actions-group">
+                  <div className="flex flex-wrap items-center gap-2">
                     {taskOpen ? (
-                      <button
+                      <Button
                         type="button"
-                        className="bad-button"
+                        variant="destructiveOutline"
+                        size="sm"
                         disabled={Boolean(busyAction) || locked}
                         onClick={() => void handleRevoke(detail.task.taskId)}
                       >
                         {dict.taskVault.detail.revoke}
-                      </button>
+                      </Button>
                     ) : null}
                     {!detail.task.isClosed ? (
-                      <button
+                      <Button
                         type="button"
-                        className="secondary"
+                        variant="outline"
+                        size="sm"
                         disabled={Boolean(busyAction) || hasHeldEscrow || locked}
                         aria-describedby={hasHeldEscrow ? 'refund-blocked-note' : undefined}
                         onClick={() => void handleRefund(detail.task.taskId)}
                       >
                         {dict.taskVault.detail.refundAndClose}
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
                 }
               >
-                <div className="task-summary-grid">
-                  <div className="summary-stat">
-                    <span className="stat-label">{dict.taskVault.detail.status}</span>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
+                    <span className="block text-[11px] text-muted">{dict.taskVault.detail.status}</span>
                     <Pill tone={statusTone(detailStatus!)}>{dict.taskVault.statuses[detailStatus!]}</Pill>
                   </div>
-                  <div className="summary-stat">
-                    <span className="stat-label">{dict.taskVault.detail.executionMode}</span>
+
+                  <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
+                    <span className="block text-[11px] text-muted">{dict.taskVault.detail.executionMode}</span>
                     {detail.task.txSignature ? (
                       <a
-                          href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-link"
-                        >
+                        href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1"
+                      >
                         <Pill tone="ok">{dict.taskVault.detail.devnetTx}</Pill>
-                        <ExternalLink size={12} />
+                        <ExternalLink size={12} className="text-accent" />
                       </a>
                     ) : (
                       <Pill tone="neutral">{dict.taskVault.detail.simulated}</Pill>
                     )}
                   </div>
-                  <div className="summary-stat summary-stat-key">
-                    <span className="stat-label">{dict.taskVault.detail.remaining}</span>
-                    <strong className="ok-value">
+
+                  <div className="space-y-1 rounded-md border border-accent-line/60 bg-accent-soft/40 p-2.5">
+                    <span className="block text-[11px] text-muted">{dict.taskVault.detail.remaining}</span>
+                    <strong className="block font-mono text-sm font-semibold text-accent tabular-nums">
                       {(vaultRemainingLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                     </strong>
                     {detail.task.isClosed ? (
-                      <span className="stat-label">
+                      <span className="block text-[11px] text-muted tabular-nums">
                         {detail.task.isSimulated === false ? dict.taskVault.detail.refunded : dict.taskVault.detail.refundedSimulated}: {(refundedLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                       </span>
                     ) : null}
                   </div>
-                  <div className="summary-stat">
-                    <span className="stat-label">{dict.taskVault.detail.totalSpent}</span>
-                    <strong>
+
+                  <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
+                    <span className="block text-[11px] text-muted">{dict.taskVault.detail.totalSpent}</span>
+                    <strong className="block font-mono text-xs font-semibold text-ink tabular-nums">
                       {(detail.task.spentLamports / LAMPORTS_PER_SOL).toFixed(4)} / {(detail.task.budgetLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                     </strong>
                   </div>
-                  <div className="summary-stat">
-                    <span className="stat-label">{dict.taskVault.detail.perPaymentCap}</span>
-                    <span>{(detail.task.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL</span>
+
+                  <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
+                    <span className="block text-[11px] text-muted">{dict.taskVault.detail.perPaymentCap}</span>
+                    <span className="block font-mono text-xs text-ink tabular-nums">
+                      {(detail.task.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
+                    </span>
                   </div>
-                  <div className="summary-stat">
-                    <span className="stat-label">{dict.taskVault.detail.expiresAt}</span>
-                    <span>{new Date(detail.task.expiry * 1000).toLocaleString()}</span>
+
+                  <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
+                    <span className="block text-[11px] text-muted">{dict.taskVault.detail.expiresAt}</span>
+                    <span className="block font-mono text-xs text-ink tabular-nums">
+                      {new Date(detail.task.expiry * 1000).toLocaleString()}
+                    </span>
                   </div>
                 </div>
 
                 {detailStatus === 'expired' && !detail.task.isClosed ? (
-                  <p className="hint-warn" role="status">{dict.taskVault.detail.expiredNote}</p>
+                  <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+                    {dict.taskVault.detail.expiredNote}
+                  </p>
                 ) : null}
                 {hasHeldEscrow && !detail.task.isClosed ? (
-                  <p id="refund-blocked-note" className="hint-warn" role="status">
+                  <p id="refund-blocked-note" className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
                     {dict.taskVault.detail.refundBlockedPending}
                   </p>
                 ) : null}
 
-                <details className="task-tech">
-                  <summary>{dict.taskVault.detail.technicalDetails}</summary>
-                  <div className="pda-bindings">
-                    <div className="pda-item">
-                      <span className="pda-label">{dict.taskVault.detail.allowedWorker}</span>
-                      <span>{detail.task.allowedWorker ? shorten(detail.task.allowedWorker, 4) : dict.taskVault.detail.any}</span>
+                <details className="text-xs">
+                  <summary className="cursor-pointer font-medium text-muted hover:text-ink">
+                    {dict.taskVault.detail.technicalDetails}
+                  </summary>
+                  <div className="mt-2 grid grid-cols-1 gap-2 rounded-md border border-line bg-surface-muted/40 p-3 sm:grid-cols-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">{dict.taskVault.detail.allowedWorker}</span>
+                      <Mono>{detail.task.allowedWorker ? shorten(detail.task.allowedWorker, 4) : dict.taskVault.detail.any}</Mono>
                     </div>
-                    <div className="pda-item">
-                      <span className="pda-label">{dict.taskVault.detail.allowedService}</span>
-                      <span>{detail.task.allowedServiceId || dict.taskVault.detail.any}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">{dict.taskVault.detail.allowedService}</span>
+                      <Mono>{detail.task.allowedServiceId || dict.taskVault.detail.any}</Mono>
                     </div>
-                    <div className="pda-item">
-                      <span className="pda-label">{dict.taskVault.detail.capabilityPda}</span>
-                      <Mono>{shorten(detail.task.pda ?? '—', 8)}</Mono>
-                      {detail.task.pda ? (
-                        <CopyAddressButton value={detail.task.pda} label={dict.taskVault.detail.copyCapPda} />
-                      ) : null}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">{dict.taskVault.detail.capabilityPda}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Mono>{shorten(detail.task.pda ?? '—', 8)}</Mono>
+                        {detail.task.pda ? (
+                          <CopyAddressButton value={detail.task.pda} label={dict.taskVault.detail.copyCapPda} />
+                        ) : null}
+                      </span>
                     </div>
-                    <div className="pda-item">
-                      <span className="pda-label">{dict.taskVault.detail.vaultPda}</span>
-                      <Mono>{shorten(detail.task.vaultPda ?? '—', 8)}</Mono>
-                      {detail.task.vaultPda ? (
-                        <CopyAddressButton value={detail.task.vaultPda} label={dict.taskVault.detail.copyVaultPda} />
-                      ) : null}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted">{dict.taskVault.detail.vaultPda}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Mono>{shorten(detail.task.vaultPda ?? '—', 8)}</Mono>
+                        {detail.task.vaultPda ? (
+                          <CopyAddressButton value={detail.task.vaultPda} label={dict.taskVault.detail.copyVaultPda} />
+                        ) : null}
+                      </span>
                     </div>
                     {detail.task.txSignature ? (
-                      <div className="pda-item">
-                        <span className="pda-label">{dict.taskVault.detail.devnetTxLabel}</span>
+                      <div className="flex items-center justify-between gap-2 sm:col-span-2">
+                        <span className="text-muted">{dict.taskVault.detail.devnetTxLabel}</span>
                         <a
                           href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-link"
+                          className="inline-flex items-center gap-1 font-mono text-accent hover:underline"
                         >
-                          <Mono>{shorten(detail.task.txSignature, 8)}</Mono>
+                          {shorten(detail.task.txSignature, 8)}
                           <ExternalLink size={12} />
                         </a>
                       </div>
@@ -815,39 +860,37 @@ export function TaskVaultPanel(props: {
                 </details>
               </Card>
 
-              {/* Multi-step Payment Simulator */}
               {taskOpen ? (
-                <Card
-                  title={dict.taskVault.payment.title}
-                  titleIcon={<Play size={16} />}
-                  className="execute-payment-card"
-                >
-                  <form onSubmit={handleExecutePayment} className="payment-form">
-                    <div className="form-row">
-                      <label>
-                        <span>{dict.taskVault.payment.workerAddress}</span>
-                        <input
+                <Card title={dict.taskVault.payment.title} titleIcon={<Play size={15} />}>
+                  <form onSubmit={handleExecutePayment} className="space-y-3">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                      <label className="block space-y-1">
+                        <span className="block text-xs font-medium text-ink">{dict.taskVault.payment.workerAddress}</span>
+                        <Input
                           type="text"
+                          className="font-mono text-xs"
                           value={paymentWorker}
                           onChange={(e) => setPaymentWorker(e.target.value)}
                           placeholder={dict.taskVault.payment.workerPlaceholder}
                         />
                       </label>
-                      <label>
-                        <span>{dict.taskVault.payment.serviceId}</span>
-                        <input
+                      <label className="block space-y-1">
+                        <span className="block text-xs font-medium text-ink">{dict.taskVault.payment.serviceId}</span>
+                        <Input
                           type="text"
+                          className="font-mono text-xs"
                           value={paymentService}
                           onChange={(e) => setPaymentService(e.target.value)}
                           required
                         />
                       </label>
-                      <label>
-                        <span>{dict.taskVault.payment.amount}</span>
-                        <input
+                      <label className="block space-y-1">
+                        <span className="block text-xs font-medium text-ink">{dict.taskVault.payment.amount}</span>
+                        <Input
                           type="number"
                           step="any"
                           min="0.001"
+                          className="font-mono text-xs tabular-nums"
                           value={paymentAmountSol}
                           onChange={(e) => setPaymentAmountSol(e.target.value)}
                           required
@@ -855,51 +898,46 @@ export function TaskVaultPanel(props: {
                       </label>
                     </div>
 
-                    <button
+                    <Button
                       type="submit"
-                      className="primary"
+                      variant="default"
+                      size="sm"
                       disabled={busyAction === 'execute_payment' || locked}
                     >
                       {busyAction === 'execute_payment' ? dict.taskVault.payment.submittingBtn : dict.taskVault.payment.submitBtn}
-                    </button>
+                    </Button>
                   </form>
                 </Card>
               ) : null}
 
-              {/* Escrow & Payment List */}
-              <Card title={dict.taskVault.escrows.title} titleIcon={<Clock size={16} />}>
-                <p className="card-desc">{dict.taskVault.escrows.proofHint}</p>
+              <Card title={dict.taskVault.escrows.title} titleIcon={<Clock size={15} />}>
                 {detail.payments.length === 0 ? (
-                  <div className="empty-state">{dict.taskVault.escrows.empty}</div>
+                  <Empty>{dict.taskVault.escrows.empty}</Empty>
                 ) : (
-                  <div className="escrows-table-wrapper">
-                    <table className="escrows-table">
-                      <thead>
-                        <tr>
-                          <th>{dict.taskVault.escrows.colPaymentId}</th>
-                          <th>{dict.taskVault.escrows.colService}</th>
-                          <th>{dict.taskVault.escrows.colWorker}</th>
-                          <th>{dict.taskVault.escrows.colAmount}</th>
-                          <th>{dict.taskVault.escrows.colStatus}</th>
-                          <th>{dict.taskVault.escrows.colAction}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.payments.map((p) => {
-                          const receipt = detail.receipts.find((r) => r.paymentId === p.paymentId);
-                          return (
-                            <tr key={p.paymentId}>
-                              <td>
-                                <Mono>{p.paymentId}</Mono>
-                              </td>
-                              <td>{p.serviceId}</td>
-                              <td>
-                                <Mono title={p.worker}>{shorten(p.worker, 4)}</Mono>
-                              </td>
-                              <td>
-                                <strong>{(p.amountLamports / LAMPORTS_PER_SOL).toFixed(3)} SOL</strong>
-                              </td>
-                              <td>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>{dict.taskVault.escrows.colPaymentId}</TableHead>
+                        <TableHead>{dict.taskVault.escrows.colService}</TableHead>
+                        <TableHead>{dict.taskVault.escrows.colWorker}</TableHead>
+                        <TableHead className="text-right">{dict.taskVault.escrows.colAmount}</TableHead>
+                        <TableHead>{dict.taskVault.escrows.colStatus}</TableHead>
+                        <TableHead>{dict.taskVault.escrows.colAction}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detail.payments.map((p) => {
+                        const receipt = detail.receipts.find((r) => r.paymentId === p.paymentId);
+                        return (
+                          <TableRow key={p.paymentId}>
+                            <TableCell><Mono>{p.paymentId}</Mono></TableCell>
+                            <TableCell className="font-mono text-xs">{p.serviceId}</TableCell>
+                            <TableCell><Mono title={p.worker}>{shorten(p.worker, 4)}</Mono></TableCell>
+                            <TableCell className="text-right font-mono text-xs font-semibold tabular-nums whitespace-nowrap">
+                              {(p.amountLamports / LAMPORTS_PER_SOL).toFixed(3)} SOL
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <Pill tone={p.status === 'settled' ? 'ok' : 'warn'}>
                                   {dict.taskVault.escrowStatuses[p.status]}
                                 </Pill>
@@ -907,96 +945,116 @@ export function TaskVaultPanel(props: {
                                   <a href={`https://explorer.solana.com/tx/${p.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
                                     <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
                                   </a>
-                                ) : <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>}
-                              </td>
-                              <td>
-                                {receipt ? (
-                                  <div className="receipt-proof-badge">
-                                    <CheckCircle2 size={14} className="ok-icon" />
-                                    <Mono title={receipt.resultHash}>
-                                      {dict.taskVault.escrows.proof} {shorten(receipt.resultHash, 4)}
-                                    </Mono>
-                                    {receipt.txSignature ? (
-                                      <a href={`https://explorer.solana.com/tx/${receipt.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
-                                        <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
-                                      </a>
-                                    ) : <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>}
-                                    {receipt.isSimulated === false && !receipt.isClosed && detail.task.isClosed ? (
-                                      <span title={dict.taskVault.escrows.receiptWorkerOnlyHint}>
-                                        {dict.taskVault.escrows.receiptWorkerOnly}
-                                      </span>
-                                    ) : receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
-                                      <span title={dict.taskVault.escrows.receiptLockedHint}>
-                                        {dict.taskVault.escrows.receiptLocked}
-                                      </span>
-                                    ) : receipt.isSimulated === false && !receipt.isClosed ? (
-                                      <button
-                                        type="button"
-                                        className="link primary-link"
-                                        title={dict.taskVault.escrows.closeReceiptHint}
-                                        disabled={Boolean(busyAction) || locked}
-                                        onClick={() => void handleCloseReceipt(receipt.paymentId, receipt.worker)}
-                                      >
-                                        <XCircle size={14} />
-                                        {busyAction === `close-receipt-${receipt.paymentId}` ? dict.taskVault.escrows.closingReceipt : dict.taskVault.escrows.closeReceipt}
-                                      </button>
-                                    ) : receipt.isClosed ? <span>{dict.taskVault.escrows.receiptClosed}</span> : null}
-                                  </div>
-                                ) : p.status === 'held' && p.delivery ? (
-                                  <div className="task-output-review">
-                                    <details open>
-                                      <summary>{dict.taskVault.escrows.reviewOutput}</summary>
-                                      <pre>{JSON.stringify(p.delivery.resultPayload, null, 2)}</pre>
-                                    </details>
-                                    <Mono title={p.delivery.resultHash}>{shorten(p.delivery.resultHash, 8)}</Mono>
-                                    <label className="task-output-confirm">
-                                      <input type="checkbox"
-                                        checked={reviewedOutputs.has(reviewKey(p))}
-                                        disabled={Boolean(busyAction) || paymentActionsLocked}
-                                        onChange={(event) => setReviewedOutputs((current) => {
-                                          const next = new Set(current);
-                                          if (event.target.checked) next.add(reviewKey(p));
-                                          else next.delete(reviewKey(p));
-                                          return next;
-                                        })}
-                                      />
-                                      {dict.taskVault.escrows.reviewedConfirmation}
-                                    </label>
-                                    <button type="button" className="link primary-link"
-                                      disabled={Boolean(busyAction) || paymentActionsLocked || !reviewedOutputs.has(reviewKey(p))}
-                                      onClick={() => void handleAcceptPayment(p)}
-                                    >
-                                      {busyAction === `settle-${p.paymentId}` ? dict.taskVault.escrows.settling : dict.taskVault.escrows.acceptAndSettle}
-                                    </button>
-                                    <p className="hint">{dict.taskVault.escrows.reviewLimitation}</p>
-                                  </div>
-                                ) : p.status === 'held' ? (
-                                  <button
-                                    type="button"
-                                    className="link primary-link"
-                                    disabled={Boolean(busyAction) || paymentActionsLocked}
-                                    onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId)}
-                                  >
-                                    {busyAction === `output-${p.paymentId}`
-                                      ? dict.taskVault.escrows.submittingOutput
-                                      : dict.taskVault.escrows.submitOutput}
-                                  </button>
                                 ) : (
-                                  <span>{dict.taskVault.escrows.refunded}</span>
+                                  <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>
                                 )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {receipt ? (
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                  <CheckCircle2 size={13} className="text-accent" />
+                                  <Mono title={receipt.resultHash}>
+                                    {dict.taskVault.escrows.proof} {shorten(receipt.resultHash, 4)}
+                                  </Mono>
+                                  {receipt.txSignature ? (
+                                    <a href={`https://explorer.solana.com/tx/${receipt.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">
+                                      <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
+                                    </a>
+                                  ) : (
+                                    <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>
+                                  )}
+                                  {receipt.isSimulated === false && !receipt.isClosed && detail.task.isClosed ? (
+                                    <span className="text-muted" title={dict.taskVault.escrows.receiptWorkerOnlyHint}>
+                                      {dict.taskVault.escrows.receiptWorkerOnly}
+                                    </span>
+                                  ) : receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
+                                    <span className="text-muted" title={dict.taskVault.escrows.receiptLockedHint}>
+                                      {dict.taskVault.escrows.receiptLocked}
+                                    </span>
+                                  ) : receipt.isSimulated === false && !receipt.isClosed ? (
+                                    <Button
+                                      type="button"
+                                      variant="link"
+                                      size="sm"
+                                      className="text-xs"
+                                      title={dict.taskVault.escrows.closeReceiptHint}
+                                      disabled={Boolean(busyAction) || locked}
+                                      onClick={() => void handleCloseReceipt(receipt.paymentId, receipt.worker)}
+                                    >
+                                      <XCircle size={13} />
+                                      {busyAction === `close-receipt-${receipt.paymentId}` ? dict.taskVault.escrows.closingReceipt : dict.taskVault.escrows.closeReceipt}
+                                    </Button>
+                                  ) : receipt.isClosed ? (
+                                    <span className="text-muted">{dict.taskVault.escrows.receiptClosed}</span>
+                                  ) : null}
+                                </div>
+                              ) : p.status === 'held' && p.delivery ? (
+                                <div className="space-y-2 text-xs">
+                                  <details open>
+                                    <summary className="cursor-pointer font-medium text-ink">{dict.taskVault.escrows.reviewOutput}</summary>
+                                    <pre className="mt-1.5 max-h-40 overflow-auto rounded border border-line bg-surface-muted p-2 font-mono text-[11px]">
+                                      {JSON.stringify(p.delivery.resultPayload, null, 2)}
+                                    </pre>
+                                  </details>
+                                  <Mono title={p.delivery.resultHash} className="block text-muted">
+                                    {shorten(p.delivery.resultHash, 8)}
+                                  </Mono>
+                                  <label className="flex cursor-pointer items-center gap-2 text-ink">
+                                    <input
+                                      type="checkbox"
+                                      className="h-3.5 w-3.5 accent-accent"
+                                      checked={reviewedOutputs.has(reviewKey(p))}
+                                      disabled={Boolean(busyAction) || paymentActionsLocked}
+                                      onChange={(event) => setReviewedOutputs((current) => {
+                                        const next = new Set(current);
+                                        if (event.target.checked) next.add(reviewKey(p));
+                                        else next.delete(reviewKey(p));
+                                        return next;
+                                      })}
+                                    />
+                                    <span>{dict.taskVault.escrows.reviewedConfirmation}</span>
+                                  </label>
+                                  <Button
+                                    type="button"
+                                    variant="default"
+                                    size="sm"
+                                    className="h-7 px-2.5 text-xs"
+                                    disabled={Boolean(busyAction) || paymentActionsLocked || !reviewedOutputs.has(reviewKey(p))}
+                                    onClick={() => void handleAcceptPayment(p)}
+                                  >
+                                    {busyAction === `settle-${p.paymentId}` ? dict.taskVault.escrows.settling : dict.taskVault.escrows.acceptAndSettle}
+                                  </Button>
+                                  <p className="text-[11px] text-muted">{dict.taskVault.escrows.reviewLimitation}</p>
+                                </div>
+                              ) : p.status === 'held' ? (
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  size="sm"
+                                  className="text-xs"
+                                  disabled={Boolean(busyAction) || paymentActionsLocked}
+                                  onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId)}
+                                >
+                                  {busyAction === `output-${p.paymentId}`
+                                    ? dict.taskVault.escrows.submittingOutput
+                                    : dict.taskVault.escrows.submitOutput}
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted">{dict.taskVault.escrows.refunded}</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 )}
               </Card>
             </>
           ) : (
             <Card title={dict.taskVault.detail.defaultTitle}>
-              <div className="empty-state">{dict.taskVault.detail.emptySelect}</div>
+              <Empty>{dict.taskVault.detail.emptySelect}</Empty>
             </Card>
           )}
         </div>

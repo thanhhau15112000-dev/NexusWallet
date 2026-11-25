@@ -44,6 +44,8 @@ export const DEFAULT_RATE_RULES: Record<string, RateRule> = {
   'POST /api/agent/claim-seed': faucetRule('claim-seed'),
   'POST /api/agent/airdrop': faucetRule('airdrop'),
   'POST /api/agent/intents': proposeRule,
+  'POST /api/agent/x402/resolve': proposeRule,
+  'POST /api/agent/x402/fetch': proposeRule,
   'POST /api/tasks/:taskId/payments': proposeRule,
   'POST /api/commands': proposeRule,
   'POST /mcp': { id: 'mcp', limit: 600, windowMs: MINUTE, by: 'owner' },

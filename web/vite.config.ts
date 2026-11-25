@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 const sharedRequire = createRequire(new URL('../shared/package.json', import.meta.url));
 
@@ -11,7 +12,7 @@ const agentProxy = {
 };
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     // Shared Solana instruction builders import the browser Buffer polyfill explicitly.
     alias: { buffer: sharedRequire.resolve('buffer/') },
