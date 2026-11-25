@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
-import { ArrowRight, Bot, CheckCircle2, Lock, Plug, ShieldCheck, Unlock, Wallet } from './icons.js';
+import { Bot, CheckCircle2, Lock, ShieldCheck, Unlock, Wallet } from './icons.js';
 import { api, type AgentState } from '../api.js';
 import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
+import { Button } from './ui/button.js';
+import { Card as ShadcnCard, CardContent } from './ui/card.js';
 import { AgentFundingPanel } from './AgentFundingPanel.js';
+import { cn } from '../lib/utils.js';
 import { useI18n } from '../i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
@@ -100,8 +103,8 @@ function AgentControlCard(props: {
   return (
     <Card
       title={dict.overview.agentControl}
-      titleIcon={<Bot size={16} />}
-      className={agent.frozen ? 'agent-control is-frozen' : 'agent-control'}
+      titleIcon={<Bot size={15} />}
+      className={agent.frozen ? 'border-bad-line bg-bad-soft/20' : undefined}
       actions={
         agent.frozen ? (
           <Pill tone="bad">{dict.agent.frozenStatus}</Pill>
@@ -110,32 +113,35 @@ function AgentControlCard(props: {
         )
       }
     >
-      <p className="card-desc">{agent.frozen ? dict.overview.frozenDesc : dict.overview.activeDesc}</p>
-
-      <div className="button-row">
+      <div className="flex flex-wrap items-center gap-2">
         {agent.frozen ? (
-          <button type="button" className="primary button-with-icon" disabled={busy} onClick={() => void run('unfreeze')}>
-            <Unlock size={14} aria-hidden="true" />
+          <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => void run('unfreeze')}>
+            <Unlock size={13} aria-hidden="true" />
             {dict.agent.unfreezeBtn}
-          </button>
+          </Button>
         ) : confirming ? (
           <>
-            <button type="button" className="danger-solid button-with-icon" disabled={busy} onClick={() => void run('freeze')}>
-              <Lock size={14} aria-hidden="true" />
+            <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={() => void run('freeze')}>
+              <Lock size={13} aria-hidden="true" />
               {dict.agent.confirmFreezeBtn}
-            </button>
-            <button type="button" disabled={busy} onClick={() => setConfirming(false)}>
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
               {dict.agent.cancelFreezeBtn}
-            </button>
+            </Button>
           </>
         ) : (
-          <button type="button" className="danger-outline button-with-icon" disabled={busy} onClick={() => setConfirming(true)}>
-            <Lock size={14} aria-hidden="true" />
+          <Button
+            type="button"
+            variant="destructiveOutline"
+            size="sm"
+            disabled={busy}
+            onClick={() => setConfirming(true)}
+          >
+            <Lock size={13} aria-hidden="true" />
             {dict.agent.freezeBtn}
-          </button>
+          </Button>
         )}
       </div>
-
     </Card>
   );
 }
@@ -151,7 +157,7 @@ export function OverviewPanel(props: {
   onRefresh: () => Promise<void>;
   onToast: (toast: Toast) => void;
   onOpenTab: (tab: 'policy' | 'approvals') => void;
-  onOpenMcp: () => void;
+  onOpenMcp?: () => void;
 }) {
   const { dict, interpolate } = useI18n();
   const { state, wallet } = props;
@@ -162,105 +168,118 @@ export function OverviewPanel(props: {
   const dailyCap = policy.maxSolPerDay ?? null;
 
   return (
-    <div className="page-stack">
-      <div className="stat-grid">
-        <section className="stat stat-hero">
-          <div className="stat-head">
-            <span className="stat-title">
-              <Bot size={15} aria-hidden="true" />
-              {dict.overview.agentBalance}
-            </span>
-            {agent.frozen ? <Pill tone="bad">{dict.agent.frozenStatus}</Pill> : null}
-          </div>
-          {agent.rpcError ? (
-            <Pill tone="bad">{dict.agent.rpcError}</Pill>
-          ) : (
-            <div className="stat-value">
-              {formatSol(agentBalance)}
-              <span className="stat-unit">SOL</span>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ShadcnCard className="border-obsidian-line bg-obsidian text-obsidian-ink shadow-sm">
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-obsidian-muted">
+                <Bot size={14} className="text-signal" aria-hidden="true" />
+                {dict.overview.agentBalance}
+              </span>
+              {agent.frozen ? <Pill tone="bad">{dict.agent.frozenStatus}</Pill> : null}
             </div>
-          )}
-          <div className="stat-foot address-line">
-            <a href={agent.explorerUrl} target="_blank" rel="noreferrer" className="mono">
-              {shorten(agent.pubkey, 6)}
-            </a>
-            <CopyAddressButton value={agent.pubkey} label={dict.agent.copyAddress} />
-          </div>
-        </section>
+            {agent.rpcError ? (
+              <div><Pill tone="bad">{dict.agent.rpcError}</Pill></div>
+            ) : (
+              <div className="flex items-baseline gap-1.5 text-3xl font-semibold tracking-tight text-obsidian-ink tabular-nums">
+                <span>{formatSol(agentBalance)}</span>
+                <span className="font-mono text-xs font-semibold text-signal">SOL</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1 border-t border-obsidian-line pt-2.5 text-xs text-obsidian-muted">
+              <a
+                href={agent.explorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-xs text-signal hover:underline"
+              >
+                {shorten(agent.pubkey, 6)}
+              </a>
+              <CopyAddressButton inverted value={agent.pubkey} label={dict.agent.copyAddress} />
+            </div>
+          </CardContent>
+        </ShadcnCard>
 
-        <section className="stat">
-          <div className="stat-head">
-            <span className="stat-title">
-              <Wallet size={15} aria-hidden="true" />
+        <ShadcnCard>
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
+              <Wallet size={14} aria-hidden="true" />
               {dict.overview.ownerBalance}
             </span>
-          </div>
-          {!wallet ? (
-            <p className="stat-empty">{dict.wallet.connectToViewBalance}</p>
-          ) : owner.loading ? (
-            <p className="stat-empty">{dict.wallet.loadingBalance}</p>
-          ) : owner.error ? (
-            <Pill tone="bad">{dict.wallet.rpcError}</Pill>
-          ) : (
-            <div className="stat-value">
-              {formatSol(owner.balance)}
-              <span className="stat-unit">SOL</span>
+            {!wallet ? (
+              <p className="text-xs text-muted">{dict.wallet.connectToViewBalance}</p>
+            ) : owner.loading ? (
+              <p className="text-xs text-muted">{dict.wallet.loadingBalance}</p>
+            ) : owner.error ? (
+              <div><Pill tone="bad">{dict.wallet.rpcError}</Pill></div>
+            ) : (
+              <div className="flex items-baseline gap-1.5 text-2xl font-semibold tracking-tight text-ink tabular-nums">
+                <span>{formatSol(owner.balance)}</span>
+                <span className="text-xs font-medium text-muted">SOL</span>
+              </div>
+            )}
+            <div className="flex min-h-[26px] items-center gap-1 border-t border-line pt-2.5 text-xs text-muted">
+              {wallet ? (
+                <>
+                  <Mono title={wallet}>{shorten(wallet, 6)}</Mono>
+                  <CopyAddressButton value={wallet} label={dict.wallet.copyAddress} />
+                </>
+              ) : (
+                <span>-</span>
+              )}
             </div>
-          )}
-          {wallet ? (
-            <div className="stat-foot address-line">
-              <Mono title={wallet}>{shorten(wallet, 6)}</Mono>
-              <CopyAddressButton value={wallet} label={dict.wallet.copyAddress} />
+          </CardContent>
+        </ShadcnCard>
+
+        <ShadcnCard>
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
+                <ShieldCheck size={14} aria-hidden="true" />
+                {dict.overview.spendingLimits}
+              </span>
+              <Button type="button" variant="link" size="sm" className="text-xs" onClick={() => props.onOpenTab('policy')}>
+                {dict.overview.editPolicy}
+              </Button>
             </div>
-          ) : null}
-        </section>
+            <div className="flex items-baseline gap-1.5 text-2xl font-semibold tracking-tight text-ink tabular-nums">
+              <span>{policy.maxSolPerTx}</span>
+              <span className="text-xs font-medium text-muted">SOL / tx</span>
+            </div>
+            <div className="space-y-0.5 border-t border-line pt-2.5 text-[11px] text-muted tabular-nums">
+              <div className="flex items-center justify-between gap-2">
+                <span>{dict.overview.perDay}: {dailyCap === null ? dict.overview.unlimited : `${dailyCap} SOL`}</span>
+                <span>{interpolate(dict.overview.recipientsCount, { count: policy.allowedRecipients.length })}</span>
+              </div>
+              {state.usage ? (
+                <div>{interpolate(dict.overview.spent24h, { amount: formatSol(state.usage.spentSol24h) })}</div>
+              ) : null}
+            </div>
+          </CardContent>
+        </ShadcnCard>
 
-        <section className="stat">
-          <div className="stat-head">
-            <span className="stat-title">
-              <ShieldCheck size={15} aria-hidden="true" />
-              {dict.overview.spendingLimits}
-            </span>
-            <button type="button" className="link" onClick={() => props.onOpenTab('policy')}>
-              {dict.overview.editPolicy}
-            </button>
-          </div>
-          <div className="stat-value">
-            {policy.maxSolPerTx}
-            <span className="stat-unit">SOL {dict.overview.perTx.toLowerCase()}</span>
-          </div>
-          <div className="stat-foot stat-lines">
-            <span>
-              {dict.overview.perDay}: {dailyCap === null ? dict.overview.unlimited : `${dailyCap} SOL`}
-            </span>
-            {state.usage ? (
-              <span>{interpolate(dict.overview.spent24h, { amount: formatSol(state.usage.spentSol24h) })}</span>
-            ) : null}
-            <span>{interpolate(dict.overview.recipientsCount, { count: policy.allowedRecipients.length })}</span>
-          </div>
-        </section>
-
-        <section className={pending > 0 ? 'stat is-attention' : 'stat'}>
-          <div className="stat-head">
-            <span className="stat-title">
-              <CheckCircle2 size={15} aria-hidden="true" />
+        <ShadcnCard className={cn(pending > 0 && 'border-warn-line bg-warn-soft/30')}>
+          <CardContent className="flex h-full flex-col justify-between gap-3 p-4">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
+              <CheckCircle2 size={14} className={pending > 0 ? 'text-warn' : undefined} aria-hidden="true" />
               {dict.overview.pendingApprovals}
             </span>
-          </div>
-          <div className="stat-value">{pending}</div>
-          <div className="stat-foot">
-            {pending > 0 ? (
-              <button type="button" className="primary" onClick={() => props.onOpenTab('approvals')}>
-                {dict.overview.review}
-              </button>
-            ) : (
-              <span className="muted">{dict.overview.noPending}</span>
-            )}
-          </div>
-        </section>
+            <div className="text-2xl font-semibold tracking-tight text-ink tabular-nums">{pending}</div>
+            <div className="flex min-h-[26px] items-center border-t border-line pt-2.5">
+              {pending > 0 ? (
+                <Button type="button" variant="default" size="sm" className="h-7 px-2.5 text-xs" onClick={() => props.onOpenTab('approvals')}>
+                  {dict.overview.review}
+                </Button>
+              ) : (
+                <span className="text-xs text-muted">{dict.overview.noPending}</span>
+              )}
+            </div>
+          </CardContent>
+        </ShadcnCard>
       </div>
 
-      <div className="split-grid is-equal">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <AgentControlCard state={state} onRefresh={props.onRefresh} onToast={props.onToast} />
         <AgentFundingPanel
           state={state}
@@ -270,20 +289,6 @@ export function OverviewPanel(props: {
           onDeposit={props.onDeposit}
         />
       </div>
-
-      <section className="mcp-promo">
-        <span className="mcp-promo-icon" aria-hidden="true">
-          <Plug size={20} />
-        </span>
-        <div className="mcp-promo-text">
-          <h3>{dict.overview.mcpPromoTitle}</h3>
-          <p>{dict.overview.mcpPromoDesc}</p>
-        </div>
-        <button type="button" className="mcp-promo-cta button-with-icon" onClick={props.onOpenMcp}>
-          {dict.overview.mcpPromoCta}
-          <ArrowRight size={14} aria-hidden="true" />
-        </button>
-      </section>
     </div>
   );
 }

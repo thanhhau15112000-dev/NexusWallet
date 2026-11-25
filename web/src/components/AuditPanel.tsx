@@ -11,29 +11,37 @@ export function AuditPanel(props: { entries: AuditEntryView[] }) {
   return (
     <Card
       title={dict.audit.title}
-      titleIcon={<ClipboardList size={16} />}
-      className="panel-audit"
+      titleIcon={<ClipboardList size={15} />}
       actions={
-        <label className="toggle">
-          <input type="checkbox" checked={showSealed} onChange={(e) => setShowSealed(e.target.checked)} />
-          {dict.audit.ciphertext}
+        <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 accent-accent"
+            checked={showSealed}
+            onChange={(e) => setShowSealed(e.target.checked)}
+          />
+          <span>{dict.audit.ciphertext}</span>
         </label>
       }
     >
       {props.entries.length === 0 ? (
         <Empty>{dict.audit.noEntries}</Empty>
       ) : (
-        <ul className="audit-list">
+        <ul className="divide-y divide-line rounded-md border border-line">
           {props.entries.map((entry) => (
-            <li key={entry.id}>
-              <details>
-                <summary className="audit-head">
-                  <Mono>{new Date(entry.at).toLocaleTimeString()}</Mono>
-                  <strong>{entry.event}</strong>
-                  {entry.requestId ? <Mono title={entry.requestId}>{entry.requestId}</Mono> : null}
+            <li key={entry.id} className="px-3 py-2">
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-3 text-xs">
+                  <Mono className="text-muted">{new Date(entry.at).toLocaleTimeString()}</Mono>
+                  <span className="font-mono font-semibold text-ink">{entry.event}</span>
+                  {entry.requestId ? (
+                    <Mono title={entry.requestId} className="ml-auto text-muted">
+                      {entry.requestId}
+                    </Mono>
+                  ) : null}
                 </summary>
-                <pre>
-                  {showSealed ? entry.sealed.ciphertext : JSON.stringify(entry.detail, null, 1).slice(0, 600)}
+                <pre className="mt-2 overflow-x-auto rounded border border-line bg-surface-muted p-2.5 font-mono text-[11px] text-ink">
+                  {showSealed ? entry.sealed.ciphertext : JSON.stringify(entry.detail, null, 2).slice(0, 600)}
                 </pre>
               </details>
             </li>
