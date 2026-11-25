@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LAMPORTS_PER_SOL, PubkeySchema, type ModelAction } from './contract.js';
+import { type ModelAction } from './contract.js';
 import type { Policy } from './policy.js';
 
 export const X402AcceptOptionSchema = z.object({
@@ -89,17 +89,54 @@ export function findSupportedX402Option(
   });
 }
 
+function parsePositiveBaseUnits(amount: string | number): bigint {
+  if (typeof amount === 'number') {
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      throw new RangeError(`Invalid x402 integer base-unit amount: ${amount}`);
+    }
+    return BigInt(amount);
+  }
+  const trimmed = amount.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new RangeError(`Invalid x402 integer base-unit amount: ${amount}`);
+  }
+  const parsed = BigInt(trimmed);
+  if (parsed <= 0n) {
+    throw new RangeError(`Invalid x402 payment amount: ${amount}`);
+  }
+  return parsed;
+}
+
+function baseUnitsToHuman(baseUnits: bigint, decimals: number): number {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+    throw new RangeError(`Invalid token decimals: ${decimals}`);
+  }
+  if (decimals === 0) {
+    const whole = Number(baseUnits);
+    if (!Number.isSafeInteger(whole) || whole <= 0) {
+      throw new RangeError(`x402 amount out of supported numeric range: ${baseUnits}`);
+    }
+    return whole;
+  }
+  const divisor = 10n ** BigInt(decimals);
+  const whole = baseUnits / divisor;
+  const fraction = (baseUnits % divisor).toString().padStart(decimals, '0').replace(/0+$/, '');
+  const value = Number(fraction ? `${whole}.${fraction}` : whole.toString());
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError(`x402 amount out of supported numeric range: ${baseUnits}`);
+  }
+  return value;
+}
+
 export function x402OptionToAction(
   option: X402AcceptOption,
   policy: Policy,
+  splDecimals?: number,
 ): {
   action: Extract<ModelAction, { type: 'transfer_sol' | 'transfer_spl' }>;
   idempotencyKey: string;
 } {
-  const rawAmount = typeof option.amount === 'string' ? Number(option.amount) : option.amount;
-  if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
-    throw new RangeError(`Invalid x402 payment amount: ${option.amount}`);
-  }
+  const baseUnits = parsePositiveBaseUnits(option.amount);
 
   const cleanResource = (option.resource ?? 'endpoint')
     .replace(/^https?:\/\//, '')
@@ -112,8 +149,7 @@ export function x402OptionToAction(
 
   const isNative = isNativeSolAsset(option.asset);
   if (isNative) {
-    const lamports = Math.round(rawAmount);
-    const amountSol = lamports / LAMPORTS_PER_SOL;
+    const amountSol = baseUnitsToHuman(baseUnits, 9);
     return {
       action: {
         type: 'transfer_sol',
@@ -125,12 +161,16 @@ export function x402OptionToAction(
     };
   }
 
+  if (splDecimals === undefined) {
+    throw new RangeError(`Mint decimals are required for SPL x402 asset: ${option.asset}`);
+  }
+
   return {
     action: {
       type: 'transfer_spl',
       recipient: option.payee,
       mint: option.asset,
-      amount: rawAmount,
+      amount: baseUnitsToHuman(baseUnits, splDecimals),
       memo: option.nonce ? `x402:${option.nonce}` : undefined,
     },
     idempotencyKey,

@@ -9,12 +9,13 @@ vi.mock('../src/chain.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/chain.js')>();
   return {
     ...actual,
+    getMintDecimals: vi.fn().mockResolvedValue(6),
     transferSol: vi.fn().mockResolvedValue({ signature: 'sig-x402-sol-tx', slot: 101 }),
     transferSpl: vi.fn().mockResolvedValue({ signature: 'sig-x402-spl-tx', slot: 102 }),
   };
 });
 
-import { transferSol, transferSpl } from '../src/chain.js';
+import { getMintDecimals, transferSol, transferSpl } from '../src/chain.js';
 import { registerRoutes } from '../src/routes.js';
 import { Store } from '../src/store.js';
 import { SessionManager } from '../src/sessions.js';
@@ -68,6 +69,7 @@ function makeContext(overrides?: Partial<AppContext>): AppContext {
 }
 
 afterEach(() => {
+  vi.mocked(getMintDecimals).mockClear();
   vi.mocked(transferSol).mockClear();
   vi.mocked(transferSpl).mockClear();
   while (tempDirs.length) rmSync(tempDirs.pop()!, { recursive: true, force: true });
@@ -131,7 +133,36 @@ describe('x402 Payment Guard integration', () => {
     expect(transferSol).toHaveBeenCalledTimes(1);
   });
 
-  it('resolves an allowlisted SPL token challenge', async () => {
+  it('resolves an allowlisted SPL token challenge from integer base units', async () => {
+    const ctx = makeContext();
+    const challenge = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'solana',
+          amount: '2500000', // 2.5 USDC in 6-decimal base units
+          asset: USDC_MINT,
+          payee: TREASURY,
+          nonce: 'spl_nonce_42',
+        },
+      ],
+    };
+
+    const result = await resolveX402Payment(ctx, challenge);
+    expect(result.status).toBe('completed');
+    expect(getMintDecimals).toHaveBeenCalledWith(ctx.connection, USDC_MINT);
+    expect(transferSpl).toHaveBeenCalledTimes(1);
+    expect(transferSpl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mint: USDC_MINT,
+        recipient: TREASURY,
+        amount: 2.5,
+      }),
+    );
+  });
+
+  it('rejects fractional non-base-unit amounts', async () => {
     const ctx = makeContext();
     const challenge = {
       x402Version: 2,
@@ -142,14 +173,17 @@ describe('x402 Payment Guard integration', () => {
           amount: 2.5,
           asset: USDC_MINT,
           payee: TREASURY,
-          nonce: 'spl_nonce_42',
+          nonce: 'fractional_spl',
         },
       ],
     };
 
     const result = await resolveX402Payment(ctx, challenge);
-    expect(result.status).toBe('completed');
-    expect(transferSpl).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('denied');
+    if (result.status === 'denied') {
+      expect(result.code).toBe('INVALID_X402_OPTION');
+    }
+    expect(transferSpl).not.toHaveBeenCalled();
   });
 
   it('triggers pending_approval with fast-fail X402_APPROVAL_REQUIRED when exceeding limit', async () => {
@@ -354,6 +388,65 @@ describe('x402 Payment Guard integration', () => {
       expect(res.payment?.status).toBe('paid');
       expect(res.payment?.signature).toBe('sig-x402-sol-tx');
       expect(attempts).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reports pending_approval and denied payment statuses accurately in fetchWithX402', async () => {
+    const ctx = makeContext();
+
+    const make402Mock = (amount: string, payee: string) =>
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            x402Version: 2,
+            accepts: [{ scheme: 'exact', network: 'solana', amount, asset: 'native', payee, nonce: `n_${amount}_${payee}` }],
+          }),
+          { status: 402, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    vi.stubGlobal('fetch', make402Mock('500000000', TREASURY));
+    try {
+      const pendingRes = await fetchWithX402(ctx, 'https://premium.ai/expensive');
+      expect(pendingRes.status).toBe(402);
+      expect(pendingRes.payment?.status).toBe('pending_approval');
+      expect(pendingRes.payment?.requestId).toMatch(/^req_/);
+      expect(pendingRes.error?.code).toBe('X402_APPROVAL_REQUIRED');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    vi.stubGlobal('fetch', make402Mock('10000000', STRANGER));
+    try {
+      const deniedRes = await fetchWithX402(ctx, 'https://premium.ai/untrusted');
+      expect(deniedRes.status).toBe(402);
+      expect(deniedRes.payment?.status).toBe('denied');
+      expect(deniedRes.error?.code).toBe('RECIPIENT_NOT_IN_ALLOWLIST');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('blocks SSRF targets in fetchWithX402 before calling fetch', async () => {
+    const ctx = makeContext();
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    try {
+      for (const badUrl of [
+        'http://127.0.0.1:8787/api/health',
+        'http://localhost:3000/admin',
+        'http://169.254.169.254/latest/meta-data/',
+        'http://[::ffff:127.0.0.1]/internal',
+        'file:///etc/passwd',
+      ]) {
+        const res = await fetchWithX402(ctx, badUrl);
+        expect(res.status).toBe(400);
+        expect(res.error?.code).toBe('INVALID_TARGET_URL');
+      }
+      expect(mockFetch).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
