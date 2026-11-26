@@ -39,7 +39,7 @@ import { OverviewPanel } from './components/OverviewPanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
-import { LanguageToggle } from './components/SettingsMenu.js';
+import { LanguageToggle, ThemeToggle } from './components/SettingsMenu.js';
 import { BootScreen } from './components/BootScreen.js';
 import { Mono, Pill, shorten } from './components/ui.js';
 import { Button } from './components/ui/button.js';
@@ -354,7 +354,11 @@ export function App() {
   };
 
   const deposit = async (amountSol: number) => {
-    if (!wallet || !state || !connectedWalletRef.current) return;
+    if (!state) return;
+    if (!wallet || !connectedWalletRef.current) {
+      setToast({ tone: 'warn', text: dict.toasts.connectWalletToDeposit });
+      return;
+    }
     setFlag('deposit', true);
     try {
       const signature = await sendSolFromWallet({
@@ -425,19 +429,6 @@ export function App() {
       throw err;
     } finally {
       setFlag('policy', false);
-    }
-  };
-
-  const airdrop = async () => {
-    setFlag('airdrop', true);
-    try {
-      await api.airdrop(1);
-      await refresh();
-      setToast({ tone: 'ok', text: dict.toasts.airdropRequested });
-    } catch (err) {
-      setToast({ tone: 'bad', text: errorText(err) });
-    } finally {
-      setFlag('airdrop', false);
     }
   };
 
@@ -719,6 +710,7 @@ export function App() {
               />
               {offline ? dict.topbar.offline : dict.topbar.ready}
             </span>
+            <ThemeToggle />
             <LanguageToggle />
           </div>
         </header>
@@ -735,14 +727,15 @@ export function App() {
             state={state}
             wallet={wallet}
             requests={requests}
-            fundingBusy={Boolean(busy.airdrop || busy.seed || busy.deposit)}
-            onAirdrop={() => void airdrop()}
+            fundingBusy={Boolean(busy.seed || busy.deposit)}
             onClaimSeed={() => void claimSeed()}
             onDeposit={(amount) => void deposit(amount)}
             onRefresh={refresh}
             onToast={setToast}
             onOpenTab={setActiveTab}
             onOpenMcp={openMcpCard}
+            onConnectWallet={() => setWalletPickerOpen(true)}
+            connectDisabled={!walletChoices.length || Boolean(busy.connect)}
           />,
         )}
 
@@ -821,7 +814,7 @@ export function App() {
         <div
           role="status"
           className={cn(
-            'fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border px-4 py-3 text-sm font-medium shadow-lg',
+            'fixed top-5 right-5 z-50 max-w-sm rounded-lg border px-4 py-3 text-sm font-medium shadow-lg',
             toast.tone === 'ok' && 'border-accent-line bg-panel text-ink',
             toast.tone === 'warn' && 'border-warn-line bg-warn-soft text-warn',
             toast.tone === 'bad' && 'border-bad-line bg-bad-soft text-bad',

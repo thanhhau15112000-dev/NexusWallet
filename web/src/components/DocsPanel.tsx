@@ -2,6 +2,9 @@ import { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search } from './icons.js';
 import { useI18n } from '../i18n/context.js';
 import type { TranslationDictionary } from '../i18n/types.js';
+import { cn } from '../lib/utils.js';
+import { Input } from './ui/input.js';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
 import {
   Callout,
   CodeBlock,
@@ -15,6 +18,20 @@ import {
 import { buildPagesVi } from './docsPagesVi.js';
 
 export type { DocsLinkTab };
+
+const NAV_HEADING = 'mb-1.5 text-xs font-medium text-muted';
+const PAGER_LINK =
+  'flex cursor-pointer flex-col items-start gap-0.5 rounded-md border border-line bg-panel px-3.5 py-2.5 text-left hover:border-line-strong hover:bg-surface-muted';
+/** Prose styles for a docs section body: paragraphs, lists and inline code written as plain elements in the page builders. */
+const PROSE = cn(
+  'mt-7 scroll-mt-5 text-ink',
+  '[&_p]:mb-3 [&_p]:text-[13.5px] [&_p]:leading-relaxed',
+  '[&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:text-[13.5px] [&_ul]:leading-relaxed',
+  '[&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:text-[13.5px] [&_ol]:leading-relaxed',
+  '[&_li+li]:mt-1.5',
+  '[&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-surface-muted [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-px [&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-xs [&_:not(pre)>code]:[overflow-wrap:anywhere]',
+  '[&_td_code]:whitespace-nowrap [&_td_code]:[overflow-wrap:normal] [&_table]:mb-3',
+);
 
 export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPage[] {
   return [
@@ -68,22 +85,22 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           id: 'map',
           title: 'Dashboard map',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Tab</th>
-                  <th>Use it to</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Wallet</td><td>See the agent wallet, connect the owner wallet, fund the agent.</td></tr>
-                <tr><td>Task Vault</td><td>Lock a task budget on-chain and pay workers through escrow.</td></tr>
-                <tr><td>Commands</td><td>Ask the agent to check its balance or send SOL in plain text.</td></tr>
-                <tr><td>Policy</td><td>Set the per-transaction limit and the recipient allowlist.</td></tr>
-                <tr><td>Approvals</td><td>Review every request and approve held transfers.</td></tr>
-                <tr><td>Audit</td><td>Read the append-only log of decisions and executions.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tab</TableHead>
+                  <TableHead>Use it to</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>Wallet</TableCell><TableCell>See the agent wallet, connect the owner wallet, fund the agent.</TableCell></TableRow>
+                <TableRow><TableCell>Task Vault</TableCell><TableCell>Lock a task budget on-chain and pay workers through escrow.</TableCell></TableRow>
+                <TableRow><TableCell>Commands</TableCell><TableCell>Ask the agent to check its balance or send SOL in plain text.</TableCell></TableRow>
+                <TableRow><TableCell>Policy</TableCell><TableCell>Set the per-transaction limit and the recipient allowlist.</TableCell></TableRow>
+                <TableRow><TableCell>Approvals</TableCell><TableCell>Review every request and approve held transfers.</TableCell></TableRow>
+                <TableRow><TableCell>Audit</TableCell><TableCell>Read the append-only log of decisions and executions.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
       ],
@@ -153,7 +170,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
       group: 'Guides',
       title: 'Wallet and funding',
       summary: 'The agent wallet, the owner wallet, and the ways to put Devnet SOL in the agent.',
-      keywords: 'airdrop faucet seed deposit balance owner',
+      keywords: 'faucet seed deposit balance owner',
       sections: [
         {
           id: 'two-wallets',
@@ -176,20 +193,19 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           title: 'Funding options',
           body: (
             <>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Button</th>
-                    <th>What happens</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td>Claim 0.1 SOL seed</td><td>One-time transfer from the service funder. Available once per agent.</td></tr>
-                  <tr><td>Deposit 0.1 SOL</td><td>Your wallet sends 0.1 SOL to the agent. Your wallet asks you to confirm.</td></tr>
-                  <tr><td>Airdrop 1 SOL</td><td>Requests SOL from the public Devnet faucet. Often rate-limited.</td></tr>
-                  <tr><td>Official Faucet</td><td>Opens faucet.solana.com with the agent address filled in.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Button</TableHead>
+                    <TableHead>What happens</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell>Claim 0.1 SOL seed</TableCell><TableCell>One-time transfer from the service funder. Available once per agent.</TableCell></TableRow>
+                  <TableRow><TableCell>Deposit 0.1 SOL</TableCell><TableCell>Your wallet sends 0.1 SOL to the agent. Your wallet asks you to confirm.</TableCell></TableRow>
+                  <TableRow><TableCell>Official Faucet</TableCell><TableCell>Opens faucet.solana.com with the agent address filled in.</TableCell></TableRow>
+                </TableBody>
+              </Table>
               <Callout tone="note" title="Zero balance is fine for policy checks">
                 The policy decision does not depend on the balance. Only the on-chain transfer needs funds.
               </Callout>
@@ -228,22 +244,22 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           id: 'verdicts',
           title: 'How the verdict is decided',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Condition</th>
-                  <th>Verdict</th>
-                  <th>Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Recipient not on the allowlist</td><td><code>deny</code></td><td>Nothing is signed. No approval is offered.</td></tr>
-                <tr><td>Amount is zero or invalid</td><td><code>deny</code></td><td>Nothing is signed.</td></tr>
-                <tr><td>Amount above the limit</td><td><code>require_approval</code></td><td>Held until the owner approves.</td></tr>
-                <tr><td>Allowlisted and within the limit</td><td><code>allow</code></td><td>The agent signs and submits.</td></tr>
-                <tr><td>Balance check</td><td><code>allow</code></td><td>Read-only, always allowed.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Condition</TableHead>
+                  <TableHead>Verdict</TableHead>
+                  <TableHead>Result</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>Recipient not on the allowlist</TableCell><TableCell><code>deny</code></TableCell><TableCell>Nothing is signed. No approval is offered.</TableCell></TableRow>
+                <TableRow><TableCell>Amount is zero or invalid</TableCell><TableCell><code>deny</code></TableCell><TableCell>Nothing is signed.</TableCell></TableRow>
+                <TableRow><TableCell>Amount above the limit</TableCell><TableCell><code>require_approval</code></TableCell><TableCell>Held until the owner approves.</TableCell></TableRow>
+                <TableRow><TableCell>Allowlisted and within the limit</TableCell><TableCell><code>allow</code></TableCell><TableCell>The agent signs and submits.</TableCell></TableRow>
+                <TableRow><TableCell>Balance check</TableCell><TableCell><code>allow</code></TableCell><TableCell>Read-only, always allowed.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
         {
@@ -278,20 +294,20 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <>
               <p>A command is turned into exactly one of these actions. Anything else is not executed.</p>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Action</th>
-                    <th>Example command</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td><code>get_balance</code></td><td>What is my balance?</td></tr>
-                  <tr><td><code>transfer_sol</code></td><td>Send 0.05 SOL to my-wallet</td></tr>
-                  <tr><td><code>transfer_spl</code></td><td>Send 5 USDC to my-wallet (only if that mint is allowlisted; none are by default)</td></tr>
-                  <tr><td><code>request_manual_approval</code></td><td>Used when the request is unclear; nothing is executed.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Example command</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell><code>get_balance</code></TableCell><TableCell>What is my balance?</TableCell></TableRow>
+                  <TableRow><TableCell><code>transfer_sol</code></TableCell><TableCell>Send 0.05 SOL to my-wallet</TableCell></TableRow>
+                  <TableRow><TableCell><code>transfer_spl</code></TableCell><TableCell>Send 5 USDC to my-wallet (only if that mint is allowlisted; none are by default)</TableCell></TableRow>
+                  <TableRow><TableCell><code>request_manual_approval</code></TableCell><TableCell>Used when the request is unclear; nothing is executed.</TableCell></TableRow>
+                </TableBody>
+              </Table>
             </>
           ),
         },
@@ -471,24 +487,24 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           title: 'Tools',
           body: (
             <>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Tool</th>
-                    <th>What it does</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td><code>nexuspay_get_status</code></td><td>Agent address, SOL balance, per-transaction limit, allowlist labels.</td></tr>
-                  <tr><td><code>nexuspay_list_requests</code></td><td>Recent requests with verdicts and outcomes. Optional status filter.</td></tr>
-                  <tr><td><code>nexuspay_get_request</code></td><td>One request, for example to see whether you approved it.</td></tr>
-                  <tr><td><code>nexuspay_transfer_sol</code></td><td>Propose a SOL transfer. The policy decides.</td></tr>
-                  <tr><td><code>nexuspay_transfer_spl</code></td><td>Propose an SPL token transfer. Recipient and mint must be allowlisted.</td></tr>
-                  <tr><td><code>nexuspay_list_tasks</code></td><td>Read delegated Task Vault records, remaining budgets, caps and expiry.</td></tr>
-                  <tr><td><code>nexuspay_get_task</code></td><td>Read a task, its Escrows and Receipts. Local records are not a fresh chain reconciliation.</td></tr>
-                  <tr><td><code>nexuspay_execute_task_payment</code></td><td>Create an Escrow within an existing capability. Worker settlement is a separate step.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tool</TableHead>
+                    <TableHead>What it does</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell><code>nexuspay_get_status</code></TableCell><TableCell>Agent address, SOL balance, per-transaction limit, allowlist labels.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_list_requests</code></TableCell><TableCell>Recent requests with verdicts and outcomes. Optional status filter.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_get_request</code></TableCell><TableCell>One request, for example to see whether you approved it.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_transfer_sol</code></TableCell><TableCell>Propose a SOL transfer. The policy decides.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_transfer_spl</code></TableCell><TableCell>Propose an SPL token transfer. Recipient and mint must be allowlisted.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_list_tasks</code></TableCell><TableCell>Read delegated Task Vault records, remaining budgets, caps and expiry.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_get_task</code></TableCell><TableCell>Read a task, its Escrows and Receipts. Local records are not a fresh chain reconciliation.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_execute_task_payment</code></TableCell><TableCell>Create an Escrow within an existing capability. Worker settlement is a separate step.</TableCell></TableRow>
+                </TableBody>
+              </Table>
               <p>
                 MCP can read wallet status, requests and tasks, propose transfers and create Escrows within a delegated
                 capability. Policy changes, approvals, task creation/funding, revocation, settlement, refunds and
@@ -516,20 +532,20 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 <li>
                   Pick your client and copy its entry. The card shows the token masked; <em>Copy</em> puts the full
                   value on the clipboard.
-                  <table className="docs-table">
-                    <thead>
-                      <tr>
-                        <th>Client</th>
-                        <th>Where the entry goes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr><td>Claude Code</td><td>Run the <code>claude mcp add --transport http …</code> command once.</td></tr>
-                      <tr><td>Codex</td><td><code>~/.codex/config.toml</code> (<code>url</code> + <code>http_headers</code>).</td></tr>
-                      <tr><td>Antigravity</td><td><code>~/.gemini/config/mcp_config.json</code> (<code>serverUrl</code> + <code>headers</code>).</td></tr>
-                      <tr><td>Claude Desktop</td><td><code>claude_desktop_config.json</code>, through the <code>mcp-remote</code> bridge (needs Node.js).</td></tr>
-                    </tbody>
-                  </table>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Client</TableHead>
+                        <TableHead>Where the entry goes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow><TableCell>Claude Code</TableCell><TableCell>Run the <code>claude mcp add --transport http …</code> command once.</TableCell></TableRow>
+                      <TableRow><TableCell>Codex</TableCell><TableCell><code>~/.codex/config.toml</code> (<code>url</code> + <code>http_headers</code>).</TableCell></TableRow>
+                      <TableRow><TableCell>Antigravity</TableCell><TableCell><code>~/.gemini/config/mcp_config.json</code> (<code>serverUrl</code> + <code>headers</code>).</TableCell></TableRow>
+                      <TableRow><TableCell>Claude Desktop</TableCell><TableCell><code>claude_desktop_config.json</code>, through the <code>mcp-remote</code> bridge (needs Node.js).</TableCell></TableRow>
+                    </TableBody>
+                  </Table>
                 </li>
                 <li>
                   Restart or reload the client, then ask it something like <em>&ldquo;Check my nexusPay wallet
@@ -562,7 +578,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                         id: 'claude-code',
                         label: 'Claude Code',
                         body: (
-                          <p className="docs-muted">
+                          <p className="text-muted">
                             Open Claude Code in the repository root, not a subfolder, and approve the project server
                             from <code>.mcp.json</code> when prompted. It is already committed; there are no paths or
                             secrets to fill in.
@@ -573,7 +589,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                         id: 'cursor',
                         label: 'Cursor',
                         body: (
-                          <p className="docs-muted">
+                          <p className="text-muted">
                             Open the repository root (not a subfolder) and enable <code>nexuspay</code> from the committed
                             {' '}<code>.cursor/mcp.json</code>.
                           </p>
@@ -584,7 +600,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                         label: 'Codex',
                         body: (
                           <>
-                            <p className="docs-muted">
+                            <p className="text-muted">
                               Registers the server in <code>~/.codex/config.toml</code>. A project
                               {' '}<code>.codex/config.toml</code> is also committed, but Codex reads it only for trusted
                               projects, so the installer is the reliable path.
@@ -598,7 +614,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                         label: 'Claude Desktop',
                         body: (
                           <>
-                            <p className="docs-muted">
+                            <p className="text-muted">
                               Registers the server in <code>claude_desktop_config.json</code>. Restart Claude Desktop
                               afterwards.
                             </p>
@@ -611,7 +627,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                         label: 'Antigravity',
                         body: (
                           <>
-                            <p className="docs-muted">
+                            <p className="text-muted">
                               Registers the server in <code>~/.gemini/config/mcp_config.json</code>.
                             </p>
                             <CodeBlock label="Terminal" code="pnpm mcp:install -- --client antigravity" />
@@ -672,23 +688,23 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 None are needed for a single owner on the default setup. Set them in the client&apos;s
                 {' '}<code>env</code> block.
               </p>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Variable</th>
-                    <th>Default</th>
-                    <th>When to set it</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td><code>NEXUS_OWNER_PUBKEY</code></td><td>auto</td><td>More than one owner has signed in on this machine.</td></tr>
-                  <tr><td><code>NEXUS_AGENT_DATA_DIR</code></td><td>auto</td><td>The agent service uses a non-default data directory.</td></tr>
-                  <tr><td><code>NEXUS_AGENT_TOKEN</code></td><td>auto</td><td>Use a specific token instead of the one on disk.</td></tr>
-                  <tr><td><code>NEXUS_API_URL</code></td><td><code>http://127.0.0.1:8787</code></td><td>The agent runs on another port. Loopback only.</td></tr>
-                  <tr><td><code>NEXUS_DASHBOARD_URL</code></td><td><code>http://localhost:5173</code></td><td>Shown in approval hints. Loopback only.</td></tr>
-                  <tr><td><code>NEXUS_TIMEOUT_MS</code></td><td><code>45000</code></td><td>Kept below the 60 s default tool timeout in Codex.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Variable</TableHead>
+                    <TableHead>Default</TableHead>
+                    <TableHead>When to set it</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell><code>NEXUS_OWNER_PUBKEY</code></TableCell><TableCell>auto</TableCell><TableCell>More than one owner has signed in on this machine.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_AGENT_DATA_DIR</code></TableCell><TableCell>auto</TableCell><TableCell>The agent service uses a non-default data directory.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_AGENT_TOKEN</code></TableCell><TableCell>auto</TableCell><TableCell>Use a specific token instead of the one on disk.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_API_URL</code></TableCell><TableCell><code>http://127.0.0.1:8787</code></TableCell><TableCell>The agent runs on another port. Loopback only.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_DASHBOARD_URL</code></TableCell><TableCell><code>http://localhost:5173</code></TableCell><TableCell>Shown in approval hints. Loopback only.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_TIMEOUT_MS</code></TableCell><TableCell><code>45000</code></TableCell><TableCell>Kept below the 60 s default tool timeout in Codex.</TableCell></TableRow>
+                </TableBody>
+              </Table>
             </>
           ),
         },
@@ -717,28 +733,28 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           id: 'mcp-troubleshooting',
           title: 'Troubleshooting',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Symptom</th>
-                  <th>Fix</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td><code>mcp_setup_required</code>: no MCP token found</td><td>Sign in to this dashboard with your wallet once on this machine. The next tool call picks the token up; no client restart.</td></tr>
-                <tr><td><code>mcp_setup_required</code>: multiple owners</td><td>Set <code>NEXUS_OWNER_PUBKEY</code> to your wallet address in the client env.</td></tr>
-                <tr><td><code>mcp_token_rejected</code></td><td>The token was rotated or the agent uses another data directory. Check <code>NEXUS_AGENT_DATA_DIR</code>, or sign in again.</td></tr>
-                <tr><td><code>agent_unreachable</code></td><td>Run <code>pnpm dev</code> from the repository root; check <code>NEXUS_API_URL</code>.</td></tr>
-                <tr><td>Server fails to start from <code>.mcp.json</code></td><td>The client was opened in a subfolder, so the relative bundle path does not resolve. Open it in the repository root, or register an absolute path: <code>claude mcp add -s user nexuspay -- node &lt;path from pnpm mcp:config&gt;</code> for Claude Code, or the <code>pnpm mcp:config</code> JSON in <code>~/.cursor/mcp.json</code> for Cursor. <code>pnpm mcp:install</code> covers Codex, Claude Desktop and Antigravity only.</td></tr>
-                <tr><td><code>Cannot find module .../nexuspay-mcp.mjs</code></td><td>Run <code>pnpm mcp:build</code> and check <code>dist/mcp/nexuspay-mcp.mjs</code>.</td></tr>
-                <tr><td><code>node</code> not found</td><td>Install Node.js 22+, or put the absolute path of <code>node</code> in <code>command</code>.</td></tr>
-                <tr><td>Codex cuts the call at 60 s</td><td>Keep <code>tool_timeout_sec = 90</code> in the Codex entry.</td></tr>
-                <tr><td>Antigravity rejects the tool schema</td><td>Run <code>pnpm mcp:build</code> and restart Antigravity.</td></tr>
-                <tr><td><code>AGENT_FROZEN</code></td><td>The owner has locked the agent. Ask the owner to unfreeze it on the dashboard; do not retry transfers while frozen.</td></tr>
-                <tr><td><code>RATE_LIMITED</code></td><td>Too many requests from this token or address. Wait <code>details.retryAfterSeconds</code> seconds, then retry; reuse the same <code>idempotencyKey</code> for a transfer.</td></tr>
-                <tr><td><code>DAILY_LIMIT_EXCEEDED</code></td><td>The 24-hour spending limit was exceeded. The owner must approve this transfer in the dashboard, or wait for capacity to reset.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Symptom</TableHead>
+                  <TableHead>Fix</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell><code>mcp_setup_required</code>: no MCP token found</TableCell><TableCell>Sign in to this dashboard with your wallet once on this machine. The next tool call picks the token up; no client restart.</TableCell></TableRow>
+                <TableRow><TableCell><code>mcp_setup_required</code>: multiple owners</TableCell><TableCell>Set <code>NEXUS_OWNER_PUBKEY</code> to your wallet address in the client env.</TableCell></TableRow>
+                <TableRow><TableCell><code>mcp_token_rejected</code></TableCell><TableCell>The token was rotated or the agent uses another data directory. Check <code>NEXUS_AGENT_DATA_DIR</code>, or sign in again.</TableCell></TableRow>
+                <TableRow><TableCell><code>agent_unreachable</code></TableCell><TableCell>Run <code>pnpm dev</code> from the repository root; check <code>NEXUS_API_URL</code>.</TableCell></TableRow>
+                <TableRow><TableCell>Server fails to start from <code>.mcp.json</code></TableCell><TableCell>The client was opened in a subfolder, so the relative bundle path does not resolve. Open it in the repository root, or register an absolute path: <code>claude mcp add -s user nexuspay -- node &lt;path from pnpm mcp:config&gt;</code> for Claude Code, or the <code>pnpm mcp:config</code> JSON in <code>~/.cursor/mcp.json</code> for Cursor. <code>pnpm mcp:install</code> covers Codex, Claude Desktop and Antigravity only.</TableCell></TableRow>
+                <TableRow><TableCell><code>Cannot find module .../nexuspay-mcp.mjs</code></TableCell><TableCell>Run <code>pnpm mcp:build</code> and check <code>dist/mcp/nexuspay-mcp.mjs</code>.</TableCell></TableRow>
+                <TableRow><TableCell><code>node</code> not found</TableCell><TableCell>Install Node.js 22+, or put the absolute path of <code>node</code> in <code>command</code>.</TableCell></TableRow>
+                <TableRow><TableCell>Codex cuts the call at 60 s</TableCell><TableCell>Keep <code>tool_timeout_sec = 90</code> in the Codex entry.</TableCell></TableRow>
+                <TableRow><TableCell>Antigravity rejects the tool schema</TableCell><TableCell>Run <code>pnpm mcp:build</code> and restart Antigravity.</TableCell></TableRow>
+                <TableRow><TableCell><code>AGENT_FROZEN</code></TableCell><TableCell>The owner has locked the agent. Ask the owner to unfreeze it on the dashboard; do not retry transfers while frozen.</TableCell></TableRow>
+                <TableRow><TableCell><code>RATE_LIMITED</code></TableCell><TableCell>Too many requests from this token or address. Wait <code>details.retryAfterSeconds</code> seconds, then retry; reuse the same <code>idempotencyKey</code> for a transfer.</TableCell></TableRow>
+                <TableRow><TableCell><code>DAILY_LIMIT_EXCEEDED</code></TableCell><TableCell>The 24-hour spending limit was exceeded. The owner must approve this transfer in the dashboard, or wait for capacity to reset.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
       ],
@@ -754,25 +770,25 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           id: 'table',
           title: 'Statuses',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Label</th>
-                  <th>Status</th>
-                  <th>Meaning</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Queued</td><td><code>planned</code></td><td>Planned, not yet decided.</td></tr>
-                <tr><td>Auto</td><td><code>auto_approved</code></td><td>Allowed by policy; the agent is signing.</td></tr>
-                <tr><td>Approval</td><td><code>pending_approval</code></td><td>Above the limit; waiting for the owner.</td></tr>
-                <tr><td>Approved</td><td><code>approved</code></td><td>Owner approved; the agent is submitting.</td></tr>
-                <tr><td>Confirmed</td><td><code>confirmed</code></td><td>Confirmed on Devnet. Explorer link available.</td></tr>
-                <tr><td>Denied</td><td><code>denied</code></td><td>Rejected by policy. Nothing was signed.</td></tr>
-                <tr><td>Expired</td><td><code>expired</code></td><td>The approval window closed.</td></tr>
-                <tr><td>Failed</td><td><code>failed</code></td><td>Submission failed, for example low balance.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Label</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Meaning</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>Queued</TableCell><TableCell><code>planned</code></TableCell><TableCell>Planned, not yet decided.</TableCell></TableRow>
+                <TableRow><TableCell>Auto</TableCell><TableCell><code>auto_approved</code></TableCell><TableCell>Allowed by policy; the agent is signing.</TableCell></TableRow>
+                <TableRow><TableCell>Approval</TableCell><TableCell><code>pending_approval</code></TableCell><TableCell>Above the limit; waiting for the owner.</TableCell></TableRow>
+                <TableRow><TableCell>Approved</TableCell><TableCell><code>approved</code></TableCell><TableCell>Owner approved; the agent is submitting.</TableCell></TableRow>
+                <TableRow><TableCell>Confirmed</TableCell><TableCell><code>confirmed</code></TableCell><TableCell>Confirmed on Devnet. Explorer link available.</TableCell></TableRow>
+                <TableRow><TableCell>Denied</TableCell><TableCell><code>denied</code></TableCell><TableCell>Rejected by policy. Nothing was signed.</TableCell></TableRow>
+                <TableRow><TableCell>Expired</TableCell><TableCell><code>expired</code></TableCell><TableCell>The approval window closed.</TableCell></TableRow>
+                <TableRow><TableCell>Failed</TableCell><TableCell><code>failed</code></TableCell><TableCell>Submission failed, for example low balance.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
       ],
@@ -788,22 +804,21 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           id: 'common',
           title: 'Common issues',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Symptom</th>
-                  <th>Cause and fix</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Airdrop fails with 429</td><td>The public faucet is rate-limited. Deposit from your wallet or use the Official Faucet link.</td></tr>
-                <tr><td>“Connect owner wallet” on Approve</td><td>The connected wallet is not the owner. Switch to the wallet you signed in with.</td></tr>
-                <tr><td>Approval rejected</td><td>It expired, or the policy was saved after the request was held. Run the command again.</td></tr>
-                <tr><td>“Session expired”</td><td>Sign in with your wallet again. Switching wallet accounts also ends the session.</td></tr>
-                <tr><td>Requests show <code>[fallback]</code></td><td>No model API keys are configured. The deterministic parser handles simple commands.</td></tr>
-                <tr><td>Execution failed</td><td>The agent balance is too low for the amount plus fees. Fund the agent.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Symptom</TableHead>
+                  <TableHead>Cause and fix</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>“Connect owner wallet” on Approve</TableCell><TableCell>The connected wallet is not the owner. Switch to the wallet you signed in with.</TableCell></TableRow>
+                <TableRow><TableCell>Approval rejected</TableCell><TableCell>It expired, or the policy was saved after the request was held. Run the command again.</TableCell></TableRow>
+                <TableRow><TableCell>“Session expired”</TableCell><TableCell>Sign in with your wallet again. Switching wallet accounts also ends the session.</TableCell></TableRow>
+                <TableRow><TableCell>Requests show <code>[fallback]</code></TableCell><TableCell>No model API keys are configured. The deterministic parser handles simple commands.</TableCell></TableRow>
+                <TableRow><TableCell>Execution failed</TableCell><TableCell>The agent balance is too low for the amount plus fees. Fund the agent.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
         {
@@ -864,81 +879,100 @@ export function DocsPanel(props: { onOpenTab: (tab: DocsLinkTab) => void }) {
   const sectionAnchor = (sectionId: string) => `docs-${page.id}-${sectionId}`;
 
   return (
-    <div className="docs">
-      <nav className="docs-sidebar" aria-label={dict.docs.navLabel}>
-        <label className="docs-search">
-          <Search size={14} aria-hidden="true" />
-          <input
+    <div className="grid items-start gap-[18px] md:grid-cols-[180px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[196px_minmax(0,1fr)_168px] lg:gap-8">
+      <nav
+        className="border-b border-line pb-3 md:sticky md:top-5 md:max-h-[calc(100vh-40px)] md:overflow-y-auto md:border-0 md:pb-0"
+        aria-label={dict.docs.navLabel}
+      >
+        <div className="relative mb-4">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+          <Input
             type="search"
+            className="h-8 pl-8 text-[13px]"
             aria-label={dict.docs.searchPlaceholder}
             placeholder={dict.docs.searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-        </label>
-        {groups.length === 0 ? <p className="empty">{dict.docs.empty}</p> : null}
-        {groups.map((group) => (
-          <div key={group.name} className="docs-nav-group">
-            <p className="docs-nav-heading">{group.name}</p>
-            <ul>
-              {group.pages.map((candidate) => (
-                <li key={candidate.id}>
-                  <button
-                    type="button"
-                    className={`docs-nav-link${candidate.id === page.id ? ' is-active' : ''}`}
-                    aria-current={candidate.id === page.id ? 'page' : undefined}
-                    onClick={() => openPage(candidate.id)}
-                  >
-                    {candidate.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        </div>
+        {groups.length === 0 ? <p className="text-xs text-muted">{dict.docs.empty}</p> : null}
+        <div className="space-y-4">
+          {groups.map((group) => (
+            <div key={group.name}>
+              <p className={NAV_HEADING}>{group.name}</p>
+              <ul className="flex flex-row flex-wrap gap-1 md:flex-col md:gap-px">
+                {group.pages.map((candidate) => {
+                  const active = candidate.id === page.id;
+                  return (
+                    <li key={candidate.id}>
+                      <button
+                        type="button"
+                        className={cn(
+                          'cursor-pointer rounded-full border border-line px-2.5 py-1 text-left text-[13px] font-medium text-muted hover:text-ink',
+                          'md:w-full md:rounded-none md:border-0 md:border-l-2 md:border-transparent md:py-1.5 md:hover:border-line-strong',
+                          active && 'border-accent font-semibold text-accent hover:text-accent md:border-accent md:hover:border-accent',
+                        )}
+                        aria-current={active ? 'page' : undefined}
+                        onClick={() => openPage(candidate.id)}
+                      >
+                        {candidate.title}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
       </nav>
 
-      <article className="docs-article" ref={articleRef} aria-labelledby="docs-page-title">
-        <p className="docs-eyebrow">{page.group}</p>
-        <h2 id="docs-page-title" className="docs-title">{page.title}</h2>
-        <p className="docs-lead">{page.summary}</p>
+      <article className="min-w-0 scroll-mt-5" ref={articleRef} aria-labelledby="docs-page-title">
+        <p className="mb-1 text-xs font-semibold text-accent">{page.group}</p>
+        <h2 id="docs-page-title" className="text-[22px] leading-tight font-semibold tracking-[-0.02em] text-ink">
+          {page.title}
+        </h2>
+        <p className="mt-1.5 text-sm text-muted">{page.summary}</p>
 
         {page.sections.map((section) => (
-          <section key={section.id} id={sectionAnchor(section.id)} className="docs-section">
-            <h3>{section.title}</h3>
+          <section key={section.id} id={sectionAnchor(section.id)} className={PROSE}>
+            <h3 className="mb-2.5 text-[15px] font-semibold tracking-[-0.01em] text-ink">{section.title}</h3>
             {section.body}
           </section>
         ))}
 
-        <footer className="docs-pager">
+        <footer className="mt-9 grid grid-cols-2 gap-3.5 border-t border-line pt-4">
           {prev ? (
-            <button type="button" className="docs-pager-link" onClick={() => openPage(prev.id)}>
-              <span>
+            <button type="button" className={PAGER_LINK} onClick={() => openPage(prev.id)}>
+              <span className="inline-flex items-center gap-0.5 text-xs text-muted">
                 <ChevronLeft size={14} aria-hidden="true" /> {dict.docs.previous}
               </span>
-              <strong>{prev.title}</strong>
+              <strong className="text-sm font-semibold text-accent">{prev.title}</strong>
             </button>
           ) : (
             <span />
           )}
           {next ? (
-            <button type="button" className="docs-pager-link is-next" onClick={() => openPage(next.id)}>
-              <span>
+            <button type="button" className={cn(PAGER_LINK, 'col-start-2 items-end text-right')} onClick={() => openPage(next.id)}>
+              <span className="inline-flex items-center gap-0.5 text-xs text-muted">
                 {dict.docs.next} <ChevronRight size={14} aria-hidden="true" />
               </span>
-              <strong>{next.title}</strong>
+              <strong className="text-sm font-semibold text-accent">{next.title}</strong>
             </button>
           ) : null}
         </footer>
       </article>
 
-      <aside className="docs-toc" aria-label={dict.docs.onThisPage}>
-        <p className="docs-nav-heading">{dict.docs.onThisPage}</p>
-        <ul>
+      <aside
+        className="hidden lg:sticky lg:top-5 lg:block lg:max-h-[calc(100vh-40px)] lg:overflow-y-auto"
+        aria-label={dict.docs.onThisPage}
+      >
+        <p className={NAV_HEADING}>{dict.docs.onThisPage}</p>
+        <ul className="flex flex-col gap-px">
           {page.sections.map((section) => (
             <li key={section.id}>
               <button
                 type="button"
+                className="w-full cursor-pointer border-l-2 border-transparent px-2.5 py-[3px] text-left text-xs font-medium text-muted hover:border-line-strong hover:text-ink"
                 onClick={() =>
                   document.getElementById(sectionAnchor(section.id))?.scrollIntoView({ block: 'start', behavior: 'smooth' })
                 }

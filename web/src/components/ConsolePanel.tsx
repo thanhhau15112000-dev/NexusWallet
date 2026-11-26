@@ -77,7 +77,7 @@ export function ConsolePanel(props: {
         }}
       >
         <Textarea
-          className="min-h-[76px] resize-y font-mono text-[13px]"
+          className="min-h-[76px] resize-y text-[13px]"
           aria-label={dict.console.title}
           placeholder={
             label
@@ -114,7 +114,7 @@ export function ConsolePanel(props: {
             <span className="text-xs font-medium text-muted">{dict.console.lastTitle}</span>
             <Pill tone={TONE[last.status]}>{dict.requests.statuses[last.status]}</Pill>
           </div>
-          <p className="font-mono text-ink">{last.prompt}</p>
+          <p className="text-ink">{last.prompt}</p>
           {last.error ? (
             <p className="text-bad">{localizeError(last.error, dict.requests.errors, interpolate)}</p>
           ) : null}
@@ -131,7 +131,7 @@ export function ConsolePanel(props: {
               <button
                 key={preset.text}
                 type="button"
-                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border border-line bg-panel px-3 py-2 text-left font-mono text-xs text-ink transition-colors hover:border-line-strong hover:bg-surface-muted disabled:pointer-events-none disabled:opacity-50"
+                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border border-line bg-panel px-3 py-2 text-left text-xs text-ink transition-colors hover:border-line-strong hover:bg-surface-muted disabled:pointer-events-none disabled:opacity-50"
                 disabled={props.busy || !props.connected}
                 onClick={() => void submit(preset.text)}
               >

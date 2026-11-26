@@ -97,7 +97,7 @@ function RequestRow(props: {
         </div>
         <div className="flex items-center gap-2 text-xs text-muted">
           <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
-          <span className="font-mono text-[11px] tabular-nums">
+          <span className="text-[11px] tabular-nums">
             <DateTime value={request.createdAt} />
           </span>
         </div>
@@ -150,7 +150,7 @@ function RequestRow(props: {
             >
               {dict.requests.cancel}
             </Button>
-            <span className="ml-auto font-mono text-[11px] text-muted tabular-nums">
+            <span className="ml-auto text-[11px] text-muted tabular-nums">
               {dict.requests.expires} <DateTime value={request.approval.payload.expiresAt} />
             </span>
           </div>
@@ -172,7 +172,7 @@ function RequestRow(props: {
         <p className="text-[11px] text-muted">
           {dict.requests.approvedBy}{' '}
           <Mono className="text-ink">{shorten(request.approval.signerPubkey ?? '', 6)}</Mono>{' '}
-          <span className="font-mono tabular-nums">
+          <span className="tabular-nums">
             <DateTime value={request.approval.signedAt} />
           </span>
         </p>
@@ -185,7 +185,7 @@ function RequestRow(props: {
         <div className="mt-2 space-y-1.5 rounded-md border border-line bg-surface-muted/50 p-2.5 text-[11px]">
           {decision ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="neutral" className="font-mono">v{decision.policyVersion}</Badge>
+              <Badge variant="neutral">v{decision.policyVersion}</Badge>
               <Pill tone={verdictTone(decision.verdict)}>{decision.verdict}</Pill>
               <span className="text-muted">{decision.reasons.join('; ')}</span>
             </div>
@@ -193,18 +193,18 @@ function RequestRow(props: {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>
               <span className="font-semibold text-muted">{dict.requests.createdTag}:</span>{' '}
-              <DateTime value={request.createdAt} className="font-mono" />
+              <DateTime value={request.createdAt} />
             </span>
             {request.updatedAt !== request.createdAt ? (
               <span>
                 <span className="font-semibold text-muted">{dict.requests.updatedTag}:</span>{' '}
-                <DateTime value={request.updatedAt} className="font-mono" />
+                <DateTime value={request.updatedAt} />
               </span>
             ) : null}
             {request.execution ? (
               <span>
                 <span className="font-semibold text-muted">{dict.requests.confirmedTag}:</span>{' '}
-                <DateTime value={request.execution.confirmedAt} className="font-mono" />
+                <DateTime value={request.execution.confirmedAt} />
               </span>
             ) : null}
           </div>
@@ -215,7 +215,7 @@ function RequestRow(props: {
                 href={request.execution.explorerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-accent hover:underline"
+                className="text-accent hover:underline"
               >
                 {shorten(request.execution.signature, 10)}
               </a>
@@ -271,7 +271,7 @@ export function RequestList(props: {
   return (
     <Card
       title={dict.requests.title}
-      actions={<Badge variant="neutral" className="font-mono">{props.requests.length}</Badge>}
+      actions={<Badge variant="neutral">{props.requests.length}</Badge>}
     >
       {props.requests.length === 0 ? (
         <Empty>{dict.requests.noRequests}</Empty>

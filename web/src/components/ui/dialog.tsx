@@ -16,7 +16,7 @@ export function DialogContent(
   const { className, children, closeLabel = 'Close', disableClose = false, ...rest } = props;
   return (
     <RadixDialog.Portal>
-      <RadixDialog.Overlay className="fixed inset-0 z-50 bg-ink/35" />
+      <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
       <RadixDialog.Content
         className={cn(
           'fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-panel p-5 text-ink shadow-lg focus:outline-none',

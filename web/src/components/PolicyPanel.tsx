@@ -101,7 +101,7 @@ export function PolicyPanel(props: {
         <Card
           title={dict.overview.spendingLimits}
           titleIcon={<ShieldCheck size={15} />}
-          actions={<Badge variant="neutral" className="font-mono">v{policy.version}</Badge>}
+          actions={<Badge variant="neutral">v{policy.version}</Badge>}
         >
           <label className="block space-y-1.5">
             <span className="block text-xs font-medium text-ink">{dict.policy.maxPerTx}</span>
@@ -111,14 +111,14 @@ export function PolicyPanel(props: {
                 min="0.000000001"
                 max="1000"
                 step="any"
-                className="pr-12 font-mono tabular-nums"
+                className="pr-12 tabular-nums"
                 value={maxSol}
                 onChange={(e) => {
                   setMaxSol(e.target.value);
                   setDirty(true);
                 }}
               />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted">
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">
                 SOL
               </span>
             </div>
@@ -133,7 +133,7 @@ export function PolicyPanel(props: {
                 min="0"
                 max="100000"
                 step="0.01"
-                className="pr-12 font-mono tabular-nums"
+                className="pr-12 tabular-nums"
                 placeholder={dict.policy.unlimitedPlaceholder}
                 value={maxSolDay}
                 onChange={(e) => {
@@ -141,7 +141,7 @@ export function PolicyPanel(props: {
                   setDirty(true);
                 }}
               />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-muted">
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">
                 SOL
               </span>
             </div>
@@ -152,7 +152,7 @@ export function PolicyPanel(props: {
         <Card
           title={dict.policy.recipients}
           titleIcon={<Wallet size={15} />}
-          actions={<Badge variant="neutral" className="font-mono">{recipients.length}</Badge>}
+          actions={<Badge variant="neutral">{recipients.length}</Badge>}
         >
           {recipients.length === 0 ? (
             <p className="rounded-md border border-dashed border-line px-3 py-4 text-center text-xs text-muted">
@@ -194,7 +194,7 @@ export function PolicyPanel(props: {
             <Input
               aria-label={dict.policy.addressPlaceholder}
               placeholder={dict.policy.addressPlaceholder}
-              className="font-mono text-xs"
+              className="text-xs"
               value={address}
               onChange={(e) => setAddress(e.target.value.trim())}
             />

@@ -13,7 +13,9 @@ nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The in
 - **Hierarchy through type, not chrome:** page titles `text-2xl` and key balances `text-3xl` use Mona Sans at a wider stretch (`[font-stretch:112%]`); body stays at the default width. Labels are sentence case `text-xs font-medium text-muted`.
 - **Brand color is scarce:** emerald marks the primary CTA, the selected nav item (`bg-accent-soft` + `text-accent-strong`), success states and the agent balance card. Everything else stays neutral.
 - **Tabular numbers:** Every SOL/token balance, spending limit, delta, fee, countdown, and metric cell MUST use `tabular-nums`.
-- **Monospace identifiers:** Every Solana address, transaction signature, PDA, request ID, and code snippet MUST use `font-mono` and be shortened inline (`shorten(...)`) with a full `title` attribute and one-click copy when actionable.
+- **Identifiers:** Every Solana address, transaction signature, PDA and request ID stays in Mona Sans and is shortened inline (`shorten(...)`) with a full `title` attribute and one-click copy when actionable. `font-mono` is reserved for code: `<pre>` blocks (raw JSON, MCP config snippets) and endpoint URLs in `<code>`.
+- **Weight floor:** body text is `font-weight: 500` (set on `body`); `font-medium` is `580` and `font-semibold` is `660` (`--font-weight-*` in `@theme`) so the hierarchy survives. Do not use `font-light`, `font-thin` or `font-normal`.
+- **Dark theme:** `:root[data-theme="dark"]` in `styles.css` redefines the color and shadow tokens: cool charcoal surfaces (`#121417` canvas, `#191c20` cards), no green tint in neutrals, emerald stays the only brand color. Components use tokens only; text on a solid accent/bad fill is `text-white`, text on an inverted surface (`bg-ink`, `bg-accent-strong`) is `text-panel`. `index.html` applies the saved (`nexus.theme`) or system theme before paint; `ThemeToggle` (`SettingsMenu.tsx`) sits next to `LanguageToggle`.
 - **Timestamps:** render every date/time through `<DateTime value={...} />` from `web/src/components/ui.tsx`: fixed-width local `YYYY-MM-DD HH:mm:ss`, UTC ISO in `title` and `dateTime`. Do not call `toLocaleString`/`toLocaleTimeString` in components.
 
 - **Motion:** only `animate-float` (BootScreen mascot) from `styles.css`, plus the `PolicyPlayground` conveyor (requests slide in from the left, rest at the center, slide out right; edges fade) and `TransactionFlow`. All motion is disabled under reduced motion (`motion-reduce:*`). Motion must explain state (new item, live demo), never decorate. The BootScreen `PolicyPlayground` runs on static demo data and must not call the API.
@@ -21,7 +23,7 @@ nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The in
 
 **Strictly forbidden ("AI slop"):**
 - NO uppercase, letter-spaced monospace "telemetry" labels (`SOLANA // ...`, `01 POLICY`, `ACCESS // WALLET`), numbered feature strips, or grid-line background patterns.
-- NO purple/neon gradients, glowing shadows, rainbow borders, or decorative glassmorphism (`backdrop-blur` spam).
+- NO purple/neon gradients, glowing shadows, rainbow borders, or decorative glassmorphism (`backdrop-blur` spam). The one exception is Solana's own logomark gradient on the black "Solana Faucet" link (`AgentFundingPanel.tsx`), a third-party brand mark.
 - NO marketing pitch boxes, promo banners, external repo links inside the app header, or multi-paragraph onboarding walls inside authenticated workspace tabs.
 - NO redundant subtitles or helper paragraphs repeating what a card title or input label already states.
 - NO emojis in UI labels, headings, badges, buttons, or toasts.
@@ -33,7 +35,7 @@ nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The in
 
 ### Typography
 - **UI font:** `Mona Sans` variable (`@fontsource-variable/mona-sans/wdth.css`, weight `200–900`, stretch `75–125%`, includes the Vietnamese subset), imported in `web/src/main.tsx` and exposed as `--font-sans`.
-- **Monospace font:** `JetBrains Mono` (`@fontsource/jetbrains-mono`, weights `400`, `500`, Vietnamese subset included) as `--font-mono`.
+- **Monospace font:** `JetBrains Mono` (`@fontsource/jetbrains-mono`, weights `400`, `500`, Vietnamese subset included) as `--font-mono`, for code blocks only.
 - **Scale:** `text-4xl`/`text-5xl` BootScreen headline (`[font-stretch:115%]`), `text-2xl` tab titles and stat values, `text-3xl` agent balance, `15px` card titles, `14px` body (`text-sm`), `12px` labels and table headers.
 
 ### Semantic Color Palette
@@ -57,9 +59,9 @@ All tokens live in the `@theme` block of `web/src/styles.css`.
 
 - **Styling:** **Tailwind CSS v4** (`@tailwindcss/vite`) configured in `web/vite.config.ts` and `web/src/styles.css`.
 - **Component primitives:** **shadcn/ui** pattern in `web/src/components/ui/` built on Radix UI primitives + `class-variance-authority` + `cn()` (`web/src/lib/utils.ts`).
-  - Available primitives: `Button`, `Card`, `Badge`, `Input`, `Textarea`, `Dialog`, `Tabs`, `Table`, `Tooltip`.
+  - Available primitives: `Button`, `Card`, `Badge`, `Input`, `Textarea`, `Dialog`, `Tabs`, `Table`, `Tooltip`, `Slider`.
   - Domain helpers live in `web/src/components/ui.tsx` (`Card`, `CopyAddressButton`, `Mono`, `Pill`, `Empty`, `shorten`, `DateTime`, `formatDateTime`).
-- **CSS boundary rule:** Do NOT add custom component CSS classes to `web/src/styles.css`. Style all layouts and components directly with Tailwind utilities and shadcn/ui primitives. `styles.css` is reserved solely for `@import "tailwindcss"`, `@theme`/CSS tokens, base element defaults, and minimal scoped formatting for `DocsPanel` prose (`docs-*`).
+- **CSS boundary rule:** Do NOT add custom component CSS classes to `web/src/styles.css`. Style all layouts and components directly with Tailwind utilities and shadcn/ui primitives. `styles.css` is reserved solely for `@import "tailwindcss"`, `@theme`/CSS tokens (including the dark theme overrides) and base element defaults. Docs prose is styled with Tailwind arbitrary variants on the section (`PROSE` in `DocsPanel.tsx`); docs tables, tabs, inputs and buttons use the shadcn primitives.
 
 ---
 

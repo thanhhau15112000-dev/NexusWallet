@@ -1,12 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
-import { Bot, CheckCircle2, Lock, ShieldCheck, Unlock, Wallet } from './icons.js';
+import { Lock, ShieldCheck, Unlock } from './icons.js';
 import { api, type AgentState } from '../api.js';
-import { Card, CopyAddressButton, DateTime, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
 import { Button } from './ui/button.js';
 import { Card as ShadcnCard, CardContent } from './ui/card.js';
-import { AgentFundingPanel } from './AgentFundingPanel.js';
+import { AgentFundingActions } from './AgentFundingPanel.js';
 import { cn } from '../lib/utils.js';
 import { useI18n } from '../i18n/context.js';
 
@@ -71,7 +71,8 @@ function formatSol(value: number | null | undefined, digits = 4): string {
   return value === null || value === undefined ? '-' : value.toFixed(digits);
 }
 
-function AgentControlCard(props: {
+/** Freeze / unfreeze with a two-step confirmation before freezing. */
+function AgentFreezeControl(props: {
   state: AgentState;
   onRefresh: () => Promise<void>;
   onToast: (toast: Toast) => void;
@@ -101,48 +102,29 @@ function AgentControlCard(props: {
   };
 
   return (
-    <Card
-      title={dict.overview.agentControl}
-      titleIcon={<Bot size={15} />}
-      className={agent.frozen ? 'border-bad-line bg-bad-soft/20' : undefined}
-      actions={
-        agent.frozen ? (
-          <Pill tone="bad">{dict.agent.frozenStatus}</Pill>
-        ) : (
-          <Pill tone="ok">{dict.overview.agentActive}</Pill>
-        )
-      }
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        {agent.frozen ? (
-          <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => void run('unfreeze')}>
-            <Unlock size={13} aria-hidden="true" />
-            {dict.agent.unfreezeBtn}
-          </Button>
-        ) : confirming ? (
-          <>
-            <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={() => void run('freeze')}>
-              <Lock size={13} aria-hidden="true" />
-              {dict.agent.confirmFreezeBtn}
-            </Button>
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
-              {dict.agent.cancelFreezeBtn}
-            </Button>
-          </>
-        ) : (
-          <Button
-            type="button"
-            variant="destructiveOutline"
-            size="sm"
-            disabled={busy}
-            onClick={() => setConfirming(true)}
-          >
+    <div className="flex flex-wrap items-center gap-2">
+      {agent.frozen ? (
+        <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => void run('unfreeze')}>
+          <Unlock size={13} aria-hidden="true" />
+          {dict.agent.unfreezeBtn}
+        </Button>
+      ) : confirming ? (
+        <>
+          <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={() => void run('freeze')}>
             <Lock size={13} aria-hidden="true" />
-            {dict.agent.freezeBtn}
+            {dict.agent.confirmFreezeBtn}
           </Button>
-        )}
-      </div>
-    </Card>
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
+            {dict.agent.cancelFreezeBtn}
+          </Button>
+        </>
+      ) : (
+        <Button type="button" variant="destructiveOutline" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
+          <Lock size={13} aria-hidden="true" />
+          {dict.agent.freezeBtn}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -154,6 +136,16 @@ function SectionLabel(props: { children: ReactNode; count?: number }) {
       <span>{props.children}</span>
       {props.count !== undefined ? <span className="tabular-nums">{props.count}</span> : null}
     </div>
+  );
+}
+
+/** A limit as one line: bold amount, muted unit suffix ("0.1 SOL / tx"). */
+function LimitLine(props: { value: string; unit: string }) {
+  return (
+    <p className="flex items-baseline gap-1.5 tabular-nums">
+      <span className="text-xl font-semibold [font-stretch:112%] text-ink">{props.value}</span>
+      <span className="text-sm text-muted">{props.unit}</span>
+    </p>
   );
 }
 
@@ -180,25 +172,12 @@ function PolicySummaryCard(props: { state: AgentState; onEdit: () => void }) {
       <div className="grid gap-5 lg:grid-cols-3 lg:gap-0 lg:divide-x lg:divide-line">
         <section className="space-y-3 lg:pr-5">
           <SectionLabel>{dict.overview.solLimits}</SectionLabel>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs text-muted">{dict.overview.perTx}</div>
-              <div className="mt-0.5 text-xl font-semibold [font-stretch:112%] text-ink tabular-nums">
-                {policy.maxSolPerTx} <span className="text-xs font-medium text-muted">SOL</span>
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-muted">{dict.overview.perDay}</div>
-              <div className="mt-0.5 text-xl font-semibold [font-stretch:112%] text-ink tabular-nums">
-                {dailyCap === null ? (
-                  <span className="text-sm font-medium text-muted">{dict.overview.unlimited}</span>
-                ) : (
-                  <>
-                    {dailyCap} <span className="text-xs font-medium text-muted">SOL</span>
-                  </>
-                )}
-              </div>
-            </div>
+          <div className="space-y-1.5">
+            <LimitLine value={`${policy.maxSolPerTx} SOL`} unit={dict.overview.perTxUnit} />
+            <LimitLine
+              value={dailyCap === null ? dict.overview.unlimited : `${dailyCap} SOL`}
+              unit={dict.overview.per24hUnit}
+            />
           </div>
           {dailyCap !== null ? (
             <div
@@ -268,13 +247,6 @@ function PolicySummaryCard(props: { state: AgentState; onEdit: () => void }) {
         </section>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-2 border-t border-line pt-3 text-xs text-muted">
-        <span>{interpolate(dict.overview.policyVersion, { version: policy.version })}</span>
-        <span aria-hidden="true">·</span>
-        <span>
-          {dict.overview.policyUpdated} <DateTime value={policy.updatedAt} />
-        </span>
-      </div>
     </Card>
   );
 }
@@ -284,15 +256,17 @@ export function OverviewPanel(props: {
   wallet: string | null;
   requests: PaymentRequest[];
   fundingBusy: boolean;
-  onAirdrop: () => void;
   onClaimSeed: () => void;
   onDeposit: (amountSol: number) => void;
   onRefresh: () => Promise<void>;
   onToast: (toast: Toast) => void;
   onOpenTab: (tab: 'policy' | 'approvals') => void;
   onOpenMcp?: () => void;
+  /** Opens the wallet picker; undefined hides the button. */
+  onConnectWallet?: () => void;
+  connectDisabled?: boolean;
 }) {
-  const { dict, interpolate } = useI18n();
+  const { dict } = useI18n();
   const { state, wallet } = props;
   const { agent, policy } = state;
   const owner = useOwnerBalance(state.rpcUrl, wallet);
@@ -300,102 +274,93 @@ export function OverviewPanel(props: {
   const pending = props.requests.filter((request) => request.status === 'pending_approval').length;
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <ShadcnCard className="border-accent-line bg-accent-soft">
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-accent-strong">
-                <Bot size={14} className="text-accent" aria-hidden="true" />
-                {dict.overview.agentBalance}
-              </span>
-              {agent.frozen ? <Pill tone="bad">{dict.agent.frozenStatus}</Pill> : null}
-            </div>
-            {agent.rpcError ? (
-              <div><Pill tone="bad">{dict.agent.rpcError}</Pill></div>
-            ) : (
-              <div className="flex items-baseline gap-1.5 text-3xl font-semibold [font-stretch:112%] text-accent-strong tabular-nums">
-                <span>{formatSol(agentBalance)}</span>
-                <span className="text-sm font-medium text-accent">SOL</span>
+    <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <ShadcnCard className={cn(agent.frozen && 'border-bad-line')}>
+          <CardContent className="space-y-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 space-y-2">
+                <div className="flex items-center gap-2 text-sm text-muted">
+                  <span>{dict.overview.agentBalance}</span>
+                  <Pill tone={agent.frozen ? 'bad' : 'ok'}>
+                    {agent.frozen ? dict.agent.frozenStatus : dict.overview.agentActive}
+                  </Pill>
+                </div>
+                {agent.rpcError ? (
+                  <Pill tone="bad">{dict.agent.rpcError}</Pill>
+                ) : (
+                  <div className="flex items-baseline gap-2 text-4xl font-semibold [font-stretch:112%] text-ink tabular-nums">
+                    <span>{formatSol(agentBalance)}</span>
+                    <span className="text-base font-medium text-muted">SOL</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1 text-xs">
+                  <a href={agent.explorerUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline" title={agent.pubkey}>
+                    {shorten(agent.pubkey, 6)}
+                  </a>
+                  <CopyAddressButton value={agent.pubkey} label={dict.agent.copyAddress} />
+                </div>
               </div>
-            )}
-            <div className="flex items-center gap-1 border-t border-accent-line pt-2.5 text-xs text-muted">
-              <a
-                href={agent.explorerUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-xs text-accent-hover hover:underline"
-              >
-                {shorten(agent.pubkey, 6)}
-              </a>
-              <CopyAddressButton value={agent.pubkey} label={dict.agent.copyAddress} />
+              <AgentFreezeControl state={state} onRefresh={props.onRefresh} onToast={props.onToast} />
+            </div>
+            <div className="border-t border-line pt-4">
+              <p className="mb-2.5 text-xs font-medium text-muted">{dict.funding.title}</p>
+              <AgentFundingActions
+                state={state}
+                busy={props.fundingBusy}
+                onClaimSeed={props.onClaimSeed}
+                onDeposit={props.onDeposit}
+              />
             </div>
           </CardContent>
         </ShadcnCard>
 
-        <ShadcnCard>
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-              <Wallet size={14} aria-hidden="true" />
-              {dict.overview.ownerBalance}
-            </span>
+        <ShadcnCard className="divide-y divide-line">
+          <div className="space-y-1.5 p-5">
+            <p className="text-sm text-muted">{dict.overview.ownerBalance}</p>
             {!wallet ? (
-              <p className="text-xs text-muted">{dict.wallet.connectToViewBalance}</p>
+              <div className="space-y-3">
+                <p className="text-xs text-muted">{dict.wallet.connectToViewBalance}</p>
+                {props.onConnectWallet ? (
+                  <Button type="button" size="sm" disabled={props.connectDisabled} onClick={props.onConnectWallet}>
+                    {dict.wallet.connectWallet}
+                  </Button>
+                ) : null}
+              </div>
             ) : owner.loading ? (
               <p className="text-xs text-muted">{dict.wallet.loadingBalance}</p>
             ) : owner.error ? (
-              <div><Pill tone="bad">{dict.wallet.rpcError}</Pill></div>
+              <Pill tone="bad">{dict.wallet.rpcError}</Pill>
             ) : (
               <div className="flex items-baseline gap-1.5 text-2xl font-semibold [font-stretch:112%] text-ink tabular-nums">
                 <span>{formatSol(owner.balance)}</span>
                 <span className="text-xs font-medium text-muted">SOL</span>
               </div>
             )}
-            <div className="flex min-h-[26px] items-center gap-1 border-t border-line pt-2.5 text-xs text-muted">
-              {wallet ? (
-                <>
-                  <Mono title={wallet}>{shorten(wallet, 6)}</Mono>
-                  <CopyAddressButton value={wallet} label={dict.wallet.copyAddress} />
-                </>
-              ) : (
-                <span>-</span>
-              )}
+            {wallet ? (
+              <div className="flex items-center gap-1 text-xs text-muted">
+                <Mono title={wallet}>{shorten(wallet, 6)}</Mono>
+                <CopyAddressButton value={wallet} label={dict.wallet.copyAddress} />
+              </div>
+            ) : null}
+          </div>
+          <div className="flex items-center justify-between gap-3 p-5">
+            <div className="space-y-1">
+              <p className="text-sm text-muted">{dict.overview.pendingApprovals}</p>
+              <p className={cn('text-2xl font-semibold [font-stretch:112%] tabular-nums', pending > 0 ? 'text-warn' : 'text-ink')}>
+                {pending}
+              </p>
             </div>
-          </CardContent>
-        </ShadcnCard>
-
-        <ShadcnCard className={cn(pending > 0 && 'border-warn-line bg-warn-soft/30')}>
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-              <CheckCircle2 size={14} className={pending > 0 ? 'text-warn' : undefined} aria-hidden="true" />
-              {dict.overview.pendingApprovals}
-            </span>
-            <div className="text-2xl font-semibold [font-stretch:112%] text-ink tabular-nums">{pending}</div>
-            <div className="flex min-h-[26px] items-center border-t border-line pt-2.5">
-              {pending > 0 ? (
-                <Button type="button" variant="default" size="sm" className="h-7 px-2.5 text-xs" onClick={() => props.onOpenTab('approvals')}>
-                  {dict.overview.review}
-                </Button>
-              ) : (
-                <span className="text-xs text-muted">{dict.overview.noPending}</span>
-              )}
-            </div>
-          </CardContent>
+            {pending > 0 ? (
+              <Button type="button" size="sm" onClick={() => props.onOpenTab('approvals')}>
+                {dict.overview.review}
+              </Button>
+            ) : null}
+          </div>
         </ShadcnCard>
       </div>
 
       <PolicySummaryCard state={state} onEdit={() => props.onOpenTab('policy')} />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <AgentControlCard state={state} onRefresh={props.onRefresh} onToast={props.onToast} />
-        <AgentFundingPanel
-          state={state}
-          busy={props.fundingBusy}
-          onAirdrop={props.onAirdrop}
-          onClaimSeed={props.onClaimSeed}
-          onDeposit={props.onDeposit}
-        />
-      </div>
     </div>
   );
 }

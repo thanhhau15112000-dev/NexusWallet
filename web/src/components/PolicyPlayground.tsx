@@ -213,10 +213,10 @@ export function PolicyPlayground() {
                     <span className="sr-only">{labels[verdict]}</span>
                   </Badge>
                   <RecipientAvatar recipient={request.recipient} size="sm" />
-                  <span className={cn('min-w-0 flex-1 truncate font-mono text-xs', known ? 'text-ink' : 'text-muted')}>
+                  <span className={cn('min-w-0 flex-1 truncate text-xs', known ? 'text-ink' : 'text-muted')}>
                     {request.recipient}
                   </span>
-                  <span className="font-mono text-xs text-muted tabular-nums">{request.amount.toFixed(2)}</span>
+                  <span className="text-xs text-muted tabular-nums">{request.amount.toFixed(2)}</span>
                 </div>
               );
             })}
@@ -232,7 +232,7 @@ export function PolicyPlayground() {
       <div className="px-5 pb-5 pt-4">
         <div className="flex items-baseline justify-between text-xs">
           <span id="demo-limit-label" className="font-medium text-muted">{boot.perTxLimit}</span>
-          <span className="font-mono font-medium text-ink tabular-nums">{limit.toFixed(2)} SOL</span>
+          <span className="font-medium text-ink tabular-nums">{limit.toFixed(2)} SOL</span>
         </div>
         <Slider
           className="mt-2"

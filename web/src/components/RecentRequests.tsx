@@ -59,7 +59,7 @@ export function RecentRequests(props: {
                 <TableCell>
                   <Mono>{describeAction(request, dict.requests.actions)}</Mono>
                 </TableCell>
-                <TableCell className="text-right font-mono text-xs text-muted tabular-nums">
+                <TableCell className="text-right text-xs text-muted tabular-nums">
                   <span className="inline-flex items-center justify-end gap-1.5">
                     <DateTime value={request.createdAt} />
                     {request.execution ? (

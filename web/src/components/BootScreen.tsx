@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from 'react';
 import { ArrowRight, ShieldCheck, Wallet, X } from 'lucide-react';
 import { useI18n } from '../i18n/context.js';
-import { LanguageToggle } from './SettingsMenu.js';
+import { LanguageToggle, ThemeToggle } from './SettingsMenu.js';
 import { Mascot } from './Mascot.js';
 import { PolicyPlayground } from './PolicyPlayground.js';
 import { TransactionFlow } from './TransactionFlow.js';
@@ -38,7 +38,10 @@ export function BootScreen(props: {
             <span className="text-base font-semibold [font-stretch:112%] text-ink">nexusPay</span>
             <Badge variant="ok">Devnet</Badge>
           </div>
-          <LanguageToggle />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageToggle />
+          </div>
         </header>
 
         <div className="flex flex-1 flex-col justify-center gap-10 py-10">

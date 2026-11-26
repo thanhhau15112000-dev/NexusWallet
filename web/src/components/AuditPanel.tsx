@@ -33,7 +33,7 @@ export function AuditPanel(props: { entries: AuditEntryView[] }) {
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-center gap-3 text-xs">
                   <Mono className="text-muted"><DateTime value={entry.at} /></Mono>
-                  <span className="font-mono font-semibold text-ink">{entry.event}</span>
+                  <span className="font-semibold text-ink">{entry.event}</span>
                   {entry.requestId ? (
                     <Mono title={entry.requestId} className="ml-auto text-muted">
                       {entry.requestId}

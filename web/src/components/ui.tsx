@@ -108,7 +108,7 @@ export function Pill(props: { tone: string; children: ReactNode; className?: str
 
 export function Mono(props: { children: ReactNode; title?: string; className?: string }) {
   return (
-    <span className={cn('font-mono text-xs tabular-nums', props.className)} title={props.title}>
+    <span className={cn('text-xs tabular-nums', props.className)} title={props.title}>
       {props.children}
     </span>
   );

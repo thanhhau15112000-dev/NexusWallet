@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowUpRight, Check, Copy, Info, TriangleAlert } from './icons.js';
 import { useI18n } from '../i18n/context.js';
+import { cn } from '../lib/utils.js';
+import { Button } from './ui/button.js';
+import { Tabs as UiTabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
 
 /** Dashboard tabs a docs page can link to. Kept in sync with FEATURE_TABS in App.tsx. */
 export type DocsLinkTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'audit';
@@ -45,68 +48,98 @@ export function CodeBlock(props: { code: string; label?: string }) {
   };
 
   return (
-    <div className="docs-code">
-      <div className="docs-code-head">
+    <div className="mt-2 mb-3 overflow-hidden rounded-md border border-line bg-surface-muted">
+      <div className="flex items-center justify-between border-b border-line py-1 pr-1.5 pl-2.5 font-mono text-[11px] text-muted">
         <span>{props.label ?? dict.docs.code}</span>
-        <button type="button" className="docs-code-copy" onClick={() => void copy()} aria-label={dict.docs.copyCode}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-1.5 font-sans text-[11px]"
+          onClick={() => void copy()}
+          aria-label={dict.docs.copyCode}
+        >
           {copied === 'copied' ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
           {copied === 'copied' ? dict.docs.copied : copied === 'failed' ? dict.docs.copyFailed : dict.docs.copy}
-        </button>
+        </Button>
       </div>
-      <pre>
+      <pre className="m-0 overflow-x-auto px-3 py-2.5 font-mono text-xs whitespace-pre text-ink">
         <code>{props.code}</code>
       </pre>
     </div>
   );
 }
 
+const CALLOUT_TONE = {
+  note: 'border-l-accent bg-panel [&>svg]:text-accent',
+  warn: 'border-l-warn bg-warn-soft [&>svg]:text-warn',
+} as const;
+
 export function Callout(props: { tone: 'note' | 'warn'; title: string; children: ReactNode }) {
   const Icon = props.tone === 'warn' ? TriangleAlert : Info;
   return (
-    <aside className={`docs-callout docs-callout-${props.tone}`}>
+    <aside
+      className={cn(
+        'mb-3 flex gap-2.5 rounded-md border border-l-[3px] border-line px-3 py-2.5 text-[13px] [&>svg]:mt-0.5 [&>svg]:shrink-0',
+        CALLOUT_TONE[props.tone],
+      )}
+    >
       <Icon size={16} aria-hidden="true" />
       <div>
-        <strong>{props.title}</strong>
+        <strong className="mb-0.5 block font-semibold">{props.title}</strong>
         <div>{props.children}</div>
       </div>
     </aside>
   );
 }
 
+/** Numbered steps: emerald counter badges instead of list numbers. */
 export function Steps(props: { children: ReactNode }) {
-  return <ol className="docs-steps">{props.children}</ol>;
+  return (
+    <ol
+      className={cn(
+        'list-none! pl-0! [counter-reset:docs-step]',
+        '[&>li]:relative [&>li]:pl-8 [&>li]:[counter-increment:docs-step] [&>li+li]:mt-3',
+        '[&>li]:before:absolute [&>li]:before:top-px [&>li]:before:left-0 [&>li]:before:grid [&>li]:before:h-[21px] [&>li]:before:w-[21px] [&>li]:before:place-items-center',
+        '[&>li]:before:rounded-full [&>li]:before:border [&>li]:before:border-accent-line [&>li]:before:bg-accent-soft',
+        '[&>li]:before:text-[11px] [&>li]:before:font-semibold [&>li]:before:text-accent [&>li]:before:content-[counter(docs-step)]',
+      )}
+    >
+      {props.children}
+    </ol>
+  );
 }
 
 export function TabLink(props: { tab: DocsLinkTab; label: string; ctx: DocsContext }) {
   const { dict, interpolate } = useI18n();
   return (
-    <button type="button" className="docs-tab-link" onClick={() => props.ctx.openTab(props.tab)}>
+    <Button
+      type="button"
+      variant="link"
+      className="h-auto gap-0.5 p-0 text-[13px] font-semibold"
+      onClick={() => props.ctx.openTab(props.tab)}
+    >
       {interpolate(dict.docs.openTab, { label: props.label })}
       <ArrowUpRight size={13} aria-hidden="true" />
-    </button>
+    </Button>
   );
 }
 
 export function Tabs(props: { items: Array<{ id: string; label: string; body: ReactNode }> }) {
-  const [active, setActive] = useState(props.items[0]?.id ?? '');
-  const current = props.items.find((item) => item.id === active) ?? props.items[0];
   return (
-    <div className="docs-tabs">
-      <div className="docs-tabs-list" role="tablist">
+    <UiTabs defaultValue={props.items[0]?.id} className="mt-2.5">
+      <TabsList className="max-w-full overflow-x-auto">
         {props.items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={item.id === current?.id}
-            className={item.id === current?.id ? 'is-active' : ''}
-            onClick={() => setActive(item.id)}
-          >
+          <TabsTrigger key={item.id} value={item.id}>
             {item.label}
-          </button>
+          </TabsTrigger>
         ))}
-      </div>
-      <div role="tabpanel">{current?.body}</div>
-    </div>
+      </TabsList>
+      {props.items.map((item) => (
+        <TabsContent key={item.id} value={item.id}>
+          {item.body}
+        </TabsContent>
+      ))}
+    </UiTabs>
   );
 }

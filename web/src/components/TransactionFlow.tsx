@@ -48,11 +48,17 @@ export function TransactionFlow(props: {
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
 
-    const css = getComputedStyle(document.documentElement);
-    const color: Record<Verdict, string> = {
-      allow: css.getPropertyValue('--color-accent').trim() || '#177b65',
-      approval: css.getPropertyValue('--color-apricot').trim() || '#f0a04b',
-      deny: css.getPropertyValue('--color-bad').trim() || '#b4382a',
+    // Theme tokens, re-read each frame so a light/dark switch recolors the canvas at once.
+    const palette = () => {
+      const css = getComputedStyle(document.documentElement);
+      const read = (name: string) => css.getPropertyValue(name).trim();
+      return {
+        lane: read('--color-line-strong'),
+        verdict: { allow: read('--color-accent'), approval: read('--color-apricot'), deny: read('--color-bad') } as Record<
+          Verdict,
+          string
+        >,
+      };
     };
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -104,8 +110,9 @@ export function TransactionFlow(props: {
 
       const geo = geometry();
       if (geo) {
+        const colors = palette();
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgb(11 63 53 / 0.2)';
+        ctx.strokeStyle = colors.lane;
         const lanes = geo.rows.map((row) => curve({ x: geo.startX, y: row.y }, geo.guardIn));
         for (const [a, b, c, d] of [...lanes, geo.exit]) {
           ctx.beginPath();
@@ -151,7 +158,7 @@ export function TransactionFlow(props: {
             const pos = p.t <= 1 ? cubic(...curve(p.start, geo.guardIn), p.t) : cubic(...geo.exit, p.t - 1);
             const halted = (p.verdict === 'deny' && p.t >= BLOCK_AT) || (p.t === 1 && p.hold > 0);
             ctx.globalAlpha = Math.max(0, p.fade);
-            ctx.fillStyle = color[p.verdict];
+            ctx.fillStyle = colors.verdict[p.verdict];
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, halted ? 4.2 : 3.4, 0, Math.PI * 2);
             ctx.fill();

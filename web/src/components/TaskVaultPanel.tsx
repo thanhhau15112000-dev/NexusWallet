@@ -527,7 +527,7 @@ export function TaskVaultPanel(props: {
                   <span className="block text-xs font-medium text-ink">{dict.taskVault.create.taskId}</span>
                   <Input
                     type="text"
-                    className="font-mono text-xs"
+                    className="text-xs"
                     value={newTaskId}
                     onChange={(e) => setNewTaskId(e.target.value)}
                     placeholder={dict.taskVault.create.taskIdPlaceholder}
@@ -542,7 +542,7 @@ export function TaskVaultPanel(props: {
                       type="number"
                       step="any"
                       min="0.01"
-                      className="font-mono text-xs tabular-nums"
+                      className="text-xs tabular-nums"
                       value={newBudgetSol}
                       onChange={(e) => setNewBudgetSol(e.target.value)}
                       required
@@ -554,7 +554,7 @@ export function TaskVaultPanel(props: {
                       type="number"
                       step="any"
                       min="0.01"
-                      className="font-mono text-xs tabular-nums"
+                      className="text-xs tabular-nums"
                       value={newCapSol}
                       onChange={(e) => setNewCapSol(e.target.value)}
                       required
@@ -567,7 +567,7 @@ export function TaskVaultPanel(props: {
                     <span className="block text-xs font-medium text-ink">{dict.taskVault.create.allowedWorker}</span>
                     <Input
                       type="text"
-                      className="font-mono text-xs"
+                      className="text-xs"
                       value={newAllowedWorker}
                       onChange={(e) => setNewAllowedWorker(e.target.value)}
                       placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
@@ -577,7 +577,7 @@ export function TaskVaultPanel(props: {
                     <span className="block text-xs font-medium text-ink">{dict.taskVault.create.allowedService}</span>
                     <Input
                       type="text"
-                      className="font-mono text-xs"
+                      className="text-xs"
                       value={newAllowedServiceId}
                       onChange={(e) => setNewAllowedServiceId(e.target.value)}
                       placeholder={dict.taskVault.create.allowedServicePlaceholder}
@@ -592,7 +592,7 @@ export function TaskVaultPanel(props: {
                     step="any"
                     min="0.05"
                     max="168"
-                    className="font-mono text-xs tabular-nums"
+                    className="text-xs tabular-nums"
                     value={newHours}
                     onChange={(e) => setNewHours(e.target.value)}
                     required
@@ -687,7 +687,7 @@ export function TaskVaultPanel(props: {
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate font-mono text-xs font-semibold text-ink">{t.taskId}</span>
+                        <span className="truncate text-xs font-semibold text-ink">{t.taskId}</span>
                         <Pill tone={statusTone(rowStatus)}>{dict.taskVault.statuses[rowStatus]}</Pill>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
@@ -696,7 +696,7 @@ export function TaskVaultPanel(props: {
                           style={{ width: `${Math.min(100, (spentSol / budgetSol) * 100)}%` }}
                         />
                       </div>
-                      <div className="flex items-center justify-between font-mono text-[11px] text-muted tabular-nums">
+                      <div className="flex items-center justify-between text-[11px] text-muted tabular-nums">
                         <span>{spentSol.toFixed(3)} / {budgetSol.toFixed(3)} SOL</span>
                         <span>{dict.taskVault.list.cap} {(t.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(3)}</span>
                       </div>
@@ -768,7 +768,7 @@ export function TaskVaultPanel(props: {
 
                   <div className="space-y-1 rounded-md border border-accent-line/60 bg-accent-soft/40 p-2.5">
                     <span className="block text-[11px] text-muted">{dict.taskVault.detail.remaining}</span>
-                    <strong className="block font-mono text-sm font-semibold text-accent tabular-nums">
+                    <strong className="block text-sm font-semibold text-accent tabular-nums">
                       {(vaultRemainingLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                     </strong>
                     {detail.task.isClosed ? (
@@ -780,21 +780,21 @@ export function TaskVaultPanel(props: {
 
                   <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
                     <span className="block text-[11px] text-muted">{dict.taskVault.detail.totalSpent}</span>
-                    <strong className="block font-mono text-xs font-semibold text-ink tabular-nums">
+                    <strong className="block text-xs font-semibold text-ink tabular-nums">
                       {(detail.task.spentLamports / LAMPORTS_PER_SOL).toFixed(4)} / {(detail.task.budgetLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                     </strong>
                   </div>
 
                   <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
                     <span className="block text-[11px] text-muted">{dict.taskVault.detail.perPaymentCap}</span>
-                    <span className="block font-mono text-xs text-ink tabular-nums">
+                    <span className="block text-xs text-ink tabular-nums">
                       {(detail.task.perPaymentCapLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
                     </span>
                   </div>
 
                   <div className="space-y-1 rounded-md border border-line bg-surface-muted/40 p-2.5">
                     <span className="block text-[11px] text-muted">{dict.taskVault.detail.expiresAt}</span>
-                    <span className="block font-mono text-xs text-ink tabular-nums">
+                    <span className="block text-xs text-ink tabular-nums">
                       <DateTime value={detail.task.expiry * 1000} />
                     </span>
                   </div>
@@ -849,7 +849,7 @@ export function TaskVaultPanel(props: {
                           href={`https://explorer.solana.com/tx/${detail.task.txSignature}?cluster=devnet`}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 font-mono text-accent hover:underline"
+                          className="inline-flex items-center gap-1 text-accent hover:underline"
                         >
                           {shorten(detail.task.txSignature, 8)}
                           <ExternalLink size={12} />
@@ -868,7 +868,7 @@ export function TaskVaultPanel(props: {
                         <span className="block text-xs font-medium text-ink">{dict.taskVault.payment.workerAddress}</span>
                         <Input
                           type="text"
-                          className="font-mono text-xs"
+                          className="text-xs"
                           value={paymentWorker}
                           onChange={(e) => setPaymentWorker(e.target.value)}
                           placeholder={dict.taskVault.payment.workerPlaceholder}
@@ -878,7 +878,7 @@ export function TaskVaultPanel(props: {
                         <span className="block text-xs font-medium text-ink">{dict.taskVault.payment.serviceId}</span>
                         <Input
                           type="text"
-                          className="font-mono text-xs"
+                          className="text-xs"
                           value={paymentService}
                           onChange={(e) => setPaymentService(e.target.value)}
                           required
@@ -890,7 +890,7 @@ export function TaskVaultPanel(props: {
                           type="number"
                           step="any"
                           min="0.001"
-                          className="font-mono text-xs tabular-nums"
+                          className="text-xs tabular-nums"
                           value={paymentAmountSol}
                           onChange={(e) => setPaymentAmountSol(e.target.value)}
                           required
@@ -933,12 +933,12 @@ export function TaskVaultPanel(props: {
                             <TableCell>
                               <Mono>{p.paymentId}</Mono>
                               {p.createdAt ? (
-                                <DateTime value={p.createdAt} className="block font-mono text-[11px] text-muted" />
+                                <DateTime value={p.createdAt} className="block text-[11px] text-muted" />
                               ) : null}
                             </TableCell>
-                            <TableCell className="font-mono text-xs">{p.serviceId}</TableCell>
+                            <TableCell className="text-xs">{p.serviceId}</TableCell>
                             <TableCell><Mono title={p.worker}>{shorten(p.worker, 4)}</Mono></TableCell>
-                            <TableCell className="text-right font-mono text-xs font-semibold tabular-nums whitespace-nowrap">
+                            <TableCell className="text-right text-xs font-semibold tabular-nums whitespace-nowrap">
                               {(p.amountLamports / LAMPORTS_PER_SOL).toFixed(3)} SOL
                             </TableCell>
                             <TableCell>
@@ -964,7 +964,7 @@ export function TaskVaultPanel(props: {
                                   </Mono>
                                   <span className="text-muted">
                                     {dict.taskVault.escrows.settledAt}{' '}
-                                    <DateTime value={receipt.settledAt * 1000} className="font-mono" />
+                                    <DateTime value={receipt.settledAt * 1000} />
                                   </span>
                                   {receipt.txSignature ? (
                                     <a href={`https://explorer.solana.com/tx/${receipt.txSignature}?cluster=devnet`} target="_blank" rel="noreferrer">

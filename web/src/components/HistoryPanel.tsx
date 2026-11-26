@@ -102,7 +102,7 @@ function ChainHistory(props: { active: boolean }) {
               const received = item.deltaLamports > 0;
               return (
                 <TableRow key={item.signature}>
-                  <TableCell className="font-mono text-xs text-muted tabular-nums whitespace-nowrap">
+                  <TableCell className="text-xs text-muted tabular-nums whitespace-nowrap">
                     <DateTime value={item.blockTime === null ? null : item.blockTime * 1000} />
                   </TableCell>
                   <TableCell>
@@ -116,13 +116,13 @@ function ChainHistory(props: { active: boolean }) {
                   </TableCell>
                   <TableCell
                     className={cn(
-                      'text-right font-mono text-xs font-semibold tabular-nums whitespace-nowrap',
+                      'text-right text-xs font-semibold tabular-nums whitespace-nowrap',
                       received ? 'text-accent' : 'text-ink',
                     )}
                   >
                     {formatSol(item.deltaLamports, true)} SOL
                   </TableCell>
-                  <TableCell className="text-right font-mono text-xs text-muted tabular-nums whitespace-nowrap">
+                  <TableCell className="text-right text-xs text-muted tabular-nums whitespace-nowrap">
                     {formatSol(item.balanceAfterLamports)} SOL
                   </TableCell>
                   <TableCell className="text-right">
@@ -156,7 +156,7 @@ function ChainHistory(props: { active: boolean }) {
           >
             <ChevronLeft size={14} aria-hidden="true" />
           </Button>
-          <span className="font-mono text-xs text-muted tabular-nums">
+          <span className="text-xs text-muted tabular-nums">
             {interpolate(dict.history.page, { page: page + 1 })}
           </span>
           <Button

@@ -32,6 +32,8 @@ export type TranslationDictionary = {
     ready: string;
     offline: string;
     switchLanguage: string;
+    switchToDark: string;
+    switchToLight: string;
   };
   overview: {
     agentBalance: string;
@@ -50,9 +52,9 @@ export type TranslationDictionary = {
     noRecipients: string;
     noTokens: string;
     perTxCap: string;
+    perTxUnit: string;
+    per24hUnit: string;
     moreItems: string;
-    policyVersion: string;
-    policyUpdated: string;
     editPolicy: string;
     review: string;
     noPending: string;
@@ -104,8 +106,8 @@ export type TranslationDictionary = {
     denied: string;
     executionFailed: string;
     depositSent: string;
+    connectWalletToDeposit: string;
     policySaved: string;
-    airdropRequested: string;
     seedClaimed: string;
     agentFrozen: string;
     agentUnfrozen: string;
@@ -151,9 +153,6 @@ export type TranslationDictionary = {
     claimSeedTitle: string;
     deposit: string;
     depositTitle: string;
-    airdrop: string;
-    airdropRequesting: string;
-    airdropTitle: string;
     officialFaucet: string;
   };
   policy: {

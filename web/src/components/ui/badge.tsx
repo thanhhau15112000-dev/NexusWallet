@@ -11,7 +11,7 @@ const badgeVariants = cva(
         ok: 'border-accent-line bg-accent-soft text-accent',
         warn: 'border-warn-line bg-warn-soft text-warn',
         bad: 'border-bad-line bg-bad-soft text-bad',
-        wallet: 'border-accent-strong bg-accent-strong text-white',
+        wallet: 'border-accent-strong bg-accent-strong text-panel',
       },
     },
     defaultVariants: {
