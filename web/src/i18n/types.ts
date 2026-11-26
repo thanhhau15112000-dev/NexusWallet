@@ -228,6 +228,7 @@ export type TranslationDictionary = {
       auto_approved: string;
       pending_approval: string;
       approved: string;
+      x402Approved: string;
       confirmed: string;
       failed: string;
       denied: string;

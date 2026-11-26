@@ -475,6 +475,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   <TableRow><TableCell><code>nexuspay_get_request</code></TableCell><TableCell>Một yêu cầu, ví dụ để xem bạn đã duyệt hay chưa.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_sol</code></TableCell><TableCell>Đề xuất chuyển SOL. Chính sách quyết định.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_spl</code></TableCell><TableCell>Đề xuất chuyển token SPL. Người nhận và mint phải nằm trong danh sách cho phép.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_x402_fetch</code></TableCell><TableCell>Gọi URL trả HTTP 402 qua x402 v1 (SPL trên Solana Devnet) và gửi <code>X-PAYMENT</code> khi gọi lại.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_x402_resolve</code></TableCell><TableCell>Kiểm tra và ký challenge x402 v1 nhưng không tự gửi lên chain; trả về giá trị header <code>X-PAYMENT</code>.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_list_tasks</code></TableCell><TableCell>Đọc Task Vault đã được cấp quyền, ngân sách còn lại, cap và expiry.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_get_task</code></TableCell><TableCell>Đọc task, Escrow và Receipt. Record local chưa được reconcile lại với chain.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_execute_task_payment</code></TableCell><TableCell>Tạo Escrow trong capability đã cấp. Worker nhận tiền ở bước settlement riêng.</TableCell></TableRow>
@@ -490,6 +492,40 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 chưa rõ, giữ nguyên <code>paymentId</code> và các tham số. Task mô phỏng không chuyển SOL;
                 bản Devnet hiện sử dụng Mock Worker do server giữ signer.
               </p>
+            </>
+          ),
+        },
+        {
+          id: 'x402',
+          title: 'Thanh toán x402 (SPL trên Devnet)',
+          body: (
+            <>
+              <p>
+                x402 hỗ trợ giao thức v1 với scheme <code>exact</code> cho SPL token trên Solana Devnet
+                (<code>solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1</code> hoặc <code>solana-devnet</code>) qua
+                facilitator thirdweb. Agent tự trả phí mạng, ký một giao dịch <code>TransferChecked</code> nhưng không
+                tự broadcast, rồi gửi trong header <code>X-PAYMENT</code>.
+              </p>
+              <p>
+                Khoản vượt <code>maxTokenAmountByMint</code> sẽ chờ chủ ví duyệt và giữ trạng thái{' '}
+                <code>approved</code> cho đến khi agent gọi lại với đúng <code>idempotencyKey</code>. Khi giao dịch đã
+                ký còn hiệu lực trên chain, các lần retry dùng lại đúng giao dịch đó; chỉ ký giao dịch mới khi
+                blockhash cũ đã hết hạn, và request chỉ sang <code>confirmed</code> khi signature đã xác nhận trên chain.
+              </p>
+              <Steps>
+                <li>
+                  Thêm ví merchant và SPL mint vào allowlist rồi đặt <code>maxTokenAmountByMint</code> trong{' '}
+                  <TabLink tab="policy" label="Chính sách chi tiêu" ctx={ctx} />.
+                </li>
+                <li>
+                  Nạp Devnet SOL (trả phí) và SPL token cho ví agent, đồng thời đảm bảo ví merchant đã có sẵn tài khoản
+                  token (ATA) cho mint đó.
+                </li>
+                <li>
+                  Gọi <code>nexuspay_x402_fetch</code> (hoặc <code>nexuspay_x402_resolve</code>) và giữ nguyên{' '}
+                  <code>idempotencyKey</code> trả về để tiếp tục sau khi chủ ví duyệt hoặc khi thử settle lại.
+                </li>
+              </Steps>
             </>
           ),
         },
@@ -758,7 +794,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 <TableRow><TableCell>Chờ xử lý</TableCell><TableCell><code>planned</code></TableCell><TableCell>Đã lập kế hoạch, chưa có quyết định.</TableCell></TableRow>
                 <TableRow><TableCell>Tự động</TableCell><TableCell><code>auto_approved</code></TableCell><TableCell>Chính sách cho phép; agent đang ký.</TableCell></TableRow>
                 <TableRow><TableCell>Chờ duyệt</TableCell><TableCell><code>pending_approval</code></TableCell><TableCell>Vượt hạn mức; đang chờ chủ ví.</TableCell></TableRow>
-                <TableRow><TableCell>Đã duyệt</TableCell><TableCell><code>approved</code></TableCell><TableCell>Chủ ví đã duyệt; agent đang gửi giao dịch.</TableCell></TableRow>
+                <TableRow><TableCell>Đã duyệt</TableCell><TableCell><code>approved</code></TableCell><TableCell>Chủ ví đã duyệt; agent đang gửi giao dịch (với x402, chờ gọi lại kèm <code>X-PAYMENT</code>).</TableCell></TableRow>
                 <TableRow><TableCell>Thành công</TableCell><TableCell><code>confirmed</code></TableCell><TableCell>Đã được xác nhận trên Devnet. Có liên kết Explorer.</TableCell></TableRow>
                 <TableRow><TableCell>Bị từ chối</TableCell><TableCell><code>denied</code></TableCell><TableCell>Bị chính sách từ chối. Không có gì được ký.</TableCell></TableRow>
                 <TableRow><TableCell>Đã hết hạn</TableCell><TableCell><code>expired</code></TableCell><TableCell>Khung thời gian duyệt đã đóng.</TableCell></TableRow>

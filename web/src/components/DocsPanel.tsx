@@ -500,6 +500,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   <TableRow><TableCell><code>nexuspay_get_request</code></TableCell><TableCell>One request, for example to see whether you approved it.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_sol</code></TableCell><TableCell>Propose a SOL transfer. The policy decides.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_spl</code></TableCell><TableCell>Propose an SPL token transfer. Recipient and mint must be allowlisted.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_x402_fetch</code></TableCell><TableCell>Fetch an HTTP 402 resource via x402 v1 (SPL on Solana devnet) and send <code>X-PAYMENT</code> on retry.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_x402_resolve</code></TableCell><TableCell>Evaluate and sign an x402 v1 challenge without broadcasting; returns the <code>X-PAYMENT</code> header value.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_list_tasks</code></TableCell><TableCell>Read delegated Task Vault records, remaining budgets, caps and expiry.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_get_task</code></TableCell><TableCell>Read a task, its Escrows and Receipts. Local records are not a fresh chain reconciliation.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_execute_task_payment</code></TableCell><TableCell>Create an Escrow within an existing capability. Worker settlement is a separate step.</TableCell></TableRow>
@@ -515,6 +517,41 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 <code>paymentId</code> and parameters when retrying an uncertain outcome. Simulated tasks do not
                 transfer SOL; the Devnet demo currently uses a server-held Mock Worker.
               </p>
+            </>
+          ),
+        },
+        {
+          id: 'x402',
+          title: 'x402 payments (SPL on Devnet)',
+          body: (
+            <>
+              <p>
+                x402 supports protocol v1 with scheme <code>exact</code> for SPL tokens on Solana Devnet
+                (<code>solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1</code> or <code>solana-devnet</code>) via the
+                thirdweb facilitator. The agent acts as fee payer, signs a <code>TransferChecked</code> transaction
+                without broadcasting it, and attaches it in <code>X-PAYMENT</code>.
+              </p>
+              <p>
+                Requests over <code>maxTokenAmountByMint</code> wait for owner approval and remain in{' '}
+                <code>approved</code> until the agent retries with the same <code>idempotencyKey</code>. While the
+                signed transaction is still valid on chain, retries reuse it; a new transaction is signed only after
+                the old blockhash expires, and the request becomes <code>confirmed</code> only when the signature lands
+                on chain.
+              </p>
+              <Steps>
+                <li>
+                  Add the merchant recipient and SPL mint to the allowlist and set <code>maxTokenAmountByMint</code> in{' '}
+                  <TabLink tab="policy" label="Policy" ctx={ctx} />.
+                </li>
+                <li>
+                  Fund the agent with Devnet SOL for fees and the SPL token, and make sure the merchant wallet already
+                  has an associated token account for that mint.
+                </li>
+                <li>
+                  Call <code>nexuspay_x402_fetch</code> (or <code>nexuspay_x402_resolve</code>) and keep the returned{' '}
+                  <code>idempotencyKey</code> when resuming after owner approval or retrying settlement.
+                </li>
+              </Steps>
             </>
           ),
         },
@@ -782,7 +819,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 <TableRow><TableCell>Queued</TableCell><TableCell><code>planned</code></TableCell><TableCell>Planned, not yet decided.</TableCell></TableRow>
                 <TableRow><TableCell>Auto</TableCell><TableCell><code>auto_approved</code></TableCell><TableCell>Allowed by policy; the agent is signing.</TableCell></TableRow>
                 <TableRow><TableCell>Approval</TableCell><TableCell><code>pending_approval</code></TableCell><TableCell>Above the limit; waiting for the owner.</TableCell></TableRow>
-                <TableRow><TableCell>Approved</TableCell><TableCell><code>approved</code></TableCell><TableCell>Owner approved; the agent is submitting.</TableCell></TableRow>
+                <TableRow><TableCell>Approved</TableCell><TableCell><code>approved</code></TableCell><TableCell>Owner approved; the agent is submitting (for x402, awaits retry with <code>X-PAYMENT</code>).</TableCell></TableRow>
                 <TableRow><TableCell>Confirmed</TableCell><TableCell><code>confirmed</code></TableCell><TableCell>Confirmed on Devnet. Explorer link available.</TableCell></TableRow>
                 <TableRow><TableCell>Denied</TableCell><TableCell><code>denied</code></TableCell><TableCell>Rejected by policy. Nothing was signed.</TableCell></TableRow>
                 <TableRow><TableCell>Expired</TableCell><TableCell><code>expired</code></TableCell><TableCell>The approval window closed.</TableCell></TableRow>

@@ -126,9 +126,18 @@ const AgentActionBody = z.object({
   idempotencyKey: z.string().trim().max(120).optional(),
 });
 
+const x402IdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9:_-]+$/)
+  .optional();
+
 const X402ResolveBody = z.object({
   challenge: z.union([z.string(), z.record(z.string(), z.unknown())]),
   resourceUrl: z.string().url().optional(),
+  idempotencyKey: x402IdempotencyKeySchema,
 });
 
 const X402FetchBody = z.object({
@@ -136,6 +145,7 @@ const X402FetchBody = z.object({
   method: z.string().optional().default('GET'),
   headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
+  idempotencyKey: x402IdempotencyKeySchema,
 });
 
 const OwnerBody = z.object({ pubkey: PubkeySchema });
@@ -724,9 +734,9 @@ const inFlightClaims = new Set<string>();
   app.post('/api/agent/x402/resolve', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const body = X402ResolveBody.parse(req.body);
-    const result = await resolveX402Payment(userCtx, body.challenge, body.resourceUrl);
+    const result = await resolveX402Payment(userCtx, body.challenge, body.resourceUrl, body.idempotencyKey);
     if (result.status === 'denied') {
-      const status = result.code === 'AGENT_FROZEN' ? 409 : 403;
+      const status = result.code === 'AGENT_FROZEN' || result.code === 'IDEMPOTENCY_CONFLICT' ? 409 : 403;
       return reply.status(status).send(result);
     }
     if (result.status === 'pending_approval') {
@@ -743,7 +753,7 @@ const inFlightClaims = new Set<string>();
       headers: body.headers,
       body: body.body,
     };
-    const result = await fetchWithX402(userCtx, body.url, init);
+    const result = await fetchWithX402(userCtx, body.url, init, body.idempotencyKey);
     return reply.status(200).send(result);
   });
 

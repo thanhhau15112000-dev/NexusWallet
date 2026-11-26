@@ -22,6 +22,7 @@ import {
   type PaymentRequest,
   type Policy,
   type PolicyDecision,
+  type RequestError,
   type ResolvedAction,
 } from '@nexus/shared';
 import {
@@ -335,20 +336,25 @@ async function processAction(
   ctx: AppContext,
   action: AgentAction,
   idempotencyKey: string | null,
+  x402: X402Target | null,
 ): Promise<PaymentRequest> {
   const policy = ctx.store.getPolicy();
   const request = ctx.store.putRequest({
     ...newRequest(policy.agentId, describeAction(action), idempotencyKey),
     plan: { action, rationale: 'structured action submitted by an external agent', confidence: 1 },
+    x402: x402 && { ...x402, transaction: null, signature: null, lastValidBlockHeight: null },
   });
-  ctx.audit.record('request.created', request.id, { source: 'agent_action', action });
+  ctx.audit.record('request.created', request.id, { source: x402 ? 'x402' : 'agent_action', action, x402 });
 
   const spentLamports24h = spentLamportsInWindow(ctx.store.listRequests());
   return dispatchDecision(ctx, request, evaluatePolicy(policy, action, { spentLamports24h }), policy);
 }
 
-function actionFingerprint(action: AgentAction): string {
-  return JSON.stringify(action);
+/** The resource an x402 payment pays for; the transfer itself is the action. */
+export type X402Target = { resource: string; network: string };
+
+function actionFingerprint(action: AgentAction, x402: X402Target | null): string {
+  return JSON.stringify(x402 ? { action, x402: { resource: x402.resource, network: x402.network } } : action);
 }
 
 /**
@@ -406,11 +412,12 @@ export function runCommand(
 
 export function runAction(
   ctx: AppContext,
-  input: { action: AgentAction; idempotencyKey?: string | null },
+  input: { action: AgentAction; idempotencyKey?: string | null; x402?: X402Target | null },
 ): Promise<PaymentRequest> {
   const idempotencyKey = input.idempotencyKey?.trim() || null;
-  if (!idempotencyKey) return processAction(ctx, input.action, null);
-  const fingerprint = actionFingerprint(input.action);
+  const x402 = input.x402 ?? null;
+  if (!idempotencyKey) return processAction(ctx, input.action, null, x402);
+  const fingerprint = actionFingerprint(input.action, x402);
   return dedupe(
     ctx,
     idempotencyKey,
@@ -420,9 +427,41 @@ export function runAction(
       existing.intent === null &&
       existing.plan !== null &&
       existing.plan.action.type !== 'request_manual_approval' &&
-      actionFingerprint(existing.plan.action) === fingerprint,
-    () => processAction(ctx, input.action, idempotencyKey),
+      actionFingerprint(existing.plan.action, existing.x402 ?? null) === fingerprint,
+    () => processAction(ctx, input.action, idempotencyKey, x402),
   );
+}
+
+/**
+ * Pure predicate for the guards every signing step checks: the policy the verdict was made under
+ * is still current and the owner has not frozen the agent. Does not mutate store or audit.
+ */
+export function executionBlocker(ctx: AppContext, request: PaymentRequest): RequestError | null {
+  if (request.decision?.policyVersion !== ctx.store.getPolicy().version) {
+    return { code: 'policy_changed', message: 'policy changed before execution; re-run the command' };
+  }
+  if (Boolean(ctx.store.isFrozen?.())) {
+    return agentError('AGENT_FROZEN', 'agent is frozen by owner');
+  }
+  return null;
+}
+
+/**
+ * The guards every signing step repeats right before the signer is used: the policy the verdict
+ * was made under is still current and the owner has not frozen the agent. Returns the request
+ * moved to `denied`, or null when signing may proceed.
+ */
+export function blockIfNotExecutable(ctx: AppContext, request: PaymentRequest): PaymentRequest | null {
+  const error = executionBlocker(ctx, request);
+  if (!error) return null;
+  ctx.audit.record('tx.blocked', request.id, {
+    reason: error.code === 'policy_changed' ? 'policy_changed' : 'agent_frozen',
+  });
+  return ctx.store.putRequest({
+    ...request,
+    status: 'denied',
+    error,
+  });
 }
 
 /**
@@ -439,28 +478,14 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
     });
   }
 
-  if (
-    action.type !== 'get_balance' &&
-    request.decision?.policyVersion !== ctx.store.getPolicy().version
-  ) {
-    const message = 'policy changed before execution; re-run the command';
-    ctx.audit.record('tx.blocked', request.id, { reason: 'policy_changed' });
-    return ctx.store.putRequest({
-      ...request,
-      status: 'denied',
-      error: { code: 'policy_changed', message },
-    });
+  if (action.type !== 'get_balance') {
+    const blocked = blockIfNotExecutable(ctx, request);
+    if (blocked) return blocked;
   }
 
-  if (action.type !== 'get_balance' && Boolean(ctx.store.isFrozen?.())) {
-    const message = 'agent is frozen by owner';
-    ctx.audit.record('tx.blocked', request.id, { reason: 'agent_frozen' });
-    return ctx.store.putRequest({
-      ...request,
-      status: 'denied',
-      error: agentError('AGENT_FROZEN', message),
-    });
-  }
+  // An x402 payment stays authorised here (`auto_approved` or `approved`); `x402.ts` signs it
+  // right before it is handed to the resource server, so its blockhash is fresh.
+  if (request.x402) return request;
 
   try {
     if (action.type === 'get_balance') {

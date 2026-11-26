@@ -1,178 +1,108 @@
+/**
+ * x402 v1, scheme `exact` on Solana: the shapes a resource server sends in a 402 and the
+ * payment header the agent sends back. The agent pays with one SPL `TransferChecked`
+ * transaction it signs as fee payer and does not broadcast; the server's facilitator
+ * verifies and submits it.
+ */
 import { z } from 'zod';
-import { type ModelAction } from './contract.js';
-import type { Policy } from './policy.js';
+import { PubkeySchema } from './contract.js';
 
-export const X402AcceptOptionSchema = z.object({
-  scheme: z.string().default('exact'),
-  network: z.string(),
-  amount: z.union([z.string(), z.number()]),
-  asset: z.string(),
-  payee: z.string(),
-  resource: z.string().optional(),
-  nonce: z.string().optional(),
-  maxTimeoutSeconds: z.number().optional(),
-});
-export type X402AcceptOption = z.infer<typeof X402AcceptOptionSchema>;
+/** CAIP-2 id of Solana devnet (its genesis hash) and the v1 short name for it. */
+export const SOLANA_DEVNET_NETWORKS = ['solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1', 'solana-devnet'] as const;
+
+export const X402_PAYMENT_HEADER = 'X-PAYMENT';
+export const X402_PAYMENT_RESPONSE_HEADER = 'X-PAYMENT-RESPONSE';
+
+export const X402RequirementsSchema = z
+  .object({
+    scheme: z.string(),
+    network: z.string(),
+    /** Integer base units of `asset`. */
+    maxAmountRequired: z.string().regex(/^\d+$/, 'must be integer base units'),
+    resource: z.string(),
+    description: z.string().optional(),
+    mimeType: z.string().optional(),
+    payTo: PubkeySchema,
+    maxTimeoutSeconds: z.number().optional(),
+    /** SPL mint address. */
+    asset: PubkeySchema,
+    extra: z
+      .object({
+        feePayer: z.string().optional(),
+        tokenDecimals: z.number().int().optional(),
+        tokenProgram: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+export type X402Requirements = z.infer<typeof X402RequirementsSchema>;
 
 export const X402PaymentRequiredSchema = z.object({
-  x402Version: z.number().int().optional().default(2),
+  x402Version: z.literal(1),
   error: z.string().optional(),
-  accepts: z.array(X402AcceptOptionSchema).min(1),
+  // Entries for other chains or versions may not parse; keep them raw and pick ours later.
+  accepts: z.array(z.unknown()).min(1),
 });
 export type X402PaymentRequired = z.infer<typeof X402PaymentRequiredSchema>;
 
-export const X402PaymentSignatureSchema = z.object({
-  x402Version: z.number().int().default(2),
-  scheme: z.string().default('exact'),
-  network: z.string(),
-  payload: z.object({
-    signature: z.string(),
-    authorization: z
-      .object({
-        from: z.string(),
-        to: z.string(),
-        amount: z.union([z.string(), z.number()]),
-        asset: z.string(),
-        nonce: z.string().optional(),
-      })
-      .optional(),
-    transaction: z.string().optional(),
-  }),
-});
-export type X402PaymentSignature = z.infer<typeof X402PaymentSignatureSchema>;
+export type X402PaymentPayload = {
+  x402Version: 1;
+  scheme: 'exact';
+  network: string;
+  payload: { transaction: string };
+};
 
+/** Accepts the JSON body, a JSON string or a base64 JSON string. */
 export function parseX402Challenge(input: unknown): X402PaymentRequired {
   let json: unknown = input;
   if (typeof input === 'string') {
     const trimmed = input.trim();
-    if (trimmed.startsWith('{')) {
-      json = JSON.parse(trimmed);
-    } else {
-      try {
-        const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
-        json = JSON.parse(decoded);
-      } catch {
-        json = JSON.parse(trimmed);
-      }
-    }
+    json = JSON.parse(trimmed.startsWith('{') ? trimmed : Buffer.from(trimmed, 'base64').toString('utf-8'));
   }
   return X402PaymentRequiredSchema.parse(json);
 }
 
-export function formatX402SignatureHeader(payload: X402PaymentSignature): string {
-  const jsonStr = JSON.stringify(payload);
-  return Buffer.from(jsonStr, 'utf-8').toString('base64');
-}
-
-export function isNativeSolAsset(asset: string): boolean {
-  const lower = asset.trim().toLowerCase();
-  return (
-    lower === 'native' ||
-    lower === 'sol' ||
-    lower === 'solana' ||
-    asset.trim() === 'So11111111111111111111111111111111111111112'
-  );
-}
-
-export function findSupportedX402Option(
-  challenge: X402PaymentRequired,
-  cluster = 'devnet',
-): X402AcceptOption | undefined {
-  return challenge.accepts.find((opt) => {
-    const net = opt.network.toLowerCase();
-    const isSolana = net === 'solana' || net.startsWith('solana-') || net.startsWith('solana:');
-    if (!isSolana) return false;
-    if (net.includes('mainnet') && cluster !== 'mainnet-beta' && cluster !== 'mainnet') {
-      return false;
+/** The first `exact` option on Solana devnet that parses; anything else is not payable here. */
+export function selectX402Requirements(challenge: X402PaymentRequired): X402Requirements | undefined {
+  for (const entry of challenge.accepts) {
+    const parsed = X402RequirementsSchema.safeParse(entry);
+    if (!parsed.success) continue;
+    const option = parsed.data;
+    if (option.scheme === 'exact' && (SOLANA_DEVNET_NETWORKS as readonly string[]).includes(option.network)) {
+      return option;
     }
-    return true;
-  });
+  }
+  return undefined;
 }
 
-function parsePositiveBaseUnits(amount: string | number): bigint {
-  if (typeof amount === 'number') {
-    if (!Number.isSafeInteger(amount) || amount <= 0) {
-      throw new RangeError(`Invalid x402 integer base-unit amount: ${amount}`);
-    }
-    return BigInt(amount);
-  }
-  const trimmed = amount.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    throw new RangeError(`Invalid x402 integer base-unit amount: ${amount}`);
-  }
-  const parsed = BigInt(trimmed);
-  if (parsed <= 0n) {
-    throw new RangeError(`Invalid x402 payment amount: ${amount}`);
-  }
-  return parsed;
+export function encodeX402PaymentHeader(payload: X402PaymentPayload): string {
+  return Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64');
 }
 
-function baseUnitsToHuman(baseUnits: bigint, decimals: number): number {
+/** Decodes `X-PAYMENT-RESPONSE`; returns null when absent or malformed. */
+export function decodeX402PaymentResponse(header: string | null): Record<string, unknown> | null {
+  if (!header) return null;
+  try {
+    const value: unknown = JSON.parse(Buffer.from(header, 'base64').toString('utf-8'));
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Integer base units to a human amount with `decimals` places, exactly. */
+export function baseUnitsToHuman(baseUnits: string, decimals: number): number {
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
-    throw new RangeError(`Invalid token decimals: ${decimals}`);
+    throw new RangeError(`invalid token decimals: ${decimals}`);
   }
-  if (decimals === 0) {
-    const whole = Number(baseUnits);
-    if (!Number.isSafeInteger(whole) || whole <= 0) {
-      throw new RangeError(`x402 amount out of supported numeric range: ${baseUnits}`);
-    }
-    return whole;
-  }
-  const divisor = 10n ** BigInt(decimals);
-  const whole = baseUnits / divisor;
-  const fraction = (baseUnits % divisor).toString().padStart(decimals, '0').replace(/0+$/, '');
-  const value = Number(fraction ? `${whole}.${fraction}` : whole.toString());
-  if (!Number.isFinite(value) || value <= 0) {
+  const units = BigInt(baseUnits);
+  if (units <= 0n) throw new RangeError(`x402 amount must be positive: ${baseUnits}`);
+  // Beyond 2^53 base units a JS number no longer round-trips to the same integer.
+  if (units > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new RangeError(`x402 amount out of supported numeric range: ${baseUnits}`);
   }
-  return value;
-}
-
-export function x402OptionToAction(
-  option: X402AcceptOption,
-  policy: Policy,
-  splDecimals?: number,
-): {
-  action: Extract<ModelAction, { type: 'transfer_sol' | 'transfer_spl' }>;
-  idempotencyKey: string;
-} {
-  const baseUnits = parsePositiveBaseUnits(option.amount);
-
-  const cleanResource = (option.resource ?? 'endpoint')
-    .replace(/^https?:\/\//, '')
-    .replace(/[^a-zA-Z0-9:_-]/g, '_')
-    .slice(0, 40);
-  const nonceKey = option.nonce ?? `${option.payee}:${option.amount}`;
-  const rawKey = `x402:${policy.agentId}:${cleanResource}:${nonceKey}`;
-  // Ensure idempotency key meets regex /^[A-Za-z0-9:_-]+$/ and max 100 length
-  const idempotencyKey = rawKey.replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 100);
-
-  const isNative = isNativeSolAsset(option.asset);
-  if (isNative) {
-    const amountSol = baseUnitsToHuman(baseUnits, 9);
-    return {
-      action: {
-        type: 'transfer_sol',
-        recipient: option.payee,
-        amountSol,
-        memo: option.nonce ? `x402:${option.nonce}` : undefined,
-      },
-      idempotencyKey,
-    };
-  }
-
-  if (splDecimals === undefined) {
-    throw new RangeError(`Mint decimals are required for SPL x402 asset: ${option.asset}`);
-  }
-
-  return {
-    action: {
-      type: 'transfer_spl',
-      recipient: option.payee,
-      mint: option.asset,
-      amount: baseUnitsToHuman(baseUnits, splDecimals),
-      memo: option.nonce ? `x402:${option.nonce}` : undefined,
-    },
-    idempotencyKey,
-  };
+  const divisor = 10n ** BigInt(decimals);
+  const fraction = (units % divisor).toString().padStart(decimals, '0').replace(/0+$/, '');
+  return Number(fraction ? `${units / divisor}.${fraction}` : (units / divisor).toString());
 }

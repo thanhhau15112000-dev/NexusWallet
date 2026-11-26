@@ -228,6 +228,7 @@ export const vi: TranslationDictionary = {
       auto_approved: 'Chính sách cho phép',
       pending_approval: 'Chờ duyệt',
       approved: 'Đã duyệt',
+      x402Approved: 'Đã duyệt, chờ thanh toán',
       confirmed: 'Hoàn tất',
       failed: 'Thất bại',
       denied: 'Bị từ chối',

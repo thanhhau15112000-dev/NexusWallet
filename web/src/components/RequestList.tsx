@@ -79,6 +79,10 @@ function RequestRow(props: {
     && new Date(request.approval.payload.expiresAt).getTime() <= props.now,
   );
   const displayedStatus = approvalExpired ? 'expired' : request.status;
+  const statusLabel =
+    request.x402 && displayedStatus === 'approved'
+      ? dict.requests.statuses.x402Approved
+      : dict.requests.statuses[displayedStatus];
 
   return (
     <li
@@ -90,7 +94,7 @@ function RequestRow(props: {
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <Pill tone={TONE[displayedStatus]}>{dict.requests.statuses[displayedStatus]}</Pill>
+          <Pill tone={TONE[displayedStatus]}>{statusLabel}</Pill>
           <span className="truncate text-sm font-medium text-ink" title={request.prompt}>
             {request.prompt}
           </span>

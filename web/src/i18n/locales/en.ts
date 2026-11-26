@@ -228,6 +228,7 @@ export const en: TranslationDictionary = {
       auto_approved: 'Allowed by policy',
       pending_approval: 'Approval',
       approved: 'Approved',
+      x402Approved: 'Approved, awaiting payment',
       confirmed: 'Confirmed',
       failed: 'Failed',
       denied: 'Denied',
