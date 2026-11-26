@@ -177,6 +177,16 @@ export type TranslationDictionary = {
     save: string;
     saving: string;
     unsaved: string;
+    tokens: string;
+    noTokens: string;
+    mintPlaceholder: string;
+    tokenNamePlaceholder: string;
+    capPlaceholder: string;
+    capFor: string;
+    capHint: string;
+    addToken: string;
+    useDevnetUsdc: string;
+    invalidCap: string;
   };
   console: {
     title: string;
