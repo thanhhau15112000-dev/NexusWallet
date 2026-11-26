@@ -40,7 +40,7 @@ Hai luồng có enforcement boundary khác nhau. Payment Guard là off-chain pol
 
 1. Bật **Testnet Mode** trong Developer Settings của Phantom và chọn Solana Devnet.
 2. Mở [dashboard](https://nexuspay-56wn.onrender.com), kết nối ví và ký tin nhắn đăng nhập. Bước này không chuyển tiền.
-3. Lấy SOL thử nghiệm từ [Solana Faucet](https://faucet.solana.com), nạp cho ví agent hiển thị trên dashboard. Nút seed/airdrop có thể hết quỹ, chạm giới hạn seed toàn server trong 24 giờ, bị rate limit theo IP hoặc bị RPC giới hạn.
+3. Lấy SOL thử nghiệm từ [Solana Faucet](https://faucet.solana.com), nạp cho ví agent hiển thị trên dashboard. Nút nhận seed có thể hết quỹ, chạm giới hạn seed toàn server trong 24 giờ hoặc bị rate limit theo IP.
 4. Đặt người nhận được phép, mức tối đa mỗi giao dịch và ngưỡng SOL trong 24 giờ ở tab **Chính sách chi tiêu**.
 5. Mở **Yêu cầu thanh toán** để nhập lệnh, hoặc kết nối ứng dụng AI qua card MCP trên dashboard.
 
@@ -103,7 +103,7 @@ flowchart LR
 | **Idempotency** | Với structured transfer action, `idempotencyKey` nhận diện retry cùng action; key khác action trả `IDEMPOTENCY_CONFLICT` khi record còn được giữ lại |
 | **Retention / rolling 24-hour window** | Request retention mặc định là 200. Khi prune, giao dịch SOL/SPL đã hoặc có thể đã chuyển tiền trong 24 giờ và request chưa kết thúc được giữ lại, nên SOL spending accounting và idempotency key của chúng không mất trong cửa sổ 24 giờ ([store.test.ts](agent/test/store.test.ts)) |
 | **Deterministic fallback parser** | Màn Yêu cầu thanh toán dùng deterministic parser khi không dùng model provider; action vẫn qua schema validation và `evaluatePolicy` |
-| **Rate limit / seed cap** | Fixed-window limit theo route: đăng nhập 10/phút/IP, seed/airdrop 5/giờ/IP, đề xuất transfer và tạo Escrow dùng chung 30/phút/owner trong mỗi loại danh tính (session hoặc MCP token), các route `/api` còn lại 240/phút/owner. Vượt giới hạn trả `RATE_LIMITED` kèm `retryAfterSeconds`. Seed từ master funder tối đa `SEED_CAP_PER_DAY` (mặc định 50) mỗi 24 giờ cho toàn server, giữ chỗ trước khi gửi giao dịch. Counter rate limit nằm trong memory, reset khi restart; không thay thế WAF/CDN |
+| **Rate limit / seed cap** | Fixed-window limit theo route: đăng nhập 10/phút/IP, seed 5/giờ/IP, đề xuất transfer và tạo Escrow dùng chung 30/phút/owner trong mỗi loại danh tính (session hoặc MCP token), các route `/api` còn lại 240/phút/owner. Vượt giới hạn trả `RATE_LIMITED` kèm `retryAfterSeconds`. Seed từ master funder tối đa `SEED_CAP_PER_DAY` (mặc định 50) mỗi 24 giờ cho toàn server, giữ chỗ trước khi gửi giao dịch. Counter rate limit nằm trong memory, reset khi restart; không thay thế WAF/CDN |
 | **Multi-tenant / single-instance** | Context riêng theo owner; Store JSON và session hiện phục vụ một instance, chưa có transaction chung cho nhiều replica |
 
 Nguồn: [`crypto.ts`](agent/src/crypto.ts), [`audit.ts`](agent/src/audit.ts), [`pipeline.ts`](agent/src/pipeline.ts), [`mcp-remote.ts`](agent/src/mcp-remote.ts), [`store.ts`](agent/src/store.ts), [`rate-limit.ts`](agent/src/rate-limit.ts), [`seed-ledger.ts`](agent/src/seed-ledger.ts), [`mcp-token.ts`](agent/src/mcp-token.ts).

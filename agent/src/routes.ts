@@ -36,7 +36,6 @@ import {
   getLamportBalance,
   getAgentHistory,
   isValidAddress,
-  requestAirdrop,
 } from './chain.js';
 import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
@@ -154,7 +153,6 @@ const ApproveBody = z.object({
   signerPubkey: PubkeySchema,
 });
 
-const AirdropBody = z.object({ sol: z.number().positive().max(5).default(1) });
 const ChallengeBody = z.object({ pubkey: PubkeySchema });
 const LoginBody = z.object({
   challengeId: z.string().regex(/^[a-f0-9]{64}$/i),
@@ -688,27 +686,6 @@ const inFlightClaims = new Set<string>();
     userCtx.store.setFrozen(false);
     userCtx.audit.record('agent.unfrozen', null, { unfrozenAt: new Date().toISOString() });
     return { frozen: false, frozenAt: null };
-  });
-
-  app.post('/api/agent/airdrop', async (req, reply) => {
-    const userCtx = resolveUserContext(ctx, req);
-    const body = AirdropBody.parse(req.body ?? {});
-    try {
-      const signature = await requestAirdrop({
-        connection: userCtx.connection,
-        address: userCtx.agentPubkey,
-        lamports: solToLamports(body.sol),
-      });
-      userCtx.audit.record('agent.airdrop', null, { sol: body.sol, signature });
-      const lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
-      return { signature, lamports };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return reply.status(502).send({
-        error: 'airdrop_failed',
-        message: `${message} | the devnet faucet rate-limits aggressively, fund the agent from https://faucet.solana.com instead`,
-      });
-    }
   });
 
   app.post('/api/commands', async (req) => {

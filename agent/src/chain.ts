@@ -410,18 +410,4 @@ export async function transferSpl(params: {
   return { signature, slot: status.value?.slot ?? null };
 }
 
-export async function requestAirdrop(params: {
-  connection: Connection;
-  address: string;
-  lamports: number;
-}): Promise<string> {
-  const { connection, address, lamports } = params;
-  const signature = await withRpcRetry(
-    () => connection.requestAirdrop(new PublicKey(address), lamports),
-    { attempts: 2 },
-  );
-  await connection.confirmTransaction(signature, 'confirmed');
-  return signature;
-}
-
 export type { Connection, Keypair };
