@@ -272,6 +272,29 @@ export async function getLamportBalance(connection: Connection, address: string)
   return withRpcRetry(() => connection.getBalance(new PublicKey(address), 'confirmed'));
 }
 
+export type TokenBalance = { mint: string; amount: string; decimals: number };
+
+/** Non-zero SPL balances held by `address` under the classic and Token-2022 programs. */
+export async function getTokenBalances(connection: Connection, address: string): Promise<TokenBalance[]> {
+  const owner = new PublicKey(address);
+  const results = await Promise.all(
+    [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((programId) =>
+      withRpcRetry(() => connection.getParsedTokenAccountsByOwner(owner, { programId }, 'confirmed')),
+    ),
+  );
+  return results
+    .flatMap((result) => result.value)
+    .map(({ account }) => {
+      const info = account.data.parsed.info as {
+        mint: string;
+        tokenAmount: { amount: string; decimals: number; uiAmountString: string };
+      };
+      return { mint: info.mint, amount: info.tokenAmount.uiAmountString, decimals: info.tokenAmount.decimals, raw: info.tokenAmount.amount };
+    })
+    .filter((balance) => balance.raw !== '0')
+    .map(({ mint, amount, decimals }) => ({ mint, amount, decimals }));
+}
+
 export async function transferSol(params: {
   connection: Connection;
   payer: Keypair;

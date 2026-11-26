@@ -34,6 +34,8 @@ import {
   FEE_BUFFER_LAMPORTS,
   explorerAddressUrl,
   getLamportBalance,
+  getTokenBalances,
+  type TokenBalance,
   getAgentHistory,
   isValidAddress,
 } from './chain.js';
@@ -474,11 +476,14 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const session = getSession(ctx, req);
     let lamports: number | null = null;
     let rpcError: string | null = null;
+    // A token read failure must not hide the SOL balance; null tells the client it is unknown.
+    const tokensRead = getTokenBalances(userCtx.connection, userCtx.agentPubkey).catch(() => null);
     try {
       lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
     } catch (err) {
       rpcError = err instanceof Error ? err.message : String(err);
     }
+    const tokens: TokenBalance[] | null = await tokensRead;
 
     const isAdmin = Boolean(session?.isAdmin || (session?.owner && session.owner === ctx.config.adminPubkey));
     let masterFunderBalance: number | null = null;
@@ -521,6 +526,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
         agentId: userCtx.config.AGENT_ID,
         pubkey: userCtx.agentPubkey,
         lamports,
+        tokens,
         rpcError,
         explorerUrl: explorerAddressUrl(userCtx.agentPubkey, userCtx.config.SOLANA_CLUSTER),
         // Upper bound the pre-flight balance check reserves on top of a SOL transfer amount.

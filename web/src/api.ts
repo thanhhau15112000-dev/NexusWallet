@@ -25,6 +25,8 @@ export type AgentState = {
     agentId: string;
     pubkey: string;
     lamports: number | null;
+    /** Non-zero SPL balances; null when they could not be read. */
+    tokens?: { mint: string; amount: string; decimals: number }[] | null;
     rpcError: string | null;
     explorerUrl: string;
     frozen?: boolean;

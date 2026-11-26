@@ -79,6 +79,7 @@ async function startHostedApp(options: RateLimitOptions = {}, remoteTrust = fals
   // Zero also keeps the faucet handler off the transaction path: it ignores
   // the malformed body used by the threshold test and checks funder balance.
   vi.spyOn(ctx.connection, 'getBalance').mockResolvedValue(0);
+  vi.spyOn(ctx.connection, 'getParsedTokenAccountsByOwner').mockResolvedValue({ context: { slot: 0 }, value: [] });
   const app = Fastify({ trustProxy: remoteTrust ? trustProxySetting(config) : false });
   await app.register(cookie, { secret: config.SESSION_COOKIE_SECRET });
   registerRateLimit(app, ctx, options);
