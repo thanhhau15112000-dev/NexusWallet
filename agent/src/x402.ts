@@ -1,17 +1,18 @@
 /**
- * x402 v1 client, scheme `exact` on Solana devnet.
+ * x402 v2 client, scheme `exact` on Solana devnet.
  *
  * A 402 challenge becomes an SPL `transfer_spl` action and goes through the same policy gate as
  * any transfer (allowlist, per-transaction cap, owner approval). Only an authorised request is
- * signed, and it is signed but not broadcast: the transaction goes to the resource server in
- * `X-PAYMENT` and the server's facilitator submits it. A signed transaction can land as long as
- * its blockhash is valid, so a retry reuses it and a new one is signed only once the old one can
- * no longer land.
+ * signed, and only by the agent: the facilitator named in the challenge is the fee payer and adds
+ * its signature when the resource server settles. A signed transaction can land as long as its
+ * blockhash is valid, so a retry reuses it and a new one is signed only once the old one can no
+ * longer land.
  */
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import {
   X402_PAYMENT_HEADER,
+  X402_PAYMENT_REQUIRED_HEADER,
   X402_PAYMENT_RESPONSE_HEADER,
   baseUnitsToHuman,
   decodeX402PaymentResponse,
@@ -23,7 +24,7 @@ import {
   type X402PaymentRequired,
   type X402Requirements,
 } from '@nexus/shared';
-import { explorerTxUrl, getMintDecimals, getSignedTransactionState, signX402Transfer } from './chain.js';
+import { explorerTxUrl, getMintDecimals, getX402TransactionState, signX402Transfer } from './chain.js';
 import type { AppContext } from './context.js';
 import { IdempotencyConflictError, blockIfNotExecutable, executionBlocker, runAction } from './pipeline.js';
 
@@ -38,9 +39,9 @@ export type X402ResolutionResult =
   | {
       status: 'completed';
       idempotencyKey: string;
-      /** Transaction id of the signed payment (the agent's fee-payer signature). */
-      signature: string;
-      /** Value for the `X-PAYMENT` header on the retried request. */
+      /** The agent's signature on the payment; the transaction id is known only once it settles. */
+      payerSignature: string;
+      /** Value for the `PAYMENT-SIGNATURE` header on the retried request. */
       paymentHeader: string;
       request: PaymentRequest;
     }
@@ -127,19 +128,23 @@ async function signAuthorisedOnce(
     return { request, error: { code: 'NO_EXECUTABLE_ACTION', message: 'x402 request has no SPL transfer' } };
   }
 
-  if (x402.transaction && x402.signature && x402.lastValidBlockHeight !== null) {
-    const state = await getSignedTransactionState(ctx.connection, x402.signature, x402.lastValidBlockHeight);
-    if (state === 'landed') return { request: markConfirmed(ctx, request, x402.signature) };
-    if (state === 'failed') {
+  if (x402.transaction && x402.payerSignature && x402.lastValidBlockHeight !== null) {
+    const found = await getX402TransactionState(ctx.connection, {
+      payer: ctx.agentPubkey,
+      payerSignature: x402.payerSignature,
+      lastValidBlockHeight: x402.lastValidBlockHeight,
+    });
+    if (found.state === 'landed') return { request: markConfirmed(ctx, request, found.txId) };
+    if (found.state === 'failed') {
       const failed = ctx.store.putRequest({
         ...request,
         status: 'failed',
-        error: { code: 'X402_TRANSACTION_FAILED', message: `payment transaction ${x402.signature} failed on chain` },
+        error: { code: 'X402_TRANSACTION_FAILED', message: `payment transaction ${found.txId} failed on chain` },
       });
-      ctx.audit.record('tx.failed', request.id, { signature: x402.signature, via: 'x402' });
+      ctx.audit.record('tx.failed', request.id, { signature: found.txId, via: 'x402' });
       return { request: failed, error: failed.error! };
     }
-    if (state === 'pending') {
+    if (found.state === 'pending') {
       const blocker = executionBlocker(ctx, request);
       if (blocker) return { request, error: blocker };
       return { request };
@@ -158,15 +163,17 @@ async function signAuthorisedOnce(
       payer: ctx.signer,
       recipient: resolved.recipient,
       mint: resolved.mint,
-      baseUnits: BigInt(requirements.maxAmountRequired),
-      claimed: { decimals: requirements.extra?.tokenDecimals, tokenProgram: requirements.extra?.tokenProgram },
+      baseUnits: BigInt(requirements.amount),
+      feePayer: requirements.extra.feePayer,
+      memo: requirements.extra.memo,
     });
     ctx.audit.record('x402.signed', request.id, {
-      signature: signed.signature,
+      payerSignature: signed.payerSignature,
+      feePayer: requirements.extra.feePayer,
       resource: x402.resource,
       lastValidBlockHeight: signed.lastValidBlockHeight,
     });
-    return { request: ctx.store.putRequest({ ...request, x402: { ...x402, ...signed } }) };
+    return { request: ctx.store.putRequest({ ...request, x402: { ...x402, ...signed, accepted: requirements } }) };
   } catch (err) {
     ctx.audit.record('x402.sign_failed', request.id, { error: errorText(err) });
     return {
@@ -198,7 +205,7 @@ export async function resolveX402Payment(
     return denied({
       code: 'INVALID_X402_CHALLENGE',
       message: `failed to parse x402 challenge: ${errorText(err)}`,
-      remediation: 'The resource server must answer with an x402 v1 PaymentRequired body or base64 header.',
+      remediation: 'The resource server must answer with an x402 v2 PaymentRequired object in the PAYMENT-REQUIRED header or the body.',
     });
   }
 
@@ -206,24 +213,15 @@ export async function resolveX402Payment(
   if (!requirements) {
     return denied({
       code: 'UNSUPPORTED_NETWORK',
-      message: 'the challenge has no x402 v1 `exact` option on Solana devnet with an SPL asset',
+      message: 'the challenge has no x402 v2 `exact` option on Solana devnet with an SPL asset and a fee payer',
       remediation: 'The resource server must accept an SPL token on Solana devnet.',
       details: { cluster: ctx.config.SOLANA_CLUSTER },
     });
   }
-  // The agent signs as its own fee payer; a facilitator that requires sponsoring the fee is not supported.
-  const feePayer = requirements.extra?.feePayer;
-  if (feePayer && feePayer !== ctx.agentPubkey) {
-    return denied({
-      code: 'UNSUPPORTED_X402_FEE_PAYER',
-      message: `the challenge requires fee payer ${feePayer}; nexusPay pays its own fee`,
-    });
-  }
-
   // Policy caps are in human units, so decimals come from the mint on chain, never the challenge.
   // A mint outside the allowlist is denied by the policy before any lookup matters.
   const policy = ctx.store.getPolicy();
-  let decimals = requirements.extra?.tokenDecimals ?? 0;
+  let decimals = 0;
   if (policy.allowedMints.some((entry) => entry.address === requirements.asset)) {
     try {
       decimals = await getMintDecimals(ctx.connection, requirements.asset);
@@ -233,7 +231,7 @@ export async function resolveX402Payment(
   }
   let amount: number;
   try {
-    amount = baseUnitsToHuman(requirements.maxAmountRequired, decimals);
+    amount = baseUnitsToHuman(requirements.amount, decimals);
   } catch (err) {
     return denied({ code: 'INVALID_X402_OPTION', message: errorText(err) });
   }
@@ -244,7 +242,7 @@ export async function resolveX402Payment(
     request = await runAction(ctx, {
       action: { type: 'transfer_spl', recipient: requirements.payTo, mint: requirements.asset, amount },
       idempotencyKey,
-      x402: { resource: requirements.resource || resourceUrl || '', network: requirements.network },
+      x402: { resource: challenge.resource.url || resourceUrl || '', network: requirements.network },
     });
   } catch (err) {
     if (err instanceof IdempotencyConflictError) {
@@ -276,7 +274,7 @@ export async function resolveX402Payment(
     return {
       status: 'completed',
       idempotencyKey,
-      signature: request.x402.signature!,
+      payerSignature: request.x402.payerSignature!,
       paymentHeader: paymentHeaderFor(request),
       request,
     };
@@ -294,18 +292,20 @@ export async function resolveX402Payment(
   return {
     status: 'completed',
     idempotencyKey,
-    signature: signed.request.x402!.signature!,
+    payerSignature: signed.request.x402!.payerSignature!,
     paymentHeader: paymentHeaderFor(signed.request),
     request: signed.request,
   };
 }
 
+/** The payment as the resource server receives it: the same transaction with the requirements it answers. */
 function paymentHeaderFor(request: PaymentRequest): string {
+  const x402 = request.x402!;
   return encodeX402PaymentHeader({
-    x402Version: 1,
-    scheme: 'exact',
-    network: request.x402!.network,
-    payload: { transaction: request.x402!.transaction! },
+    x402Version: 2,
+    resource: { url: x402.resource },
+    accepted: x402.accepted as X402Requirements,
+    payload: { transaction: x402.transaction! },
   });
 }
 
@@ -387,7 +387,7 @@ export type X402FetchResult = {
     requestId?: string;
     signature?: string;
     explorerUrl?: string;
-    /** Decoded `X-PAYMENT-RESPONSE` from the resource server. */
+    /** Decoded `PAYMENT-RESPONSE` from the resource server. */
     settlement?: Record<string, unknown> | null;
   };
   error?: X402Error;
@@ -409,7 +409,7 @@ async function readResponse(res: Response): Promise<{ headers: Record<string, st
 }
 
 /**
- * Fetch a resource; on 402, pay through `resolveX402Payment` and retry once with `X-PAYMENT`.
+ * Fetch a resource; on 402, pay through `resolveX402Payment` and retry once with `PAYMENT-SIGNATURE`.
  * The payment counts as settled only when its transaction is confirmed on chain.
  */
 export async function fetchWithX402(
@@ -435,19 +435,21 @@ export async function fetchWithX402(
     return { status: first.status, ...(await readResponse(first)), payment: { status: 'not_required' } };
   }
 
-  // v1 servers put the challenge in the JSON body.
-  let challenge: unknown = null;
-  try {
-    challenge = await first.json();
-  } catch {
-    challenge = null;
+  // v2 carries the challenge in the PAYMENT-REQUIRED header; a JSON body is accepted as a fallback.
+  let challenge: unknown = first.headers.get(X402_PAYMENT_REQUIRED_HEADER);
+  if (!challenge) {
+    try {
+      challenge = await first.json();
+    } catch {
+      challenge = null;
+    }
   }
   if (!challenge) {
     return {
       status: 402,
       headers: {},
       data: null,
-      error: { code: 'MISSING_X402_CHALLENGE', message: 'the endpoint returned 402 without an x402 JSON body' },
+      error: { code: 'MISSING_X402_CHALLENGE', message: 'the endpoint returned 402 without an x402 PAYMENT-REQUIRED header or body' },
     };
   }
 
@@ -468,18 +470,13 @@ export async function fetchWithX402(
   const final = await fetch(url, { ...fetchInit, headers });
   const body = await readResponse(final);
   const settlement = decodeX402PaymentResponse(final.headers.get(X402_PAYMENT_RESPONSE_HEADER));
-  const { signature, idempotencyKey: key } = resolution;
+  const { payerSignature, idempotencyKey: key } = resolution;
   let request = resolution.request;
-  const payment = {
-    idempotencyKey: key,
-    requestId: request.id,
-    signature,
-    explorerUrl: explorerTxUrl(signature, ctx.config.SOLANA_CLUSTER),
-    settlement,
-  };
+  const reportedTxId = typeof settlement?.transaction === 'string' && settlement.transaction ? settlement.transaction : null;
+  const payment = { idempotencyKey: key, requestId: request.id, settlement };
 
   if (!final.ok) {
-    ctx.audit.record('x402.not_settled', request.id, { httpStatus: final.status, signature });
+    ctx.audit.record('x402.not_settled', request.id, { httpStatus: final.status, payerSignature });
     return {
       status: final.status,
       ...body,
@@ -492,11 +489,31 @@ export async function fetchWithX402(
     };
   }
 
+  // The server's word is not proof: the payment counts as paid only once a transaction holding
+  // the agent's signature is confirmed on chain.
   const lastValidBlockHeight = request.x402?.lastValidBlockHeight;
-  const state =
+  const found =
     lastValidBlockHeight !== null && lastValidBlockHeight !== undefined
-      ? await getSignedTransactionState(ctx.connection, signature, lastValidBlockHeight).catch(() => 'pending' as const)
-      : 'pending';
-  if (state === 'landed') request = markConfirmed(ctx, request, signature);
-  return { status: final.status, ...body, payment: { ...payment, requestId: request.id, status: state === 'landed' ? 'paid' : 'submitted' } };
+      ? await getX402TransactionState(ctx.connection, {
+          payer: ctx.agentPubkey,
+          payerSignature,
+          lastValidBlockHeight,
+          txId: reportedTxId,
+        }).catch(() => ({ state: 'pending' as const }))
+      : { state: 'pending' as const };
+  if (found.state === 'landed') {
+    request = markConfirmed(ctx, request, found.txId);
+    return {
+      status: final.status,
+      ...body,
+      payment: {
+        ...payment,
+        requestId: request.id,
+        status: 'paid',
+        signature: found.txId,
+        explorerUrl: explorerTxUrl(found.txId, ctx.config.SOLANA_CLUSTER),
+      },
+    };
+  }
+  return { status: final.status, ...body, payment: { ...payment, status: 'submitted' } };
 }

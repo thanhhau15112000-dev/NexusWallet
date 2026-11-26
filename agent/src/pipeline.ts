@@ -342,7 +342,7 @@ async function processAction(
   const request = ctx.store.putRequest({
     ...newRequest(policy.agentId, describeAction(action), idempotencyKey),
     plan: { action, rationale: 'structured action submitted by an external agent', confidence: 1 },
-    x402: x402 && { ...x402, transaction: null, signature: null, lastValidBlockHeight: null },
+    x402: x402 && { ...x402, accepted: null, transaction: null, payerSignature: null, lastValidBlockHeight: null },
   });
   ctx.audit.record('request.created', request.id, { source: x402 ? 'x402' : 'agent_action', action, x402 });
 

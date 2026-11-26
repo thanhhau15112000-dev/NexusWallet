@@ -466,7 +466,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
     {
       title: 'Fetch URL with x402 payment support',
       description:
-        'Fetch an HTTP resource. On HTTP 402 Payment Required (x402 v1, scheme exact, SPL token on Solana devnet), negotiate the challenge against the nexusPay spending policy, sign the transfer without broadcasting, send it in the X-PAYMENT header, and return the response. Reuse the returned idempotencyKey to resume after owner approval or retry settlement safely.',
+        'Fetch an HTTP resource. On HTTP 402 Payment Required (x402 v2, scheme exact, SPL token on Solana devnet), negotiate the challenge against the nexusPay spending policy, sign the transfer without broadcasting (the facilitator pays the network fee), send it in the PAYMENT-SIGNATURE header, and return the response. Reuse the returned idempotencyKey to resume after owner approval or retry settlement safely.',
       inputSchema: {
         url: z.string().url().describe('The HTTP or HTTPS URL to fetch.'),
         method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().default('GET'),
@@ -512,9 +512,9 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
     {
       title: 'Resolve x402 challenge',
       description:
-        'Evaluate and sign an x402 v1 (scheme exact, SPL token on Solana devnet) payment challenge through the nexusPay Payment Guard without broadcasting. Returns paymentHeader (for the X-PAYMENT header on retry) and idempotencyKey. Reuse that idempotencyKey to resume after owner approval or retry without paying twice.',
+        'Evaluate and sign an x402 v2 (scheme exact, SPL token on Solana devnet) payment challenge through the nexusPay Payment Guard without broadcasting. Returns paymentHeader (for the PAYMENT-SIGNATURE header on retry) and idempotencyKey. Reuse that idempotencyKey to resume after owner approval or retry without paying twice.',
       inputSchema: {
-        challenge: z.string().describe('The raw JSON or base64-encoded x402 v1 PaymentRequired challenge.'),
+        challenge: z.string().describe('The x402 v2 PaymentRequired challenge: the PAYMENT-REQUIRED header value (base64) or its JSON.'),
         resourceUrl: z.string().url().optional().describe('The URL of the resource being paid for.'),
         idempotencyKey: x402IdempotencyKeyInput,
       },

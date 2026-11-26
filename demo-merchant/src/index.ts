@@ -1,11 +1,11 @@
 export interface Env {
-  THIRDWEB_SECRET_KEY: string;
   MERCHANT_WALLET: string;
   USDC_MINT: string;
   /** Worker secret: public Devnet RPC blocks Cloudflare egress, so this points at a keyed provider. */
   SOLANA_RPC_URL?: string;
-  TOKEN_PROGRAM?: string;
   UNTRUSTED_MERCHANT_WALLET?: string;
+  /** x402 v2 facilitator; defaults to the free x402.org one, which sponsors the network fee. */
+  FACILITATOR_URL?: string;
 }
 
 export type CatalogItem = {
@@ -17,10 +17,11 @@ export type CatalogItem = {
   payload: Record<string, unknown>;
 };
 
-const THIRDWEB_BASE = 'https://api.thirdweb.com/v1/payments/x402';
-const DEFAULT_TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
-const X402_PAYMENT_HEADER = 'X-PAYMENT';
-const X402_PAYMENT_RESPONSE_HEADER = 'X-PAYMENT-RESPONSE';
+const DEFAULT_FACILITATOR_URL = 'https://x402.org/facilitator';
+const SOLANA_DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1';
+const PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
+const PAYMENT_SIGNATURE_HEADER = 'PAYMENT-SIGNATURE';
+const PAYMENT_RESPONSE_HEADER = 'PAYMENT-RESPONSE';
 
 export const CATALOG: CatalogItem[] = [
   {
@@ -42,7 +43,7 @@ export const CATALOG: CatalogItem[] = [
     payload: {
       item: 'insights',
       cluster: 'solana:devnet',
-      summary: 'x402 v1 exact SPL settlement confirmed.',
+      summary: 'x402 v2 exact SPL settlement confirmed.',
     },
   },
   {
@@ -69,10 +70,14 @@ export const CATALOG: CatalogItem[] = [
   },
 ];
 
-type AcceptsResponse = {
-  x402Version?: number;
-  error?: string;
-  accepts?: Array<Record<string, unknown>>;
+type PaymentRequirements = {
+  scheme: 'exact';
+  network: string;
+  amount: string;
+  asset: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
+  extra: { feePayer: string };
 };
 
 type SettleResponse = {
@@ -131,35 +136,44 @@ function payToForItem(item: CatalogItem, env: Env): string | null {
   return env.MERCHANT_WALLET;
 }
 
-async function fetchThirdwebAccepts(
-  env: Env,
-  resourceUrl: string,
-  item: CatalogItem,
-  payTo: string,
-): Promise<{ status: number; body: AcceptsResponse }> {
-  const res = await fetch(`${THIRDWEB_BASE}/accepts`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-secret-key': env.THIRDWEB_SECRET_KEY,
-    },
-    body: JSON.stringify({
-      resourceUrl,
-      method: 'GET',
-      network: 'solana:devnet',
-      price: {
-        amount: item.amountBaseUnits,
-        asset: {
-          address: env.USDC_MINT,
-          decimals: 6,
-          tokenProgram: env.TOKEN_PROGRAM || DEFAULT_TOKEN_PROGRAM,
-        },
-      },
-      serverWalletAddress: payTo,
-    }),
+function facilitatorUrl(env: Env): string {
+  return (env.FACILITATOR_URL?.trim() || DEFAULT_FACILITATOR_URL).replace(/\/+$/, '');
+}
+
+/** The facilitator's fee payer for Solana devnet, read from its `/supported` list. */
+async function fetchFeePayer(env: Env): Promise<string | null> {
+  const res = await fetch(`${facilitatorUrl(env)}/supported`);
+  if (!res.ok) return null;
+  const body = (await res.json().catch(() => null)) as {
+    kinds?: Array<{ x402Version?: number; scheme?: string; network?: string; extra?: { feePayer?: string } }>;
+  } | null;
+  const kind = body?.kinds?.find((k) => k.x402Version === 2 && k.scheme === 'exact' && k.network === SOLANA_DEVNET);
+  return kind?.extra?.feePayer ?? null;
+}
+
+function paymentRequirements(env: Env, item: CatalogItem, payTo: string, feePayer: string): PaymentRequirements {
+  return {
+    scheme: 'exact',
+    network: SOLANA_DEVNET,
+    amount: item.amountBaseUnits,
+    asset: env.USDC_MINT,
+    payTo,
+    maxTimeoutSeconds: 60,
+    extra: { feePayer },
+  };
+}
+
+/** 402 with the challenge in the PAYMENT-REQUIRED header, mirrored in the body for readers. */
+function paymentRequired(resourceUrl: string, item: CatalogItem, requirements: PaymentRequirements, error: string, detail?: unknown): Response {
+  const challenge = {
+    x402Version: 2,
+    error,
+    resource: { url: resourceUrl, description: item.name, mimeType: 'application/json' },
+    accepts: [requirements],
+  };
+  return jsonResponse(detail === undefined ? challenge : { ...challenge, settlement: detail }, 402, {
+    [PAYMENT_REQUIRED_HEADER]: encodeBase64Json(challenge),
   });
-  const body = (await res.json()) as AcceptsResponse;
-  return { status: res.status, body };
 }
 
 type ChainView = { payments: RpcSignature[]; rpcError: boolean };
@@ -293,61 +307,59 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       return jsonResponse({ error: 'Item not found' }, 404);
     }
 
-    if (!env.THIRDWEB_SECRET_KEY) {
-      return jsonResponse({ error: 'THIRDWEB_SECRET_KEY is not configured' }, 500);
+    const feePayer = await fetchFeePayer(env);
+    if (!feePayer) {
+      return jsonResponse({ error: 'Facilitator does not list Solana devnet' }, 502);
     }
+    const resourceUrl = url.toString();
+    const requirements = paymentRequirements(env, item, payTo, feePayer);
 
-    const accepts = await fetchThirdwebAccepts(env, url.toString(), item, payTo);
-    const paymentRequirements = accepts.body.accepts?.[0];
-    if (!paymentRequirements) {
-      return jsonResponse({ error: 'Facilitator did not return payment requirements', detail: accepts.body }, 502);
-    }
-
-    const xPaymentHeader = request.headers.get(X402_PAYMENT_HEADER);
-    if (!xPaymentHeader) {
-      return jsonResponse(accepts.body, 402);
+    const paymentHeader = request.headers.get(PAYMENT_SIGNATURE_HEADER);
+    if (!paymentHeader) {
+      return paymentRequired(resourceUrl, item, requirements, 'PAYMENT-SIGNATURE header is required');
     }
 
     let paymentPayload: unknown;
     try {
-      paymentPayload = decodeBase64Json(xPaymentHeader);
+      paymentPayload = decodeBase64Json(paymentHeader);
       if (!paymentPayload || typeof paymentPayload !== 'object' || Array.isArray(paymentPayload)) {
         throw new Error('payload must be a JSON object');
       }
     } catch {
-      return jsonResponse({ ...accepts.body, error: 'Invalid X-PAYMENT header' }, 402);
+      return paymentRequired(resourceUrl, item, requirements, 'Invalid PAYMENT-SIGNATURE header');
     }
 
-    const settleRes = await fetch(`${THIRDWEB_BASE}/settle`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-secret-key': env.THIRDWEB_SECRET_KEY,
-      },
-      body: JSON.stringify({
-        paymentPayload,
-        paymentRequirements,
-        waitUntil: 'confirmed',
-      }),
-    });
+    // The server's own requirements, never the client's copy, decide what counts as paid.
+    const facilitatorBody = JSON.stringify({ x402Version: 2, paymentPayload, paymentRequirements: requirements });
+    const post = (path: string) =>
+      fetch(`${facilitatorUrl(env)}/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: facilitatorBody });
 
+    const verifyRes = await post('verify');
+    const verifyJson = (await verifyRes.json().catch(() => null)) as { isValid?: boolean; invalidReason?: string } | null;
+    if (!verifyRes.ok || !verifyJson?.isValid) {
+      return paymentRequired(resourceUrl, item, requirements, verifyJson?.invalidReason || 'Payment verification failed', {
+        httpStatus: verifyRes.status,
+        ...verifyJson,
+      });
+    }
+
+    const settleRes = await post('settle');
     const settleJson = (await settleRes.json().catch(() => null)) as SettleResponse | null;
     if (!settleRes.ok || !settleJson?.success) {
-      return jsonResponse(
-        {
-          ...accepts.body,
-          error: settleJson?.errorMessage || settleJson?.errorReason || 'Payment settlement failed',
-          // The facilitator's own answer, so a failed settlement can be diagnosed from the client.
-          settlement: { httpStatus: settleRes.status, ...settleJson },
-        },
-        402,
+      // The facilitator's own answer, so a failed settlement can be diagnosed from the client.
+      return paymentRequired(
+        resourceUrl,
+        item,
+        requirements,
+        settleJson?.errorMessage || settleJson?.errorReason || 'Payment settlement failed',
+        { httpStatus: settleRes.status, ...settleJson },
       );
     }
 
     const settlement = {
       success: true,
       transaction: settleJson.transaction ?? '',
-      network: settleJson.network ?? String(paymentRequirements.network ?? 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'),
+      network: settleJson.network ?? SOLANA_DEVNET,
       payer: settleJson.payer ?? '',
     };
     const encodedSettlement = encodeBase64Json(settlement);
@@ -362,7 +374,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
         settlement,
       },
       200,
-      { [X402_PAYMENT_RESPONSE_HEADER]: encodedSettlement },
+      { [PAYMENT_RESPONSE_HEADER]: encodedSettlement },
     );
   }
 

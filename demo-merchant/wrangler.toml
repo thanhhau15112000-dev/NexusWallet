@@ -5,6 +5,5 @@ compatibility_date = "2025-05-01"
 [vars]
 MERCHANT_WALLET = "6VPd7LHbx96D2QiSsAo5JrEdRQUdW1PGk3bUNYhVECAz"
 USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 
-# Secrets (wrangler secret put): THIRDWEB_SECRET_KEY, SOLANA_RPC_URL
+# Secrets (wrangler secret put): SOLANA_RPC_URL
