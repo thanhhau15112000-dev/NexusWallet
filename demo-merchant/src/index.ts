@@ -2,7 +2,8 @@ export interface Env {
   THIRDWEB_SECRET_KEY: string;
   MERCHANT_WALLET: string;
   USDC_MINT: string;
-  SOLANA_RPC_URL: string;
+  /** Worker secret: public Devnet RPC blocks Cloudflare egress, so this points at a keyed provider. */
+  SOLANA_RPC_URL?: string;
   TOKEN_PROGRAM?: string;
   UNTRUSTED_MERCHANT_WALLET?: string;
 }
@@ -10,10 +11,8 @@ export interface Env {
 export type CatalogItem = {
   id: string;
   name: string;
-  description: string;
   amountBaseUnits: string;
   humanPrice: string;
-  policyNote: string;
   useUntrustedWallet?: boolean;
   payload: Record<string, unknown>;
 };
@@ -27,10 +26,8 @@ export const CATALOG: CatalogItem[] = [
   {
     id: 'coffee',
     name: 'Devnet Espresso',
-    description: 'Micro-payment item within typical auto-approval cap.',
     amountBaseUnits: '10000',
     humanPrice: '0.01 USDC',
-    policyNote: 'auto-approve (<= cap)',
     payload: {
       item: 'coffee',
       brew: 'Devnet Espresso',
@@ -40,10 +37,8 @@ export const CATALOG: CatalogItem[] = [
   {
     id: 'insights',
     name: 'Devnet Market Snapshot',
-    description: 'Mid-tier API response within a 1 USDC per-tx limit.',
     amountBaseUnits: '100000',
     humanPrice: '0.10 USDC',
-    policyNote: 'auto-approve (<= 1 USDC cap)',
     payload: {
       item: 'insights',
       cluster: 'solana:devnet',
@@ -53,10 +48,8 @@ export const CATALOG: CatalogItem[] = [
   {
     id: 'report',
     name: 'Deep Research Report',
-    description: 'Higher-value item designed to trigger owner approval.',
     amountBaseUnits: '2500000',
     humanPrice: '2.50 USDC',
-    policyNote: 'owner approval (> 1 USDC cap)',
     payload: {
       item: 'report',
       title: 'Solana Devnet Agentic Commerce Brief',
@@ -66,10 +59,8 @@ export const CATALOG: CatalogItem[] = [
   {
     id: 'partner',
     name: 'Partner Feed (Unlisted Wallet)',
-    description: 'Uses UNTRUSTED_MERCHANT_WALLET when configured to demonstrate allowlist denial.',
     amountBaseUnits: '10000',
     humanPrice: '0.01 USDC',
-    policyNote: 'policy deny (recipient not allowlisted)',
     useUntrustedWallet: true,
     payload: {
       item: 'partner',
@@ -171,72 +162,49 @@ async function fetchThirdwebAccepts(
   return { status: res.status, body };
 }
 
-async function fetchRecentPayments(
-  env: Env,
-): Promise<{ ata: string | null; payments: RpcSignature[]; rpcError: string | null }> {
-  if (!env.SOLANA_RPC_URL || !env.MERCHANT_WALLET || !env.USDC_MINT) {
-    return { ata: null, payments: [], rpcError: 'RPC or wallet configuration missing' };
-  }
-  try {
-    const tokenRes = await fetch(env.SOLANA_RPC_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'getTokenAccountsByOwner',
-        params: [env.MERCHANT_WALLET, { mint: env.USDC_MINT }, { encoding: 'jsonParsed' }],
-      }),
-    });
-    const tokenJson = (await tokenRes.json()) as {
-      result?: { value?: Array<{ pubkey: string }> };
-      error?: { message?: string };
-    };
-    if (tokenJson.error) {
-      return { ata: null, payments: [], rpcError: tokenJson.error.message ?? 'RPC error' };
-    }
-    const ata = tokenJson.result?.value?.[0]?.pubkey ?? null;
-    if (!ata) {
-      return { ata: null, payments: [], rpcError: null };
-    }
+type ChainView = { payments: RpcSignature[]; rpcError: boolean };
 
-    const sigRes = await fetch(env.SOLANA_RPC_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 2,
-        method: 'getSignaturesForAddress',
-        params: [ata, { limit: 15 }],
-      }),
-    });
-    const sigJson = (await sigRes.json()) as {
-      result?: RpcSignature[];
-      error?: { message?: string };
-    };
-    if (sigJson.error) {
-      return { ata, payments: [], rpcError: sigJson.error.message ?? 'RPC error' };
-    }
-    return { ata, payments: sigJson.result ?? [], rpcError: null };
-  } catch (err) {
-    return { ata: null, payments: [], rpcError: err instanceof Error ? err.message : String(err) };
+async function rpc<T>(env: Env, method: string, params: unknown[]): Promise<T> {
+  const res = await fetch(env.SOLANA_RPC_URL!, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  const json = (await res.json()) as { result?: T; error?: { message?: string } };
+  if (json.error || json.result === undefined) throw new Error(json.error?.message ?? `${method} failed`);
+  return json.result;
+}
+
+async function fetchRecentPayments(env: Env): Promise<ChainView> {
+  if (!env.SOLANA_RPC_URL) return { payments: [], rpcError: true };
+  try {
+    const accounts = await rpc<{ value: Array<{ pubkey: string }> }>(env, 'getTokenAccountsByOwner', [
+      env.MERCHANT_WALLET,
+      { mint: env.USDC_MINT },
+      { encoding: 'jsonParsed' },
+    ]);
+    const ata = accounts.value[0]?.pubkey;
+    // No USDC account means nothing has been paid to this merchant yet.
+    if (!ata) return { payments: [], rpcError: false };
+    const payments = await rpc<RpcSignature[]>(env, 'getSignaturesForAddress', [ata, { limit: 10 }]);
+    return { payments, rpcError: false };
+  } catch {
+    return { payments: [], rpcError: true };
   }
 }
 
-function renderHomePage(
-  origin: string,
-  env: Env,
-  chain: { ata: string | null; payments: RpcSignature[]; rpcError: string | null },
-): string {
-  const visibleItems = CATALOG.filter((item) => payToForItem(item, env) !== null);
-  const itemRows = visibleItems
+function shortKey(value: string): string {
+  return `${value.slice(0, 6)}…${value.slice(-6)}`;
+}
+
+function renderHomePage(origin: string, env: Env, chain: ChainView): string {
+  const itemRows = CATALOG.filter((item) => payToForItem(item, env) !== null)
     .map((item) => {
-      const itemUrl = `${origin}/items/${item.id}`;
+      const path = `/items/${item.id}`;
       return `<tr>
-        <td><strong>${escapeHtml(item.name)}</strong><br /><span class="muted">${escapeHtml(item.description)}</span></td>
-        <td class="num">${escapeHtml(item.humanPrice)}<br /><span class="muted">${escapeHtml(item.amountBaseUnits)} base units</span></td>
-        <td><code>${escapeHtml(itemUrl)}</code></td>
-        <td>${escapeHtml(item.policyNote)}</td>
+        <td>${escapeHtml(item.name)}</td>
+        <td class="num">${escapeHtml(item.humanPrice)}</td>
+        <td><a href="${escapeHtml(origin + path)}"><code>${escapeHtml(path)}</code></a></td>
       </tr>`;
     })
     .join('\n');
@@ -244,81 +212,57 @@ function renderHomePage(
   const paymentRows = chain.payments.length
     ? chain.payments
         .map((sig) => {
-          const shortSig = `${sig.signature.slice(0, 10)}…${sig.signature.slice(-8)}`;
           const explorer = `https://explorer.solana.com/tx/${encodeURIComponent(sig.signature)}?cluster=devnet`;
-          const time = sig.blockTime ? new Date(sig.blockTime * 1000).toISOString() : '-';
-          const status = sig.err ? 'failed' : sig.confirmationStatus ?? 'confirmed';
+          const time = sig.blockTime ? new Date(sig.blockTime * 1000).toISOString().replace('T', ' ').slice(0, 19) : '-';
           return `<tr>
-            <td><a href="${explorer}" target="_blank" rel="noreferrer"><code>${escapeHtml(shortSig)}</code></a></td>
-            <td class="num">${sig.slot}</td>
-            <td>${escapeHtml(status)}</td>
-            <td>${escapeHtml(time)}</td>
+            <td><a href="${explorer}" target="_blank" rel="noreferrer" title="${escapeHtml(sig.signature)}">${escapeHtml(shortKey(sig.signature))}</a></td>
+            <td class="num">${escapeHtml(time)}</td>
+            <td>${sig.err ? 'failed' : 'confirmed'}</td>
           </tr>`;
         })
         .join('\n')
-    : `<tr><td colspan="4" class="muted">${
-        chain.rpcError
-          ? `RPC error: ${escapeHtml(chain.rpcError)}`
-          : chain.ata
-            ? 'No settled payments found on merchant USDC ATA yet.'
-            : 'Merchant USDC token account (ATA) does not exist yet on Devnet.'
-      }</td></tr>`;
+    : `<tr><td colspan="3" class="muted">${chain.rpcError ? 'Could not read payments from Devnet.' : 'No payments yet.'}</td></tr>`;
 
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>nexusPay Demo Merchant (x402 v1 / Solana Devnet)</title>
+  <title>nexusPay demo merchant</title>
   <style>
     :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; background: #f6f7f6; color: #111816; }
-    body { max-width: 920px; margin: 32px auto; padding: 0 16px; line-height: 1.5; }
-    .card { background: #fff; border: 1px solid #e3e7e5; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-    h1 { font-size: 22px; margin: 0 0 6px; }
-    h2 { font-size: 16px; margin: 0 0 12px; }
+    body { max-width: 720px; margin: 32px auto; padding: 0 16px; line-height: 1.5; }
+    .card { background: #fff; border: 1px solid #e3e7e5; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 15px; margin: 0 0 8px; }
     .muted { color: #5a6561; font-size: 13px; }
-    .meta { display: grid; gap: 6px; font-size: 13px; margin-top: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e3e7e5; vertical-align: top; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e3e7e5; }
     th { font-size: 12px; color: #5a6561; font-weight: 600; }
+    tr:last-child td { border-bottom: 0; }
     .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: #eef1ef; padding: 2px 5px; border-radius: 4px; }
+    code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; }
     a { color: #177b65; text-decoration: none; }
     a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>nexusPay x402 Demo Merchant</h1>
-    <p class="muted">HTTP 402 resource server on Cloudflare Workers using thirdweb facilitator (x402 v1, scheme <code>exact</code>, Solana Devnet SPL).</p>
-    <div class="meta">
-      <div><strong>Merchant wallet:</strong> <code>${escapeHtml(env.MERCHANT_WALLET)}</code></div>
-      <div><strong>USDC mint:</strong> <code>${escapeHtml(env.USDC_MINT)}</code></div>
-      <div><strong>Merchant USDC ATA:</strong> <code>${escapeHtml(chain.ata ?? 'not created yet')}</code></div>
-    </div>
+    <h1>nexusPay demo merchant</h1>
+    <div class="muted">x402 · Solana Devnet · USDC · wallet <span title="${escapeHtml(env.MERCHANT_WALLET)}">${escapeHtml(shortKey(env.MERCHANT_WALLET))}</span></div>
   </div>
-
   <div class="card">
-    <h2>Catalog (GET /items/:id)</h2>
+    <h2>Items</h2>
     <table>
-      <thead>
-        <tr><th>Item</th><th>Price</th><th>Endpoint</th><th>Policy demo case</th></tr>
-      </thead>
-      <tbody>
-        ${itemRows}
-      </tbody>
+      <thead><tr><th>Item</th><th>Price</th><th>Endpoint</th></tr></thead>
+      <tbody>${itemRows}</tbody>
     </table>
   </div>
-
   <div class="card">
-    <h2>Recent Devnet Payments (on-chain ATA signatures)</h2>
+    <h2>Recent payments</h2>
     <table>
-      <thead>
-        <tr><th>Signature</th><th>Slot</th><th>Status</th><th>Timestamp (UTC)</th></tr>
-      </thead>
-      <tbody>
-        ${paymentRows}
-      </tbody>
+      <thead><tr><th>Transaction</th><th>Time (UTC)</th><th>Status</th></tr></thead>
+      <tbody>${paymentRows}</tbody>
     </table>
   </div>
 </body>
