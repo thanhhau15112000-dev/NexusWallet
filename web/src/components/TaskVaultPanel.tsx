@@ -11,7 +11,6 @@ import {
   XCircle,
 } from './icons.js';
 import {
-  LAMPORTS_PER_SOL,
   type TaskCapabilityRecord,
   type TaskPaymentRecord,
   type TaskReceiptRecord,
@@ -23,6 +22,8 @@ import {
   deriveReceiptPda,
   deriveEscrowPda,
   computeTaskAcceptanceMessage,
+  createAssociatedTokenAccountIdempotentInstruction,
+  deriveVaultPda,
 } from '@nexus/shared';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { getPhantom, signPhantomMessage } from '../phantom.js';
@@ -39,6 +40,8 @@ export function TaskVaultPanel(props: {
   connected: boolean;
   agentPubkey: string;
   mockWorkerPubkey: string | null;
+  /** Policy mints a task budget may use besides SOL. */
+  allowedMints: { label: string; address: string }[];
   rpcUrl: string;
   onToast: (toast: { tone: 'ok' | 'warn' | 'bad'; text: string }) => void;
 }) {
@@ -63,6 +66,11 @@ export function TaskVaultPanel(props: {
   const [newAllowedWorker, setNewAllowedWorker] = useState(props.mockWorkerPubkey ?? '');
   const [newAllowedServiceId, setNewAllowedServiceId] = useState('');
   const [submitOnchain, setSubmitOnchain] = useState(true);
+  /** '' is SOL; otherwise an SPL mint from the policy. */
+  const [newAsset, setNewAsset] = useState('');
+  const newAssetUnit = props.allowedMints.find((entry) => entry.address === newAsset)?.label ?? 'SOL';
+  /** Owner's balance of the selected asset in base units, with its decimals; null until read. */
+  const [ownerBalance, setOwnerBalance] = useState<{ asset: string; baseUnits: bigint; decimals: number } | null>(null);
 
   // Payment form state
   const [paymentWorker, setPaymentWorker] = useState(props.mockWorkerPubkey ?? '');
@@ -97,6 +105,35 @@ export function TaskVaultPanel(props: {
     void loadTasks();
   }, [props.owner]);
 
+  // The budget comes from the owner's wallet, so read its balance of the selected asset.
+  useEffect(() => {
+    setOwnerBalance(null);
+    if (!props.owner) return;
+    let cancelled = false;
+    const owner = new PublicKey(props.owner);
+    const connection = new Connection(props.rpcUrl, 'confirmed');
+    const read = newAsset
+      ? connection.getParsedTokenAccountsByOwner(owner, { mint: new PublicKey(newAsset) }).then((res) => {
+        const amounts = res.value.map((account) => account.account.data.parsed.info.tokenAmount as { amount: string; decimals: number });
+        return {
+          baseUnits: amounts.reduce((sum, amount) => sum + BigInt(amount.amount), 0n),
+          // An owner without a token account holds none; its decimals are then not needed.
+          decimals: amounts[0]?.decimals ?? 0,
+        };
+      })
+      : connection.getBalance(owner).then((lamports) => ({ baseUnits: BigInt(lamports), decimals: 9 }));
+    read
+      .then((balance) => {
+        if (!cancelled) setOwnerBalance({ asset: newAsset, ...balance });
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerBalance(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.owner, props.rpcUrl, newAsset]);
+
   // Follow the selected task's allowlist so the payment form does not start out mismatched.
   const selectedWorker = detail?.task.allowedWorker;
   const selectedService = detail?.task.allowedServiceId;
@@ -122,6 +159,25 @@ export function TaskVaultPanel(props: {
     }
     if (capSol > budgetSol) {
       props.onToast({ tone: 'warn', text: dict.taskVault.toasts.capExceedsBudget });
+      return;
+    }
+    const mint = newAsset ? new PublicKey(newAsset) : undefined;
+    const balance = ownerBalance?.asset === newAsset ? ownerBalance : null;
+    if (mint && (!balance || balance.baseUnits === 0n)) {
+      props.onToast({ tone: 'warn', text: interpolate(dict.taskVault.toasts.noOwnerTokens, { unit: newAssetUnit }) });
+      return;
+    }
+    const decimals = mint ? balance!.decimals : 9;
+    const budgetUnits = Math.round(budgetSol * 10 ** decimals);
+    const capUnits = Math.round(capSol * 10 ** decimals);
+    if (submitOnchain && balance && BigInt(budgetUnits) > balance.baseUnits) {
+      props.onToast({
+        tone: 'warn',
+        text: interpolate(dict.taskVault.toasts.insufficientOwnerBalance, {
+          balance: formatUnits(balance.baseUnits, balance.decimals),
+          unit: newAssetUnit,
+        }),
+      });
       return;
     }
     if (submitOnchain && !newAllowedWorker.trim()) {
@@ -163,15 +219,22 @@ export function TaskVaultPanel(props: {
           owner: ownerPubkey,
           agentSigner: agentPubkey,
           taskId,
-          budgetLamports: Math.round(budgetSol * LAMPORTS_PER_SOL),
-          perPaymentCapLamports: Math.round(capSol * LAMPORTS_PER_SOL),
+          budgetLamports: budgetUnits,
+          perPaymentCapLamports: capUnits,
           allowedWorker: newAllowedWorker.trim() ? new PublicKey(newAllowedWorker.trim()) : undefined,
           allowedServiceId: newAllowedServiceId.trim() || undefined,
           expiry,
+          mint,
         });
 
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-        const tx = new Transaction().add(ix);
+        const tx = new Transaction();
+        if (mint) {
+          // The vault holds a token budget in its own associated token account.
+          const [vault] = deriveVaultPda(deriveTaskCapabilityPda(ownerPubkey, taskId)[0]);
+          tx.add(createAssociatedTokenAccountIdempotentInstruction(ownerPubkey, vault, mint));
+        }
+        tx.add(ix);
         tx.recentBlockhash = blockhash;
         tx.feePayer = ownerPubkey;
 
@@ -188,8 +251,9 @@ export function TaskVaultPanel(props: {
 
       const res = await api.createTask({
         taskId,
-        budgetLamports: Math.round(budgetSol * LAMPORTS_PER_SOL),
-        perPaymentCapLamports: Math.round(capSol * LAMPORTS_PER_SOL),
+        budgetLamports: budgetUnits,
+        perPaymentCapLamports: capUnits,
+        mint: newAsset || undefined,
         expiry,
         allowedWorker: newAllowedWorker.trim() || undefined,
         allowedServiceId: newAllowedServiceId.trim() || undefined,
@@ -261,7 +325,7 @@ export function TaskVaultPanel(props: {
         paymentId,
         worker,
         serviceId: paymentService.trim(),
-        amountLamports: Math.round(amountSol * LAMPORTS_PER_SOL),
+        amountLamports: Math.round(amountSol * 10 ** assetOf(detail.task).decimals),
         requestHash,
       });
       props.onToast({
@@ -323,7 +387,7 @@ export function TaskVaultPanel(props: {
       const [escrow] = deriveEscrowPda(taskCapability, paymentId);
       const ownerSignature = await signPhantomMessage(computeTaskAcceptanceMessage({
         taskCapability, escrow, requestHash: payment.requestHash,
-        resultHash: payment.delivery.resultHash, amountLamports: payment.amountLamports,
+        resultHash: payment.delivery.resultHash, amountLamports: payment.amountLamports, mint: detail.task.mint,
       }));
       const result = await api.settleTaskPayment(detail.task.taskId, paymentId, {
         resultHash: payment.delivery.resultHash,
@@ -433,13 +497,18 @@ export function TaskVaultPanel(props: {
         const connection = new Connection(props.rpcUrl, 'confirmed');
         const ownerPubkey = new PublicKey(props.owner);
         const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
+        const mint = detail.task.mint ? new PublicKey(detail.task.mint) : undefined;
         const ix = refundAndCloseInstruction({
           taskCapability: taskPda,
           owner: ownerPubkey,
           caller: ownerPubkey,
+          mint,
         });
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-        const tx = new Transaction().add(ix);
+        const tx = new Transaction();
+        // The remainder goes to the owner's associated token account, recreated if it was closed.
+        if (mint) tx.add(createAssociatedTokenAccountIdempotentInstruction(ownerPubkey, ownerPubkey, mint));
+        tx.add(ix);
         tx.recentBlockhash = blockhash;
         tx.feePayer = ownerPubkey;
         const { signature } = await provider.signAndSendTransaction(tx as any);
@@ -451,7 +520,7 @@ export function TaskVaultPanel(props: {
       props.onToast({
         tone: 'ok',
         text: interpolate(txSignature ? dict.taskVault.toasts.vaultClosedRefunded : dict.taskVault.toasts.vaultClosedSimulated, {
-          amount: (res.refundedLamports / LAMPORTS_PER_SOL).toFixed(4),
+          amount: amountOf(res.refundedLamports, res.task),
         }),
       });
       await selectTask(taskId);
@@ -500,7 +569,17 @@ export function TaskVaultPanel(props: {
   const receiptsClosable = Boolean(detail) && !detail!.task.isClosed && !taskOpen;
 
 
-  const sol = (lamports: number, digits = 4) => (lamports / LAMPORTS_PER_SOL).toFixed(digits);
+  /** Display unit and decimals of a task's budget asset. */
+  function assetOf(task: TaskCapabilityRecord) {
+    if (!task.mint) return { unit: 'SOL', decimals: 9 };
+    const label = props.allowedMints.find((entry) => entry.address === task.mint)?.label ?? shorten(task.mint, 4);
+    return { unit: label, decimals: task.mintDecimals ?? 0 };
+  }
+  /** A base-unit amount of the task's asset with its unit. */
+  function amountOf(baseUnits: number, task: TaskCapabilityRecord) {
+    const asset = assetOf(task);
+    return `${formatUnits(BigInt(baseUnits), asset.decimals)} ${asset.unit}`;
+  }
   const explorerTx = (signature: string) => `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
 
   const renderPaymentAction = (p: TaskPaymentRecord) => {
@@ -677,8 +756,8 @@ export function TaskVaultPanel(props: {
                         <span className="block h-full rounded-full bg-accent" style={{ width: `${ratio}%` }} />
                       </span>
                       <span className="flex items-center justify-between text-xs text-muted tabular-nums">
-                        <span>{sol(t.spentLamports, 3)} / {sol(t.budgetLamports, 3)} SOL</span>
-                        <span>{dict.taskVault.list.cap} {sol(t.perPaymentCapLamports, 3)}</span>
+                        <span>{formatUnits(BigInt(t.spentLamports), assetOf(t).decimals)} / {amountOf(t.budgetLamports, t)}</span>
+                        <span>{dict.taskVault.list.cap} {formatUnits(BigInt(t.perPaymentCapLamports), assetOf(t).decimals)}</span>
                       </span>
                     </button>
                   </li>
@@ -701,11 +780,34 @@ export function TaskVaultPanel(props: {
             >
               <form onSubmit={handleCreateTask} className="space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label={dict.taskVault.create.asset} required>
+                    <select
+                      className="flex h-9 w-full rounded-md border border-line-strong bg-panel px-3 py-1.5 text-sm text-ink transition-colors focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/15"
+                      value={newAsset}
+                      onChange={(e) => setNewAsset(e.target.value)}
+                    >
+                      <option value="">SOL</option>
+                      {props.allowedMints.map((entry) => (
+                        <option key={entry.address} value={entry.address}>{entry.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  {props.owner ? (
+                    <p className="self-end pb-2 text-xs text-muted tabular-nums sm:col-span-2">
+                      {dict.taskVault.create.ownerBalance}:{' '}
+                      {ownerBalance?.asset === newAsset
+                        ? `${formatUnits(ownerBalance.baseUnits, ownerBalance.decimals)} ${newAssetUnit}`
+                        : '…'}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <Field label={dict.taskVault.create.totalBudget} required>
-                    <UnitInput unit="SOL" min="0.01" value={newBudgetSol} onChange={setNewBudgetSol} />
+                    <UnitInput unit={newAssetUnit} min="0.000001" value={newBudgetSol} onChange={setNewBudgetSol} />
                   </Field>
                   <Field label={dict.taskVault.create.perPaymentCap} required>
-                    <UnitInput unit="SOL" min="0.01" value={newCapSol} onChange={setNewCapSol} />
+                    <UnitInput unit={newAssetUnit} min="0.000001" value={newCapSol} onChange={setNewCapSol} />
                   </Field>
                   <Field label={dict.taskVault.create.expiryDuration} required>
                     <UnitInput unit={dict.taskVault.create.hoursUnit} min="0.05" max="168" value={newHours} onChange={setNewHours} />
@@ -785,7 +887,7 @@ export function TaskVaultPanel(props: {
                 <div className="space-y-2">
                   <span className="block text-xs font-medium text-muted">{dict.taskVault.detail.remaining}</span>
                   <strong className="block text-2xl font-semibold text-ink tabular-nums [font-stretch:112%]">
-                    {sol(vaultRemainingLamports)} SOL
+                    {amountOf(vaultRemainingLamports, detail.task)}
                   </strong>
                   <span className="block h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
                     <span
@@ -796,9 +898,9 @@ export function TaskVaultPanel(props: {
                     />
                   </span>
                   <span className="block text-xs text-muted tabular-nums">
-                    {dict.taskVault.detail.totalSpent}: {sol(detail.task.spentLamports)} / {sol(detail.task.budgetLamports)} SOL
+                    {dict.taskVault.detail.totalSpent}: {formatUnits(BigInt(detail.task.spentLamports), assetOf(detail.task).decimals)} / {amountOf(detail.task.budgetLamports, detail.task)}
                     {detail.task.isClosed
-                      ? ` · ${detail.task.isSimulated === false ? dict.taskVault.detail.refunded : dict.taskVault.detail.refundedSimulated}: ${sol(refundedLamports)} SOL`
+                      ? ` · ${detail.task.isSimulated === false ? dict.taskVault.detail.refunded : dict.taskVault.detail.refundedSimulated}: ${amountOf(refundedLamports, detail.task)}`
                       : null}
                   </span>
                 </div>
@@ -806,7 +908,7 @@ export function TaskVaultPanel(props: {
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-line pt-3 text-sm sm:grid-cols-3">
                   <div className="space-y-1">
                     <dt className="text-xs font-medium text-muted">{dict.taskVault.detail.perPaymentCap}</dt>
-                    <dd className="text-ink tabular-nums">{sol(detail.task.perPaymentCapLamports)} SOL</dd>
+                    <dd className="text-ink tabular-nums">{amountOf(detail.task.perPaymentCapLamports, detail.task)}</dd>
                   </div>
                   <div className="space-y-1">
                     <dt className="text-xs font-medium text-muted">{dict.taskVault.detail.expiresAt}</dt>
@@ -910,7 +1012,7 @@ export function TaskVaultPanel(props: {
                       <Input type="text" value={paymentService} onChange={(e) => setPaymentService(e.target.value)} required />
                     </Field>
                     <Field label={dict.taskVault.payment.amount} required>
-                      <UnitInput unit="SOL" min="0.001" value={paymentAmountSol} onChange={setPaymentAmountSol} />
+                      <UnitInput unit={assetOf(detail.task).unit} min="0.000001" value={paymentAmountSol} onChange={setPaymentAmountSol} />
                     </Field>
                     <Button type="submit" variant="default" disabled={busyAction === 'execute_payment' || locked}>
                       {busyAction === 'execute_payment' ? dict.taskVault.payment.submittingBtn : dict.taskVault.payment.submitBtn}
@@ -956,7 +1058,7 @@ export function TaskVaultPanel(props: {
                             </span>
                           </div>
                           <strong className="text-sm font-semibold text-ink tabular-nums whitespace-nowrap">
-                            {sol(p.amountLamports, 3)} SOL
+                            {amountOf(p.amountLamports, detail.task)}
                           </strong>
                         </div>
                         {renderPaymentAction(p)}
@@ -971,6 +1073,13 @@ export function TaskVaultPanel(props: {
       </div>
     </div>
   );
+}
+
+/** Base units as an exact decimal string, trailing zeros dropped. */
+function formatUnits(baseUnits: bigint, decimals: number): string {
+  const divisor = 10n ** BigInt(decimals);
+  const fraction = (baseUnits % divisor).toString().padStart(decimals, '0').replace(/0+$/, '');
+  return fraction ? `${baseUnits / divisor}.${fraction}` : (baseUnits / divisor).toString();
 }
 
 function Field(props: { label: string; required?: boolean; children: React.ReactNode }) {
@@ -997,7 +1106,9 @@ function UnitInput(props: { unit: string; value: string; onChange: (value: strin
         step="any"
         min={props.min}
         max={props.max}
-        className="pr-14 tabular-nums"
+        className="tabular-nums"
+        // Asset labels vary in length; reserve room so typed digits never run under the unit.
+        style={{ paddingRight: `calc(${props.unit.length * 0.5}em + 1rem)` }}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         required

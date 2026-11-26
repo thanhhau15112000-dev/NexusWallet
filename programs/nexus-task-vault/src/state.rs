@@ -30,9 +30,16 @@ pub struct TaskCapability {
     pub pending_escrows: u32,
     pub allowed_worker: Pubkey,
     pub allowed_service_id: [u8; 32],
+    /// SPL mint the budget is held in; the default key means native SOL. Every `*_lamports`
+    /// amount is in base units of this asset.
+    pub mint: Pubkey,
 }
 
 impl TaskCapability {
+    pub fn is_token(&self) -> bool {
+        self.mint != Pubkey::default()
+    }
+
     pub const LEN: usize = 8 // discriminator
         + 32 // owner
         + 32 // agent_signer
@@ -46,7 +53,8 @@ impl TaskCapability {
         + 1  // vault_bump
         + 4  // pending_escrows
         + 32 // allowed_worker
-        + 32; // allowed_service_id
+        + 32 // allowed_service_id
+        + 32; // mint
 }
 
 #[account]

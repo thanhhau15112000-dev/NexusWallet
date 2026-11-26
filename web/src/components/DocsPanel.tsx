@@ -390,7 +390,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <Steps>
               <li>
-                <strong>Fund.</strong> Enter a task ID, total budget, per-payment cap and expiry (1–168 hours). Tick
+                <strong>Fund.</strong> Choose the payment asset: SOL or a token the policy allows, such as USDC. The
+                budget moves from your wallet into the vault, so the form checks your balance of that asset. Enter a
+                total budget, per-payment cap and expiry (1–168 hours). Tick
                 {' '}<em>Broadcast on-chain</em> to create it on Devnet through your wallet; otherwise it is simulated.
               </li>
               <li>
@@ -417,7 +419,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
             <>
               <p>
                 On-chain tasks show a <em>Devnet Tx</em> badge and link to Explorer. Simulated tasks check budget and
-                state conditions in local records, without transferring SOL on Devnet, and are labelled <em>Simulated</em>.
+                state conditions in local records, without moving funds on Devnet, and are labelled <em>Simulated</em>.
               </p>
               <Callout tone="note" title="On-chain actions need your wallet">
                 Creating, accepting output, revoking and closing a task require the owner wallet. Phantom must be
@@ -515,7 +517,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <p>
                 Task payments use capability limits and do not enter the transfer approval queue. Keep the same{' '}
                 <code>paymentId</code> and parameters when retrying an uncertain outcome. Simulated tasks do not
-                transfer SOL; the Devnet demo currently uses a server-held Mock Worker.
+                move funds; the Devnet demo currently uses a server-held Mock Worker.
               </p>
             </>
           ),

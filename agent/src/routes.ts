@@ -25,6 +25,10 @@ import {
   executeTaskPaymentInstruction,
   settleAcceptedOutputInstruction,
   TASK_RECEIPT_ACCOUNT_SIZE,
+  TASK_CAPABILITY_ACCOUNT_SIZE,
+  TOKEN_PROGRAM_PUBKEY,
+  createAssociatedTokenAccountIdempotentInstruction,
+  deriveAssociatedTokenAddress,
 } from '@nexus/shared';
 import { Ed25519Program, Keypair, PublicKey, SystemProgram, type TransactionInstruction } from '@solana/web3.js';
 import bs58 from 'bs58';
@@ -80,6 +84,7 @@ async function taskCapabilityMatchesOnChain(
     expiry: number;
     allowedWorker?: string;
     allowedServiceId?: string;
+    mint?: string;
   },
 ): Promise<boolean> {
   const [taskPda] = deriveTaskCapabilityPda(new PublicKey(expected.owner), expected.taskId);
@@ -93,7 +98,7 @@ async function taskCapabilityMatchesOnChain(
     || !vaultInfo
     || !taskInfo.owner.equals(TASK_VAULT_PROGRAM_PUBKEY)
     || !vaultInfo.owner.equals(TASK_VAULT_PROGRAM_PUBKEY)
-    || taskInfo.data.length < 207
+    || taskInfo.data.length < TASK_CAPABILITY_ACCOUNT_SIZE
   ) return false;
 
   const data = taskInfo.data;
@@ -111,7 +116,8 @@ async function taskCapabilityMatchesOnChain(
     && Number(data.readBigUInt64LE(120)) === expected.perPaymentCapLamports
     && Number(data.readBigInt64LE(128)) === expected.expiry
     && data.subarray(143, 175).equals(expectedWorker)
-    && data.subarray(175, 207).equals(expectedService);
+    && data.subarray(175, 207).equals(expectedService)
+    && data.subarray(207, 239).equals(expected.mint ? new PublicKey(expected.mint).toBuffer() : PublicKey.default.toBuffer());
 }
 
 const CommandBody = z.object({
@@ -866,6 +872,8 @@ const inFlightClaims = new Set<string>();
     expiry: z.number().int().positive(),
     allowedWorker: PubkeySchema.optional(),
     allowedServiceId: z.string().trim().min(1).max(64).optional(),
+    /** SPL mint of the budget; omit for SOL. */
+    mint: PubkeySchema.optional(),
     txSignature: z.string().trim().optional(),
     isSimulated: z.boolean().optional(),
   });
@@ -897,6 +905,22 @@ const inFlightClaims = new Set<string>();
     if (isSimulated === Boolean(body.txSignature)) {
       return reply.status(400).send({ error: 'invalid_transaction_mode' });
     }
+    let mintDecimals: number | undefined;
+    if (body.mint) {
+      // Amounts are base units of the mint; record its decimals so every client shows them alike.
+      const mintInfo = await userCtx.connection.getParsedAccountInfo(new PublicKey(body.mint), 'confirmed');
+      const parsed = mintInfo.value?.data;
+      if (
+        !mintInfo.value
+        || !mintInfo.value.owner.equals(TOKEN_PROGRAM_PUBKEY)
+        || !parsed
+        || !('parsed' in parsed)
+        || parsed.parsed?.type !== 'mint'
+      ) {
+        return reply.status(400).send({ error: 'invalid_mint', message: 'mint is not an SPL Token mint on this cluster' });
+      }
+      mintDecimals = Number(parsed.parsed.info.decimals);
+    }
     if (!isSimulated) {
       const signatureConfirmed = await hasConfirmedSignature(userCtx, body.txSignature!);
       const matchesOnChain = signatureConfirmed && await taskCapabilityMatchesOnChain(userCtx, {
@@ -908,6 +932,7 @@ const inFlightClaims = new Set<string>();
         expiry: body.expiry,
         allowedWorker: body.allowedWorker,
         allowedServiceId: body.allowedServiceId,
+        mint: body.mint,
       });
       if (!matchesOnChain) {
         return reply.status(409).send({ error: 'onchain_task_mismatch', message: 'confirmed Devnet task state does not match this request' });
@@ -925,6 +950,8 @@ const inFlightClaims = new Set<string>();
       status: 'active' as const,
       allowedWorker: body.allowedWorker,
       allowedServiceId: body.allowedServiceId,
+      mint: body.mint,
+      mintDecimals,
       pda: pda.toBase58(),
       vaultPda: vaultPda.toBase58(),
       txSignature: body.txSignature,
@@ -937,6 +964,7 @@ const inFlightClaims = new Set<string>();
       taskId: record.taskId,
       budgetLamports: record.budgetLamports,
       perPaymentCapLamports: record.perPaymentCapLamports,
+      mint: record.mint,
       expiry: record.expiry,
       pda: record.pda,
       vaultPda: record.vaultPda,
@@ -1207,7 +1235,7 @@ const inFlightClaims = new Set<string>();
     const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
     const acceptanceMessage = computeTaskAcceptanceMessage({
       taskCapability: taskPda, escrow: escrowPda, requestHash: payment.requestHash,
-      resultHash: body.resultHash, amountLamports: payment.amountLamports,
+      resultHash: body.resultHash, amountLamports: payment.amountLamports, mint: task.mint,
     });
     if (!verifyMessageSignature({ message: acceptanceMessage, signatureBase58: body.ownerSignature, pubkeyBase58: task.owner })) {
       return reply.status(401).send({ error: 'invalid_owner_acceptance' });
@@ -1243,6 +1271,13 @@ const inFlightClaims = new Set<string>();
               lamports: topUp,
             }));
           }
+          const taskMint = task.mint ? new PublicKey(task.mint) : undefined;
+          if (taskMint) {
+            // The worker is paid into its associated token account; the agent funds it if missing.
+            instructions.push(createAssociatedTokenAccountIdempotentInstruction(
+              userCtx.signer.publicKey, workerKeypair.publicKey, taskMint,
+            ));
+          }
           instructions.push(Ed25519Program.createInstructionWithPublicKey({
             publicKey: new PublicKey(task.owner).toBytes(),
             message: Buffer.from(acceptanceMessage),
@@ -1255,6 +1290,7 @@ const inFlightClaims = new Set<string>();
             worker: workerKeypair.publicKey,
             agentSigner: new PublicKey(task.agentSigner),
             resultHash: body.resultHash,
+            mint: taskMint,
           }));
           txSignature = await submitTaskVaultInstruction(userCtx.connection, instructions, userCtx.signer, [workerKeypair]);
         } catch (error) {
@@ -1409,11 +1445,13 @@ const inFlightClaims = new Set<string>();
       }
       const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
       const [vaultPda] = deriveVaultPda(taskPda);
-      const [taskAccount, vaultAccount] = await Promise.all([
+      const vaultTokenAccount = task.mint ? deriveAssociatedTokenAddress(vaultPda, new PublicKey(task.mint)) : null;
+      const [taskAccount, vaultAccount, vaultTokenInfo] = await Promise.all([
         userCtx.connection.getAccountInfo(taskPda, 'confirmed'),
         userCtx.connection.getAccountInfo(vaultPda, 'confirmed'),
+        vaultTokenAccount ? userCtx.connection.getAccountInfo(vaultTokenAccount, 'confirmed') : null,
       ]);
-      if (taskAccount || vaultAccount) {
+      if (taskAccount || vaultAccount || vaultTokenInfo) {
         return reply.status(409).send({ error: 'onchain_task_not_closed' });
       }
     }

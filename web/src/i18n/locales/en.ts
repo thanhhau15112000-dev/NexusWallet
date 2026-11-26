@@ -387,6 +387,7 @@ export const en: TranslationDictionary = {
       onchain_payment_failed: 'The Devnet Escrow result is not confirmed. Reconcile the task and transaction before sending a new request.',
       onchain_settlement_failed: 'The Devnet settlement result is not confirmed. Reconcile the Escrow and transaction before retrying.',
       onchain_task_mismatch: 'The Devnet task state does not match the submitted information.',
+      invalid_mint: 'The selected asset is not an SPL Token mint on Devnet.',
       revoke_not_confirmed: 'The Devnet revoke transaction is not confirmed.',
       onchain_task_not_revoked: 'The Devnet task is not revoked.',
       refund_not_confirmed: 'The Devnet refund transaction is not confirmed.',
@@ -402,6 +403,8 @@ export const en: TranslationDictionary = {
     connectToOperate: 'Wallet disconnected. Connect your wallet to create tasks or act on them.',
     create: {
       title: 'Fund New Task Capability',
+      asset: 'Payment asset',
+      ownerBalance: 'Owner wallet balance',
       totalBudget: 'Total budget',
       perPaymentCap: 'Per-payment cap',
       allowedWorker: 'Allowed worker',
@@ -495,7 +498,9 @@ export const en: TranslationDictionary = {
     },
     toasts: {
       connectOwnerFirst: 'Connect your owner wallet first',
-      enterValidSol: 'Enter valid positive SOL amounts',
+      enterValidSol: 'Enter valid positive amounts',
+      noOwnerTokens: 'The owner wallet holds no {unit} to fund this task',
+      insufficientOwnerBalance: 'The budget exceeds the owner wallet balance of {balance} {unit}',
       capExceedsBudget: 'Per-payment cap cannot exceed budget',
       workerRequired: 'On-chain tasks require an allowed worker',
       useMockWorker: 'On-chain demo tasks currently use the configured mock worker',

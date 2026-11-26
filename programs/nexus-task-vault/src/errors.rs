@@ -44,4 +44,8 @@ pub enum TaskVaultError {
     InvalidAllowedWorker,
     #[msg("A verified owner acceptance signature for this output is required")]
     OwnerAcceptanceRequired,
+    #[msg("Token task needs the task mint, the token program and the expected token accounts")]
+    TokenAccountsRequired,
+    #[msg("Token account is not the expected associated token account for this task")]
+    InvalidTokenAccount,
 }
