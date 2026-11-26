@@ -24,6 +24,7 @@ import {
   getAssociatedTokenAddressSync,
   getMint,
 } from '@solana/spl-token';
+import { randomBytes } from 'node:crypto';
 import bs58 from 'bs58';
 
 export type Cluster = 'devnet';
@@ -272,6 +273,29 @@ export async function getLamportBalance(connection: Connection, address: string)
   return withRpcRetry(() => connection.getBalance(new PublicKey(address), 'confirmed'));
 }
 
+export type TokenBalance = { mint: string; amount: string; decimals: number };
+
+/** Non-zero SPL balances held by `address` under the classic and Token-2022 programs. */
+export async function getTokenBalances(connection: Connection, address: string): Promise<TokenBalance[]> {
+  const owner = new PublicKey(address);
+  const results = await Promise.all(
+    [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((programId) =>
+      withRpcRetry(() => connection.getParsedTokenAccountsByOwner(owner, { programId }, 'confirmed')),
+    ),
+  );
+  return results
+    .flatMap((result) => result.value)
+    .map(({ account }) => {
+      const info = account.data.parsed.info as {
+        mint: string;
+        tokenAmount: { amount: string; decimals: number; uiAmountString: string };
+      };
+      return { mint: info.mint, amount: info.tokenAmount.uiAmountString, decimals: info.tokenAmount.decimals, raw: info.tokenAmount.amount };
+    })
+    .filter((balance) => balance.raw !== '0')
+    .map(({ mint, amount, decimals }) => ({ mint, amount, decimals }));
+}
+
 export async function transferSol(params: {
   connection: Connection;
   payer: Keypair;
@@ -412,11 +436,13 @@ export async function transferSpl(params: {
   return { signature, slot: status.value?.slot ?? null };
 }
 
+const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+
 /**
- * x402 `exact` payment: one SPL `TransferChecked` to the payee's existing token account, signed
- * by the agent as fee payer and returned unsent. The resource server's facilitator submits it.
- * Facilitators accept only compute-budget and transfer instructions, so the recipient token
- * account must already exist and the fee is the fixed minimum.
+ * Sign an x402 v2 `exact` payment: ComputeBudget limit and price, one TransferChecked, and a Memo,
+ * with the facilitator as fee payer. Only the agent signs; the facilitator adds the fee-payer
+ * signature when it settles. The agent is the transfer authority, and the fee payer appears in no
+ * instruction, so the facilitator's signature can only pay the network fee.
  */
 export async function signX402Transfer(params: {
   connection: Connection;
@@ -425,17 +451,13 @@ export async function signX402Transfer(params: {
   mint: string;
   /** Integer base units, taken from the challenge. */
   baseUnits: bigint;
-  /** Decimals and token program the challenge claims; must match the mint on chain. */
-  claimed: { decimals?: number; tokenProgram?: string };
-}): Promise<{ transaction: string; signature: string; lastValidBlockHeight: number }> {
-  const { connection, payer, recipient, mint, baseUnits, claimed } = params;
+  /** The facilitator's `extra.feePayer`. */
+  feePayer: string;
+  /** `extra.memo` when the seller set one; otherwise a random nonce keeps the transaction unique. */
+  memo?: string;
+}): Promise<{ transaction: string; payerSignature: string; lastValidBlockHeight: number }> {
+  const { connection, payer, recipient, mint, baseUnits } = params;
   const { mintKey, programId, decimals } = await resolveSplMint(connection, mint);
-  if (claimed.decimals !== undefined && claimed.decimals !== decimals) {
-    throw new Error(`challenge claims ${claimed.decimals} decimals, mint ${mint} has ${decimals}`);
-  }
-  if (claimed.tokenProgram !== undefined && claimed.tokenProgram !== programId.toBase58()) {
-    throw new Error(`challenge claims token program ${claimed.tokenProgram}, mint ${mint} uses ${programId.toBase58()}`);
-  }
 
   const sourceAta = getAssociatedTokenAddressSync(mintKey, payer.publicKey, false, programId);
   const destinationAta = getAssociatedTokenAddressSync(mintKey, new PublicKey(recipient), false, programId);
@@ -452,44 +474,63 @@ export async function signX402Transfer(params: {
     throw new Error(`payee ${recipient} has no token account for ${mint}`);
   }
 
+  const memo = params.memo ?? randomBytes(16).toString('hex');
   const message = new TransactionMessage({
-    payerKey: payer.publicKey,
+    payerKey: new PublicKey(params.feePayer),
     recentBlockhash: latest.blockhash,
     instructions: [
       ComputeBudgetProgram.setComputeUnitLimit({ units: 40_000 }),
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
       createTransferCheckedInstruction(sourceAta, mintKey, destinationAta, payer.publicKey, baseUnits, decimals, [], programId),
+      new TransactionInstruction({ programId: MEMO_PROGRAM_ID, keys: [], data: Buffer.from(memo, 'utf8') }),
     ],
   }).compileToV0Message();
   const transaction = new VersionedTransaction(message);
   transaction.sign([payer]);
+  const payerIndex = message.staticAccountKeys.findIndex((key) => key.equals(payer.publicKey));
   return {
     transaction: Buffer.from(transaction.serialize()).toString('base64'),
-    signature: bs58.encode(transaction.signatures[0]!),
+    payerSignature: bs58.encode(transaction.signatures[payerIndex]!),
     lastValidBlockHeight: latest.lastValidBlockHeight,
   };
 }
 
+/** How many of the agent's latest transactions are searched for a payment with no known id. */
+const X402_SEARCH_DEPTH = 25;
+
+export type X402TransactionState =
+  | { state: 'landed' | 'failed'; txId: string }
+  | { state: 'pending' | 'expired' };
+
 /**
- * Where a signed but unsubmitted-by-us transaction stands. `expired` means it was not found and its
- * blockhash can no longer land, so signing a new one cannot pay twice.
+ * Where a payment the agent signed but did not submit stands. The transaction id is the
+ * facilitator's signature, so the payment is matched by the agent's own signature: first in the
+ * transaction the resource server reported (`txId`, untrusted until it matches), then among the
+ * agent's latest transactions. `expired` means it was not found and its blockhash can no longer
+ * land, so signing a new one cannot pay twice.
  */
-export async function getSignedTransactionState(
+export async function getX402TransactionState(
   connection: Connection,
-  signature: string,
-  lastValidBlockHeight: number,
-): Promise<'landed' | 'failed' | 'pending' | 'expired'> {
-  const [statuses, blockHeight] = await Promise.all([
-    withRpcRetry(() => connection.getSignatureStatuses([signature], { searchTransactionHistory: true })),
-    withRpcRetry(() => connection.getBlockHeight('confirmed')),
-  ]);
-  const status = statuses.value[0];
-  if (status) {
-    if (status.err) return 'failed';
-    if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') return 'landed';
-    return 'pending';
+  params: { payer: string; payerSignature: string; lastValidBlockHeight: number; txId?: string | null },
+): Promise<X402TransactionState> {
+  const { payer, payerSignature, lastValidBlockHeight, txId } = params;
+  const options = { commitment: 'confirmed' as const, maxSupportedTransactionVersion: 0 };
+  // Read the height before searching: past lastValidBlockHeight, any landing already happened
+  // and the search below sees it, so `expired` is never reported for a payment that lands later.
+  const blockHeight = await withRpcRetry(() => connection.getBlockHeight('confirmed'));
+  const candidates = txId
+    ? [txId]
+    : (await withRpcRetry(() => connection.getSignaturesForAddress(new PublicKey(payer), { limit: X402_SEARCH_DEPTH }, 'confirmed'))).map(
+        (entry) => entry.signature,
+      );
+  const transactions = candidates.length ? await withRpcRetry(() => connection.getTransactions(candidates, options)) : [];
+  for (const [index, tx] of transactions.entries()) {
+    if (!tx?.transaction.signatures.includes(payerSignature)) continue;
+    return { state: tx.meta?.err ? 'failed' : 'landed', txId: candidates[index]! };
   }
-  return blockHeight > lastValidBlockHeight ? 'expired' : 'pending';
+  // A reported id that does not hold our signature proves nothing; search the agent's history.
+  if (txId) return getX402TransactionState(connection, { payer, payerSignature, lastValidBlockHeight });
+  return blockHeight > lastValidBlockHeight ? { state: 'expired' } : { state: 'pending' };
 }
 
 export type { Connection, Keypair };

@@ -2,150 +2,113 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleRequest, type Env } from '../src/index.js';
 
 const BASE_ENV: Env = {
-  THIRDWEB_SECRET_KEY: 'test-secret',
   MERCHANT_WALLET: '6VPd7LHbx96D2QiSsAo5JrEdRQUdW1PGk3bUNYhVECAz',
   USDC_MINT: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
   SOLANA_RPC_URL: 'https://api.devnet.solana.com',
-  TOKEN_PROGRAM: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
 };
+const DEVNET = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1';
+const FEE_PAYER = 'CKPKJWNdJEqa81x7CkZ14BVPiY6y16Sxs7owznqtWYp5';
 
-function acceptsBody(amount: string, payTo = BASE_ENV.MERCHANT_WALLET) {
-  return {
-    x402Version: 1,
-    error: 'Payment header is required',
-    accepts: [
-      {
-        scheme: 'exact',
-        network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-        maxAmountRequired: amount,
-        resource: 'https://merchant.example.com/items/coffee',
-        payTo,
-        asset: BASE_ENV.USDC_MINT,
-        extra: {
-          facilitatorAddress: payTo,
-          tokenDecimals: 6,
-          tokenProgram: BASE_ENV.TOKEN_PROGRAM,
-        },
-      },
-    ],
-  };
+function decode(header: string | null): any {
+  return JSON.parse(atob(header!));
 }
+
+/** Facilitator stub: `/supported` lists devnet; verify and settle answer as given and record their bodies. */
+function facilitator(answers: { verify?: unknown; settle?: unknown } = {}) {
+  const calls: Record<string, any> = {};
+  const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url).split('/').pop()!;
+    if (path === 'supported') {
+      return new Response(JSON.stringify({ kinds: [{ x402Version: 2, scheme: 'exact', network: DEVNET, extra: { feePayer: FEE_PAYER } }] }));
+    }
+    calls[path] = JSON.parse(String(init?.body));
+    if (path === 'verify') return new Response(JSON.stringify(answers.verify ?? { isValid: true, payer: 'AgentWallet111' }));
+    if (path === 'settle') {
+      return new Response(
+        JSON.stringify(answers.settle ?? { success: true, transaction: '5xSettledSig111', network: DEVNET, payer: 'AgentWallet111' }),
+      );
+    }
+    throw new Error(`unexpected fetch ${String(url)}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return calls;
+}
+
+const paymentHeader = btoa(JSON.stringify({ x402Version: 2, accepted: {}, payload: { transaction: 'BASE64_TX' } }));
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe('demo-merchant x402 Worker', () => {
-  it('returns 402 with thirdweb accepts challenge for items of different prices when X-PAYMENT is absent', async () => {
-    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
-      return new Response(JSON.stringify(acceptsBody(body.price.amount)), {
-        status: 402,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
+  it('answers 402 with a v2 challenge in PAYMENT-REQUIRED, priced per item, naming the facilitator fee payer', async () => {
+    facilitator();
     const r1 = await handleRequest(new Request('https://merchant.example.com/items/coffee'), BASE_ENV);
     expect(r1.status).toBe(402);
-    const b1 = (await r1.json()) as { x402Version: number; accepts: Array<{ maxAmountRequired: string }> };
-    expect(b1.x402Version).toBe(1);
-    expect(b1.accepts[0]?.maxAmountRequired).toBe('10000');
+    const c1 = decode(r1.headers.get('PAYMENT-REQUIRED'));
+    expect(c1.x402Version).toBe(2);
+    expect(c1.resource.url).toBe('https://merchant.example.com/items/coffee');
+    expect(c1.accepts[0]).toEqual({
+      scheme: 'exact',
+      network: DEVNET,
+      amount: '10000',
+      asset: BASE_ENV.USDC_MINT,
+      payTo: BASE_ENV.MERCHANT_WALLET,
+      maxTimeoutSeconds: 60,
+      extra: { feePayer: FEE_PAYER },
+    });
 
     const r2 = await handleRequest(new Request('https://merchant.example.com/items/report'), BASE_ENV);
-    expect(r2.status).toBe(402);
-    const b2 = (await r2.json()) as { accepts: Array<{ maxAmountRequired: string }> };
-    expect(b2.accepts[0]?.maxAmountRequired).toBe('2500000');
+    expect(decode(r2.headers.get('PAYMENT-REQUIRED')).accepts[0].amount).toBe('2500000');
   });
 
-  it('settles via thirdweb when X-PAYMENT is present and returns 200 with X-PAYMENT-RESPONSE', async () => {
-    const fetchMock = vi.fn(async (url: string | URL | Request) => {
-      if (String(url).endsWith('/accepts')) {
-        return new Response(JSON.stringify(acceptsBody('10000')), { status: 402 });
-      }
-      if (String(url).endsWith('/settle')) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            transaction: '5xSettledSig111',
-            network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-            payer: 'AgentWallet111',
-          }),
-          { status: 200 },
-        );
-      }
-      throw new Error(`unexpected fetch ${String(url)}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const xPayment = btoa(
-      JSON.stringify({
-        x402Version: 1,
-        scheme: 'exact',
-        network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-        payload: { transaction: 'BASE64_TX' },
-      }),
-    );
-
+  it('verifies then settles against its own requirements and returns 200 with PAYMENT-RESPONSE', async () => {
+    const calls = facilitator();
     const res = await handleRequest(
-      new Request('https://merchant.example.com/items/coffee', {
-        headers: { 'X-PAYMENT': xPayment },
-      }),
+      new Request('https://merchant.example.com/items/coffee', { headers: { 'PAYMENT-SIGNATURE': paymentHeader } }),
       BASE_ENV,
     );
 
     expect(res.status).toBe(200);
-    const responseHeader = res.headers.get('X-PAYMENT-RESPONSE');
-    expect(responseHeader).toBeTruthy();
-    const decoded = JSON.parse(atob(responseHeader!));
-    expect(decoded).toEqual({
+    expect(decode(res.headers.get('PAYMENT-RESPONSE'))).toEqual({
       success: true,
       transaction: '5xSettledSig111',
-      network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+      network: DEVNET,
       payer: 'AgentWallet111',
     });
-
+    // The client sent an empty `accepted`; the merchant still sends its own requirements.
+    expect(calls.verify.x402Version).toBe(2);
+    expect(calls.verify.paymentRequirements.amount).toBe('10000');
+    expect(calls.settle.paymentRequirements.payTo).toBe(BASE_ENV.MERCHANT_WALLET);
+    expect(calls.settle.paymentPayload.payload.transaction).toBe('BASE64_TX');
     const data = (await res.json()) as { ok: boolean; item: string };
     expect(data.ok).toBe(true);
     expect(data.item).toBe('coffee');
   });
 
-  it('returns 402 when thirdweb /settle returns success: false', async () => {
-    const fetchMock = vi.fn(async (url: string | URL | Request) => {
-      if (String(url).endsWith('/accepts')) {
-        return new Response(JSON.stringify(acceptsBody('10000')), { status: 402 });
-      }
-      return new Response(
-        JSON.stringify({
-          success: false,
-          errorReason: 'insufficient_funds',
-          errorMessage: 'User has 0, but requires 10000',
-        }),
-        { status: 200 },
-      );
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const xPayment = btoa(
-      JSON.stringify({
-        x402Version: 1,
-        scheme: 'exact',
-        network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-        payload: { transaction: 'BASE64_TX' },
-      }),
-    );
-
+  it('returns 402 without settling when verification fails', async () => {
+    const calls = facilitator({ verify: { isValid: false, invalidReason: 'invalid_exact_svm_payload_amount' } });
     const res = await handleRequest(
-      new Request('https://merchant.example.com/items/coffee', {
-        headers: { 'X-PAYMENT': xPayment },
-      }),
+      new Request('https://merchant.example.com/items/coffee', { headers: { 'PAYMENT-SIGNATURE': paymentHeader } }),
       BASE_ENV,
     );
-
     expect(res.status).toBe(402);
-    expect(res.headers.get('X-PAYMENT-RESPONSE')).toBeNull();
-    const body = (await res.json()) as { error: string };
+    expect(res.headers.get('PAYMENT-RESPONSE')).toBeNull();
+    expect(((await res.json()) as { error: string }).error).toBe('invalid_exact_svm_payload_amount');
+    expect(calls.settle).toBeUndefined();
+  });
+
+  it('returns 402 with the facilitator answer when settlement fails', async () => {
+    facilitator({ settle: { success: false, errorReason: 'insufficient_funds', errorMessage: 'User has 0, but requires 10000' } });
+    const res = await handleRequest(
+      new Request('https://merchant.example.com/items/coffee', { headers: { 'PAYMENT-SIGNATURE': paymentHeader } }),
+      BASE_ENV,
+    );
+    expect(res.status).toBe(402);
+    expect(res.headers.get('PAYMENT-RESPONSE')).toBeNull();
+    const body = (await res.json()) as { error: string; settlement: { errorReason: string } };
     expect(body.error).toContain('10000');
+    expect(body.settlement.errorReason).toBe('insufficient_funds');
   });
 
   it('renders HTML catalog and recent payments from merchant USDC ATA on GET /', async () => {

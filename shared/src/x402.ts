@@ -1,55 +1,66 @@
 /**
- * x402 v1, scheme `exact` on Solana: the shapes a resource server sends in a 402 and the
- * payment header the agent sends back. The agent pays with one SPL `TransferChecked`
- * transaction it signs as fee payer and does not broadcast; the server's facilitator
- * verifies and submits it.
+ * x402 v2, scheme `exact` on Solana: the shapes a resource server sends in a 402 and the
+ * payment the agent sends back. The agent signs one SPL `TransferChecked` transaction whose fee
+ * payer is the facilitator named in `extra.feePayer`; the facilitator adds its signature and
+ * submits it, so the agent never broadcasts and pays no network fee.
  */
 import { z } from 'zod';
 import { PubkeySchema } from './contract.js';
 
-/** CAIP-2 id of Solana devnet (its genesis hash) and the v1 short name for it. */
-export const SOLANA_DEVNET_NETWORKS = ['solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1', 'solana-devnet'] as const;
+/** CAIP-2 id of Solana devnet (its genesis hash). */
+export const SOLANA_DEVNET_NETWORK = 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1';
 
-export const X402_PAYMENT_HEADER = 'X-PAYMENT';
-export const X402_PAYMENT_RESPONSE_HEADER = 'X-PAYMENT-RESPONSE';
+/** HTTP transport: every x402 object travels base64-encoded in these headers. */
+export const X402_PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
+export const X402_PAYMENT_HEADER = 'PAYMENT-SIGNATURE';
+export const X402_PAYMENT_RESPONSE_HEADER = 'PAYMENT-RESPONSE';
 
 export const X402RequirementsSchema = z
   .object({
     scheme: z.string(),
     network: z.string(),
     /** Integer base units of `asset`. */
-    maxAmountRequired: z.string().regex(/^\d+$/, 'must be integer base units'),
-    resource: z.string(),
-    description: z.string().optional(),
-    mimeType: z.string().optional(),
-    payTo: PubkeySchema,
-    maxTimeoutSeconds: z.number().optional(),
+    amount: z.string().regex(/^\d+$/, 'must be integer base units'),
     /** SPL mint address. */
     asset: PubkeySchema,
+    payTo: PubkeySchema,
+    maxTimeoutSeconds: z.number(),
     extra: z
       .object({
-        feePayer: z.string().optional(),
-        tokenDecimals: z.number().int().optional(),
-        tokenProgram: z.string().optional(),
+        /** The sponsor that pays the network fee and adds the last signature. */
+        feePayer: PubkeySchema,
+        /** Seller-chosen Memo data; a random nonce is used when absent. */
+        memo: z.string().max(256).optional(),
       })
-      .passthrough()
-      .optional(),
+      .passthrough(),
   })
   .passthrough();
 export type X402Requirements = z.infer<typeof X402RequirementsSchema>;
 
+export const X402ResourceSchema = z
+  .object({
+    url: z.string(),
+    description: z.string().optional(),
+    mimeType: z.string().optional(),
+  })
+  .passthrough();
+export type X402Resource = z.infer<typeof X402ResourceSchema>;
+
 export const X402PaymentRequiredSchema = z.object({
-  x402Version: z.literal(1),
+  x402Version: z.literal(2),
   error: z.string().optional(),
-  // Entries for other chains or versions may not parse; keep them raw and pick ours later.
+  resource: X402ResourceSchema,
+  // Entries for other chains or schemes may not parse; keep them raw and pick ours later.
   accepts: z.array(z.unknown()).min(1),
+  extensions: z.record(z.unknown()).optional(),
 });
 export type X402PaymentRequired = z.infer<typeof X402PaymentRequiredSchema>;
 
 export type X402PaymentPayload = {
-  x402Version: 1;
-  scheme: 'exact';
-  network: string;
+  x402Version: 2;
+  resource: X402Resource;
+  /** The requirements entry this payment answers, copied from the challenge. */
+  accepted: X402Requirements;
   payload: { transaction: string };
 };
 
@@ -68,10 +79,7 @@ export function selectX402Requirements(challenge: X402PaymentRequired): X402Requ
   for (const entry of challenge.accepts) {
     const parsed = X402RequirementsSchema.safeParse(entry);
     if (!parsed.success) continue;
-    const option = parsed.data;
-    if (option.scheme === 'exact' && (SOLANA_DEVNET_NETWORKS as readonly string[]).includes(option.network)) {
-      return option;
-    }
+    if (parsed.data.scheme === 'exact' && parsed.data.network === SOLANA_DEVNET_NETWORK) return parsed.data;
   }
   return undefined;
 }
@@ -80,7 +88,7 @@ export function encodeX402PaymentHeader(payload: X402PaymentPayload): string {
   return Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64');
 }
 
-/** Decodes `X-PAYMENT-RESPONSE`; returns null when absent or malformed. */
+/** Decodes a `PAYMENT-RESPONSE` header; returns null when absent or malformed. */
 export function decodeX402PaymentResponse(header: string | null): Record<string, unknown> | null {
   if (!header) return null;
   try {

@@ -221,16 +221,22 @@ export type ExecutionRecord = {
 };
 
 /**
- * An x402 payment: the policy-approved SPL transfer is not broadcast by the agent. The agent
- * signs it as fee payer right before handing it to the resource server, whose facilitator submits it.
+ * An x402 payment: the policy-approved SPL transfer is not broadcast by the agent. The agent signs
+ * it with the facilitator as fee payer and hands it to the resource server, whose facilitator adds
+ * the fee-payer signature and submits it.
  */
 export type X402PaymentState = {
   resource: string;
   network: string;
-  /** Base64 signed transaction; null until signed. Once set it may land, so it is never re-signed while valid. */
+  /** The requirements entry the payment answers; resent unchanged with the same transaction. */
+  accepted?: Record<string, unknown> | null;
+  /** Base64 partially signed transaction; null until signed. Once set it may land, so it is never re-signed while valid. */
   transaction: string | null;
-  /** Transaction id: the agent's fee-payer signature. */
-  signature: string | null;
+  /**
+   * The agent's own signature on the transaction. The transaction id is the facilitator's
+   * signature, unknown until it settles, so this is what identifies the payment on chain.
+   */
+  payerSignature?: string | null;
   lastValidBlockHeight: number | null;
 };
 

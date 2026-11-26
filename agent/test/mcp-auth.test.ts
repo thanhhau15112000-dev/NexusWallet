@@ -31,6 +31,7 @@ async function startApp(overrides: { authRequired?: boolean } = {}) {
   const ctx = createContext(config);
   // Auth/scope tests need deterministic balance reads, not a live Devnet RPC.
   vi.spyOn(ctx.connection, 'getBalance').mockResolvedValue(0);
+  vi.spyOn(ctx.connection, 'getParsedTokenAccountsByOwner').mockResolvedValue({ context: { slot: 0 }, value: [] });
   const app = Fastify();
   await app.register(cookie, { secret: config.SESSION_COOKIE_SECRET });
   registerAuthHook(app, ctx);

@@ -294,6 +294,21 @@ export function OverviewPanel(props: {
                     <span className="text-base font-medium text-muted">SOL</span>
                   </div>
                 )}
+                {agent.tokens?.length ? (
+                  <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                    {agent.tokens.map((token) => {
+                      const label = policy.allowedMints.find((entry) => entry.address === token.mint)?.label;
+                      return (
+                        <li key={token.mint} className="flex items-baseline gap-1.5">
+                          <span className="font-semibold text-ink tabular-nums">{token.amount}</span>
+                          <span className="text-muted" title={token.mint}>
+                            {label ?? shorten(token.mint, 4)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
                 <div className="flex items-center gap-1 text-xs">
                   <a href={agent.explorerUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline" title={agent.pubkey}>
                     {shorten(agent.pubkey, 6)}

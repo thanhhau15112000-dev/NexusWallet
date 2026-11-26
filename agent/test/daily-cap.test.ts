@@ -11,6 +11,7 @@ vi.mock('../src/chain.js', async (importOriginal) => {
     ...actual,
     transferSol: vi.fn().mockResolvedValue({ signature: 'sig-daily-cap', slot: 10 }),
     getLamportBalance: vi.fn().mockResolvedValue(10_000_000_000),
+    getTokenBalances: vi.fn().mockResolvedValue([]),
   };
 });
 

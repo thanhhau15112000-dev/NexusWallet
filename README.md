@@ -136,8 +136,8 @@ MCP hiện cung cấp **10 tool** cho Payment Guard, x402 và Task Vault:
 | `nexuspay_get_request` | Chi tiết một yêu cầu, trạng thái duyệt và link Explorer nếu có |
 | `nexuspay_transfer_sol` | Đề xuất chuyển SOL qua Payment Guard |
 | `nexuspay_transfer_spl` | Đề xuất chuyển SPL token; cần allowlist recipient/mint và hạn mức tương ứng |
-| `nexuspay_x402_fetch` | Gọi URL HTTP 402 theo chuẩn x402 v1 (`exact`, SPL trên Solana Devnet), ký qua Payment Guard và gửi `X-PAYMENT` |
-| `nexuspay_x402_resolve` | Đánh giá và ký challenge x402 v1 (không tự broadcast), trả về header `X-PAYMENT` và `idempotencyKey` |
+| `nexuspay_x402_fetch` | Gọi URL HTTP 402 theo chuẩn x402 v2 (`exact`, SPL trên Solana Devnet), ký qua Payment Guard và gửi `PAYMENT-SIGNATURE` |
+| `nexuspay_x402_resolve` | Đánh giá và ký challenge x402 v2 (không tự broadcast), trả về header `PAYMENT-SIGNATURE` và `idempotencyKey` |
 | `nexuspay_list_tasks` | Danh sách Task Vault, capability, ngân sách còn lại, cap và expiry từ record local |
 | `nexuspay_get_task` | Chi tiết task, Escrow và Receipt; phân biệt mô phỏng/Devnet, chưa reconcile lại chain |
 | `nexuspay_execute_task_payment` | Tạo Escrow trong capability chủ ví đã cấp; Worker nhận tiền ở bước settlement riêng |
@@ -170,12 +170,12 @@ Local có bản stdio: chạy `pnpm mcp:build`, sau đó `pnpm mcp:install -- --
 
 MCP trả `code`, `message`, `remediation` và `details` cho error/pending approval. `details` dùng SOL và lamports; pending request có `pollIntervalMs` và `dashboardUrl`. Ví dụ này kiểm tra hành vi trong retention hiện tại, không chứng minh idempotency hoặc daily cap enforcement ngoài retention window.
 
-### Thanh toán x402 (v1, `exact`, SPL trên Solana Devnet)
+### Thanh toán x402 (v2, `exact`, SPL trên Solana Devnet)
 
-- **Chuẩn hỗ trợ:** chỉ x402 v1, scheme `exact`, SPL token trên Solana Devnet (`solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` hoặc `solana-devnet`) với facilitator thirdweb. Mainnet CAIP-2 và `extra.feePayer` khác ví agent bị từ chối.
-- **Ký và chống trả hai lần:** agent tự làm fee payer, ký giao dịch gồm `SetComputeUnitLimit(40_000)`, `SetComputeUnitPrice(1)`, `TransferChecked` (không Memo) nhưng **không tự broadcast**, gửi qua header `X-PAYMENT`. Giao dịch đã ký được lưu theo `idempotencyKey`; retry dùng lại giao dịch cũ khi còn hiệu lực và chỉ ký giao dịch mới khi blockhash cũ đã `expired`. Request chỉ chuyển `confirmed` khi chữ ký đã `confirmed`/`finalized` trên chain.
-- **Policy & approval:** đi qua policy `transfer_spl` (`payTo` trong `allowedRecipients`, `asset` trong `allowedMints`, hạn mức `maxTokenAmountByMint`). Khoản vượt cap dừng ở `pending_approval`; sau khi chủ ví duyệt, request giữ trạng thái `approved` (chờ thanh toán) và agent gọi lại với **cùng** `idempotencyKey` để ký và gửi `X-PAYMENT`.
-- **Demo merchant (`demo-merchant/`):** Cloudflare Worker dùng thirdweb `/v1/payments/x402/accepts` và `/v1/payments/x402/settle`, trả 200 kèm `X-PAYMENT-RESPONSE`, đọc lịch sử thanh toán trực tiếp từ ATA USDC của merchant trên Devnet. Chạy local với `pnpm demo:merchant`; ví agent cần có Devnet SOL + USDC Devnet, ví merchant cần có sẵn ATA USDC, và URL gọi từ `nexuspay_x402_fetch` phải là URL công khai (SSRF guard chặn localhost/private IP).
+- **Chuẩn hỗ trợ:** x402 v2, scheme `exact`, SPL token trên Solana Devnet (`solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`). Challenge đọc từ header `PAYMENT-REQUIRED` (hoặc body JSON); option phải có `extra.feePayer`. Mainnet và challenge v1 bị từ chối.
+- **Ký và chống trả hai lần:** facilitator trong `extra.feePayer` là fee payer; agent chỉ ký phần của mình cho giao dịch `SetComputeUnitLimit(40_000)`, `SetComputeUnitPrice(1)`, `TransferChecked`, `Memo` (`extra.memo` hoặc nonce ngẫu nhiên), **không tự broadcast**, gửi qua header `PAYMENT-SIGNATURE`. Agent không cần SOL để trả phí x402. Mã giao dịch là chữ ký của facilitator nên agent nhận diện khoản thanh toán bằng chữ ký của chính nó: retry dùng lại giao dịch cũ khi blockhash còn hiệu lực và chỉ ký giao dịch mới khi đã `expired` mà không tìm thấy trên chain. Request chỉ chuyển `confirmed` khi một giao dịch chứa chữ ký của agent đã `confirmed` trên chain.
+- **Policy & approval:** đi qua policy `transfer_spl` (`payTo` trong `allowedRecipients`, `asset` trong `allowedMints`, hạn mức `maxTokenAmountByMint`). Khoản vượt cap dừng ở `pending_approval`; sau khi chủ ví duyệt, request giữ trạng thái `approved` (chờ thanh toán) và agent gọi lại với **cùng** `idempotencyKey` để ký và gửi `PAYMENT-SIGNATURE`.
+- **Demo merchant (`demo-merchant/`):** Cloudflare Worker dùng facilitator miễn phí `https://x402.org/facilitator` (`/supported` để lấy fee payer, rồi `/verify` và `/settle`), trả 200 kèm `PAYMENT-RESPONSE`, đọc lịch sử thanh toán trực tiếp từ ATA USDC của merchant trên Devnet. Chạy local với `pnpm demo:merchant`; ví agent cần USDC Devnet, ví merchant cần có sẵn ATA USDC, và URL gọi từ `nexuspay_x402_fetch` phải là URL công khai (SSRF guard chặn localhost/private IP).
 
 ## Task Capability Vault
 

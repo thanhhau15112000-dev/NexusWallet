@@ -3,8 +3,9 @@ import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  SOLANA_DEVNET_NETWORKS,
+  SOLANA_DEVNET_NETWORK,
   X402_PAYMENT_HEADER,
+  X402_PAYMENT_REQUIRED_HEADER,
   X402_PAYMENT_RESPONSE_HEADER,
   defaultPolicy,
   solToLamports,
@@ -12,6 +13,11 @@ import {
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+const { PAYER_SIG, SETTLED_TX } = vi.hoisted(() => ({
+  PAYER_SIG: '5xAgentSig1111111111111111111111111111111111111111111111111111111111111111111111111111',
+  SETTLED_TX: '5xSettledTx111111111111111111111111111111111111111111111111111111111111111111111111111',
+}));
 
 vi.mock('../src/chain.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/chain.js')>();
@@ -22,17 +28,17 @@ vi.mock('../src/chain.js', async (importOriginal) => {
     transferSpl: vi.fn().mockResolvedValue({ signature: 'sig-unused-spl', slot: 102 }),
     signX402Transfer: vi.fn().mockResolvedValue({
       transaction: 'AQIDBA==',
-      signature: '5xSignedSig11111111111111111111111111111111111111111111111111111111111111111111111111111',
+      payerSignature: PAYER_SIG,
       lastValidBlockHeight: 1000,
     }),
-    getSignedTransactionState: vi.fn().mockResolvedValue('pending'),
+    getX402TransactionState: vi.fn().mockResolvedValue({ state: 'pending' }),
   };
 });
 
 import { approveRequest } from '../src/approvals.js';
 import {
   getMintDecimals,
-  getSignedTransactionState,
+  getX402TransactionState,
   signX402Transfer,
   transferSol,
   transferSpl,
@@ -46,41 +52,30 @@ import { resolveX402Payment, fetchWithX402 } from '../src/x402.js';
 const MERCHANT = '6VPd7LHbx96D2QiSsAo5JrEdRQUdW1PGk3bUNYhVECAz';
 const STRANGER = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
 const USDC_MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
-const DEVNET_CAIP2 = SOLANA_DEVNET_NETWORKS[0];
+const DEVNET_CAIP2 = SOLANA_DEVNET_NETWORK;
+const FEE_PAYER = 'CKPKJWNdJEqa81x7CkZ14BVPiY6y16Sxs7owznqtWYp5';
 const MAINNET_CAIP2 = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
-const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 
 const tempDirs: string[] = [];
 
-function thirdwebChallenge(overrides?: {
-  amount?: string;
-  payTo?: string;
-  network?: string;
-  resource?: string;
-  extra?: Record<string, unknown>;
-}) {
+function requirements(overrides?: { amount?: string; payTo?: string; network?: string; extra?: Record<string, unknown> }) {
   return {
-    x402Version: 1,
-    error: 'Payment header is required',
-    accepts: [
-      {
-        scheme: 'exact',
-        network: overrides?.network ?? DEVNET_CAIP2,
-        maxAmountRequired: overrides?.amount ?? '10000', // 0.01 USDC
-        resource: overrides?.resource ?? 'https://example.com/demo/item',
-        description: '',
-        mimeType: 'application/json',
-        payTo: overrides?.payTo ?? MERCHANT,
-        maxTimeoutSeconds: 86400,
-        asset: USDC_MINT,
-        outputSchema: { input: { type: 'http', method: 'GET', discoverable: true } },
-        extra: overrides?.extra ?? {
-          facilitatorAddress: MERCHANT,
-          tokenDecimals: 6,
-          tokenProgram: TOKEN_PROGRAM,
-        },
-      },
-    ],
+    scheme: 'exact',
+    network: overrides?.network ?? DEVNET_CAIP2,
+    amount: overrides?.amount ?? '10000', // 0.01 USDC
+    asset: USDC_MINT,
+    payTo: overrides?.payTo ?? MERCHANT,
+    maxTimeoutSeconds: 60,
+    extra: overrides?.extra ?? { feePayer: FEE_PAYER },
+  };
+}
+
+function v2Challenge(overrides?: Parameters<typeof requirements>[0] & { resource?: string }) {
+  return {
+    x402Version: 2,
+    error: 'PAYMENT-SIGNATURE header is required',
+    resource: { url: overrides?.resource ?? 'https://example.com/demo/item', mimeType: 'application/json' },
+    accepts: [requirements(overrides)],
   };
 }
 
@@ -136,28 +131,26 @@ afterEach(() => {
   vi.mocked(transferSpl).mockClear();
   vi.mocked(signX402Transfer).mockReset().mockResolvedValue({
     transaction: 'AQIDBA==',
-    signature: '5xSignedSig11111111111111111111111111111111111111111111111111111111111111111111111111111',
+    payerSignature: PAYER_SIG,
     lastValidBlockHeight: 1000,
   });
-  vi.mocked(getSignedTransactionState).mockReset().mockResolvedValue('pending');
+  vi.mocked(getX402TransactionState).mockReset().mockResolvedValue({ state: 'pending' });
   while (tempDirs.length) rmSync(tempDirs.pop()!, { recursive: true, force: true });
 });
 
-describe('x402 v1 Payment Guard integration', () => {
-  it('(a) resolves a real thirdweb v1 challenge within cap without calling transferSpl', async () => {
+describe('x402 v2 Payment Guard integration', () => {
+  it('(a) resolves a v2 challenge within cap, signing with the facilitator as fee payer and without calling transferSpl', async () => {
     const ctx = makeContext();
-    const result = await resolveX402Payment(ctx, thirdwebChallenge());
+    const result = await resolveX402Payment(ctx, v2Challenge());
 
     expect(result.status).toBe('completed');
     if (result.status === 'completed') {
-      expect(result.signature).toBe(
-        '5xSignedSig11111111111111111111111111111111111111111111111111111111111111111111111111111',
-      );
+      expect(result.payerSignature).toBe(PAYER_SIG);
       const decoded = JSON.parse(Buffer.from(result.paymentHeader, 'base64').toString('utf8'));
       expect(decoded).toEqual({
-        x402Version: 1,
-        scheme: 'exact',
-        network: DEVNET_CAIP2,
+        x402Version: 2,
+        resource: { url: 'https://example.com/demo/item' },
+        accepted: requirements(),
         payload: { transaction: 'AQIDBA==' },
       });
       expect(result.request.status).toBe('auto_approved');
@@ -165,13 +158,26 @@ describe('x402 v1 Payment Guard integration', () => {
     }
 
     expect(signX402Transfer).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(signX402Transfer).mock.calls[0]![0]).toMatchObject({
+      recipient: MERCHANT,
+      mint: USDC_MINT,
+      baseUnits: 10_000n,
+      feePayer: FEE_PAYER,
+      memo: undefined,
+    });
     expect(transferSpl).not.toHaveBeenCalled();
     expect(transferSol).not.toHaveBeenCalled();
   });
 
+  it('passes the seller memo to the signer', async () => {
+    const ctx = makeContext();
+    await resolveX402Payment(ctx, v2Challenge({ extra: { feePayer: FEE_PAYER, memo: 'order-42' } }));
+    expect(vi.mocked(signX402Transfer).mock.calls[0]![0].memo).toBe('order-42');
+  });
+
   it('(b) denies payTo outside recipient allowlist before signing', async () => {
     const ctx = makeContext();
-    const result = await resolveX402Payment(ctx, thirdwebChallenge({ payTo: STRANGER }));
+    const result = await resolveX402Payment(ctx, v2Challenge({ payTo: STRANGER }));
 
     expect(result.status).toBe('denied');
     if (result.status === 'denied') {
@@ -183,7 +189,7 @@ describe('x402 v1 Payment Guard integration', () => {
   it('(c) holds over-cap payment for owner approval, stays approved without broadcasting, then signs on retry with same key', async () => {
     const ctx = makeContext() as AppContext & { _ownerKp: nacl.SignKeyPair };
     // 2.5 USDC > cap of 1 USDC
-    const challenge = thirdwebChallenge({ amount: '2500000' });
+    const challenge = v2Challenge({ amount: '2500000' });
 
     const first = await resolveX402Payment(ctx, challenge, undefined, 'x402-approve-1');
     expect(first.status).toBe('pending_approval');
@@ -219,8 +225,8 @@ describe('x402 v1 Payment Guard integration', () => {
 
   it('(d) reuses the signed transaction on retry while chain state is pending', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
-    vi.mocked(getSignedTransactionState).mockResolvedValue('pending');
+    const challenge = v2Challenge();
+    vi.mocked(getX402TransactionState).mockResolvedValue({ state: 'pending' });
 
     const first = await resolveX402Payment(ctx, challenge, undefined, 'retry-pending-1');
     const second = await resolveX402Payment(ctx, challenge, undefined, 'retry-pending-1');
@@ -231,13 +237,13 @@ describe('x402 v1 Payment Guard integration', () => {
       expect(second.paymentHeader).toBe(first.paymentHeader);
     }
     expect(signX402Transfer).toHaveBeenCalledTimes(1);
-    expect(getSignedTransactionState).toHaveBeenCalledTimes(1);
+    expect(getX402TransactionState).toHaveBeenCalledTimes(1);
   });
 
   it('serialises concurrent calls with the same idempotencyKey so only one tx is signed', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
-    let resolveSign: ((v: { transaction: string; signature: string; lastValidBlockHeight: number }) => void) | undefined;
+    const challenge = v2Challenge();
+    let resolveSign: ((v: { transaction: string; payerSignature: string; lastValidBlockHeight: number }) => void) | undefined;
     vi.mocked(signX402Transfer).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -250,7 +256,7 @@ describe('x402 v1 Payment Guard integration', () => {
     await vi.waitFor(() => expect(resolveSign).toBeTypeOf('function'));
     resolveSign!({
       transaction: 'CONCURRENT_TX',
-      signature: '5xConcurrentSig1111111111111111111111111111111111111111111111111111111111111111111111',
+      payerSignature: '5xConcurrentSig1111111111111111111111111111111111111111111111111111111111111111111111',
       lastValidBlockHeight: 1500,
     });
 
@@ -262,11 +268,11 @@ describe('x402 v1 Payment Guard integration', () => {
 
   it('(e) signs a new transaction when the previously signed transaction is expired', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
+    const challenge = v2Challenge();
     vi.mocked(signX402Transfer)
-      .mockResolvedValueOnce({ transaction: 'OLD_TX', signature: 'OldSig111', lastValidBlockHeight: 100 })
-      .mockResolvedValueOnce({ transaction: 'NEW_TX', signature: 'NewSig222', lastValidBlockHeight: 200 });
-    vi.mocked(getSignedTransactionState).mockResolvedValueOnce('expired');
+      .mockResolvedValueOnce({ transaction: 'OLD_TX', payerSignature: 'OldSig111', lastValidBlockHeight: 100 })
+      .mockResolvedValueOnce({ transaction: 'NEW_TX', payerSignature: 'NewSig222', lastValidBlockHeight: 200 });
+    vi.mocked(getX402TransactionState).mockResolvedValueOnce({ state: 'expired' });
 
     const first = await resolveX402Payment(ctx, challenge, undefined, 'retry-expired-1');
     const second = await resolveX402Payment(ctx, challenge, undefined, 'retry-expired-1');
@@ -274,7 +280,7 @@ describe('x402 v1 Payment Guard integration', () => {
     expect(first.status).toBe('completed');
     expect(second.status).toBe('completed');
     if (second.status === 'completed') {
-      expect(second.signature).toBe('NewSig222');
+      expect(second.payerSignature).toBe('NewSig222');
       const decoded = JSON.parse(Buffer.from(second.paymentHeader, 'base64').toString('utf8'));
       expect(decoded.payload.transaction).toBe('NEW_TX');
     }
@@ -283,8 +289,8 @@ describe('x402 v1 Payment Guard integration', () => {
 
   it('(f) marks request confirmed when chain state is landed', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
-    vi.mocked(getSignedTransactionState).mockResolvedValueOnce('landed');
+    const challenge = v2Challenge();
+    vi.mocked(getX402TransactionState).mockResolvedValueOnce({ state: 'landed', txId: SETTLED_TX });
 
     await resolveX402Payment(ctx, challenge, undefined, 'landed-1');
     const second = await resolveX402Payment(ctx, challenge, undefined, 'landed-1');
@@ -292,15 +298,15 @@ describe('x402 v1 Payment Guard integration', () => {
     expect(second.status).toBe('completed');
     if (second.status === 'completed') {
       expect(second.request.status).toBe('confirmed');
-      expect(second.request.execution?.signature).toBeTruthy();
+      expect(second.request.execution?.signature).toBe(SETTLED_TX);
     }
     expect(signX402Transfer).toHaveBeenCalledTimes(1);
   });
 
   it('returns AGENT_FROZEN on pending retry after freeze without marking request denied or re-signing', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
-    vi.mocked(getSignedTransactionState).mockResolvedValueOnce('pending');
+    const challenge = v2Challenge();
+    vi.mocked(getX402TransactionState).mockResolvedValueOnce({ state: 'pending' });
 
     const first = await resolveX402Payment(ctx, challenge, undefined, 'pending-freeze-1');
     expect(first.status).toBe('completed');
@@ -320,8 +326,8 @@ describe('x402 v1 Payment Guard integration', () => {
 
   it('returns policy_changed on pending retry after policy update without marking request denied', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
-    vi.mocked(getSignedTransactionState).mockResolvedValueOnce('pending');
+    const challenge = v2Challenge();
+    vi.mocked(getX402TransactionState).mockResolvedValueOnce({ state: 'pending' });
 
     const first = await resolveX402Payment(ctx, challenge, undefined, 'pending-policy-1');
     expect(first.status).toBe('completed');
@@ -349,8 +355,8 @@ describe('x402 v1 Payment Guard integration', () => {
 
   it('marks request confirmed when signed tx landed even if agent is frozen', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
-    vi.mocked(getSignedTransactionState).mockResolvedValueOnce('landed');
+    const challenge = v2Challenge();
+    vi.mocked(getX402TransactionState).mockResolvedValueOnce({ state: 'landed', txId: SETTLED_TX });
 
     const first = await resolveX402Payment(ctx, challenge, undefined, 'landed-frozen-1');
     expect(first.status).toBe('completed');
@@ -367,8 +373,8 @@ describe('x402 v1 Payment Guard integration', () => {
 
   it('denies expired signed tx when frozen without signing a new transaction', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge();
-    vi.mocked(getSignedTransactionState).mockResolvedValueOnce('expired');
+    const challenge = v2Challenge();
+    vi.mocked(getX402TransactionState).mockResolvedValueOnce({ state: 'expired' });
 
     const first = await resolveX402Payment(ctx, challenge, undefined, 'expired-frozen-1');
     expect(first.status).toBe('completed');
@@ -384,54 +390,34 @@ describe('x402 v1 Payment Guard integration', () => {
     expect(signX402Transfer).toHaveBeenCalledTimes(1);
   });
 
-  it('(g) rejects Solana mainnet CAIP-2 and x402 v2 challenges', async () => {
+  it('(g) rejects Solana mainnet CAIP-2 and x402 v1 challenges', async () => {
     const ctx = makeContext();
 
-    const mainnetRes = await resolveX402Payment(ctx, thirdwebChallenge({ network: MAINNET_CAIP2 }));
+    const mainnetRes = await resolveX402Payment(ctx, v2Challenge({ network: MAINNET_CAIP2 }));
     expect(mainnetRes.status).toBe('denied');
     if (mainnetRes.status === 'denied') expect(mainnetRes.code).toBe('UNSUPPORTED_NETWORK');
 
-    const v2Res = await resolveX402Payment(ctx, {
-      x402Version: 2,
-      accepts: [
-        {
-          scheme: 'exact',
-          network: 'solana-devnet',
-          amount: '10000',
-          asset: USDC_MINT,
-          payee: MERCHANT,
-          nonce: 'n1',
-        },
-      ],
+    const v1Res = await resolveX402Payment(ctx, {
+      x402Version: 1,
+      accepts: [{ scheme: 'exact', network: 'solana-devnet', maxAmountRequired: '10000', asset: USDC_MINT, payTo: MERCHANT }],
     });
-    expect(v2Res.status).toBe('denied');
-    if (v2Res.status === 'denied') expect(v2Res.code).toBe('INVALID_X402_CHALLENGE');
+    expect(v1Res.status).toBe('denied');
+    if (v1Res.status === 'denied') expect(v1Res.code).toBe('INVALID_X402_CHALLENGE');
   });
 
-  it('(h) rejects extra.feePayer different from agent pubkey with UNSUPPORTED_X402_FEE_PAYER', async () => {
+  it('(h) rejects an option with no facilitator fee payer', async () => {
     const ctx = makeContext();
-    const res = await resolveX402Payment(
-      ctx,
-      thirdwebChallenge({ extra: { feePayer: MERCHANT, tokenDecimals: 6, tokenProgram: TOKEN_PROGRAM } }),
-    );
+    const res = await resolveX402Payment(ctx, v2Challenge({ extra: {} }));
     expect(res.status).toBe('denied');
-    if (res.status === 'denied') {
-      expect(res.code).toBe('UNSUPPORTED_X402_FEE_PAYER');
-    }
+    if (res.status === 'denied') expect(res.code).toBe('UNSUPPORTED_NETWORK');
     expect(signX402Transfer).not.toHaveBeenCalled();
   });
 
-  it('(i) returns X402_SIGNING_FAILED when challenge tokenDecimals mismatches on-chain mint decimals', async () => {
+  it('(i) returns X402_SIGNING_FAILED and signs nothing when the signer refuses', async () => {
     const ctx = makeContext();
-    vi.mocked(getMintDecimals).mockResolvedValue(6);
-    vi.mocked(signX402Transfer).mockRejectedValueOnce(
-      new Error(`challenge claims 9 decimals, mint ${USDC_MINT} has 6`),
-    );
+    vi.mocked(signX402Transfer).mockRejectedValueOnce(new Error(`agent token account holds 0 base units of ${USDC_MINT}, needs 10000`));
 
-    const res = await resolveX402Payment(
-      ctx,
-      thirdwebChallenge({ extra: { tokenDecimals: 9, tokenProgram: TOKEN_PROGRAM } }),
-    );
+    const res = await resolveX402Payment(ctx, v2Challenge());
     expect(res.status).toBe('denied');
     if (res.status === 'denied') {
       expect(res.code).toBe('X402_SIGNING_FAILED');
@@ -442,13 +428,13 @@ describe('x402 v1 Payment Guard integration', () => {
     const ctx = makeContext();
     await resolveX402Payment(
       ctx,
-      thirdwebChallenge({ resource: 'https://example.com/items/1' }),
+      v2Challenge({ resource: 'https://example.com/items/1' }),
       undefined,
       'shared-key',
     );
     const conflict = await resolveX402Payment(
       ctx,
-      thirdwebChallenge({ resource: 'https://example.com/items/2' }),
+      v2Challenge({ resource: 'https://example.com/items/2' }),
       undefined,
       'shared-key',
     );
@@ -458,12 +444,13 @@ describe('x402 v1 Payment Guard integration', () => {
     }
   });
 
-  it('(k) fetchWithX402 settles 402 -> 200 with X-PAYMENT-RESPONSE, and returns X402_SETTLEMENT_FAILED on second 402 keeping request intact', async () => {
+  it('(k) fetchWithX402 reads PAYMENT-REQUIRED, settles 402 -> 200 with PAYMENT-RESPONSE, and returns X402_SETTLEMENT_FAILED on second 402 keeping request intact', async () => {
     const ctx = makeContext();
-    const challenge = thirdwebChallenge({ resource: 'https://merchant.example.com/items/coffee' });
+    const challenge = v2Challenge({ resource: 'https://merchant.example.com/items/coffee' });
+    const challengeHeader = Buffer.from(JSON.stringify(challenge)).toString('base64');
     const settlementPayload = {
       success: true,
-      transaction: '5xSignedSig11111111111111111111111111111111111111111111111111111111111111111111111111111',
+      transaction: SETTLED_TX,
       network: DEVNET_CAIP2,
       payer: ctx.agentPubkey,
     };
@@ -479,20 +466,26 @@ describe('x402 v1 Payment Guard integration', () => {
           },
         });
       }
-      return new Response(JSON.stringify(challenge), {
+      return new Response('{}', {
         status: 402,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', [X402_PAYMENT_REQUIRED_HEADER]: challengeHeader },
       });
     });
 
     vi.stubGlobal('fetch', mockFetch);
     try {
-      vi.mocked(getSignedTransactionState).mockResolvedValueOnce('landed');
+      vi.mocked(getX402TransactionState).mockResolvedValueOnce({ state: 'landed', txId: SETTLED_TX });
       const okRes = await fetchWithX402(ctx, 'https://merchant.example.com/items/coffee', undefined, 'fetch-ok-1');
       expect(okRes.status).toBe(200);
       expect(okRes.data).toEqual({ item: 'coffee', unlocked: true });
       expect(okRes.payment?.status).toBe('paid');
       expect(okRes.payment?.settlement).toEqual(settlementPayload);
+      expect(okRes.payment?.signature).toBe(SETTLED_TX);
+      expect(vi.mocked(getX402TransactionState).mock.calls.at(-1)![1]).toMatchObject({
+        payer: ctx.agentPubkey,
+        payerSignature: PAYER_SIG,
+        txId: SETTLED_TX,
+      });
       expect(ctx.store.findByIdempotencyKey('fetch-ok-1')?.status).toBe('confirmed');
     } finally {
       vi.unstubAllGlobals();
@@ -500,9 +493,9 @@ describe('x402 v1 Payment Guard integration', () => {
 
     // Now test second 402 -> X402_SETTLEMENT_FAILED, request kept for retry
     const mockFailFetch = vi.fn(async () => {
-      return new Response(JSON.stringify(challenge), {
+      return new Response('{}', {
         status: 402,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', [X402_PAYMENT_REQUIRED_HEADER]: challengeHeader },
       });
     });
     vi.stubGlobal('fetch', mockFailFetch);
@@ -550,7 +543,7 @@ describe('HTTP routes for x402', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/agent/x402/resolve',
-      payload: { challenge: thirdwebChallenge(), idempotencyKey: 'route-key-1' },
+      payload: { challenge: v2Challenge(), idempotencyKey: 'route-key-1' },
     });
 
     expect(res.statusCode).toBe(200);
@@ -563,7 +556,7 @@ describe('HTTP routes for x402', () => {
       method: 'POST',
       url: '/api/agent/x402/resolve',
       payload: {
-        challenge: thirdwebChallenge({ resource: 'https://example.com/other' }),
+        challenge: v2Challenge({ resource: 'https://example.com/other' }),
         idempotencyKey: 'route-key-1',
       },
     });

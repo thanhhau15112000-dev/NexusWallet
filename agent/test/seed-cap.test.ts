@@ -114,6 +114,8 @@ async function startApp(cap: number) {
     saltPath: join(dir, 'audit-salt'),
   };
   const ctx = createContext(config);
+  // Token balances on /api/state must not reach a live Devnet RPC.
+  vi.spyOn(ctx.connection, 'getParsedTokenAccountsByOwner').mockResolvedValue({ context: { slot: 0 }, value: [] });
   const app = Fastify();
   await app.register(cookie, { secret: config.SESSION_COOKIE_SECRET });
   await registerRoutes(app, ctx);
