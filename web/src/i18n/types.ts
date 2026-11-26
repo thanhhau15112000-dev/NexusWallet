@@ -369,6 +369,8 @@ export type TranslationDictionary = {
       allowedService: string;
       allowedServicePlaceholder: string;
       expiryDuration: string;
+      hoursUnit: string;
+      cancel: string;
       broadcastOnChain: string;
       submitBtn: string;
       submittingBtn: string;
