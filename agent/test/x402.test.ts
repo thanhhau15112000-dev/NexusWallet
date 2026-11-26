@@ -487,6 +487,18 @@ describe('x402 v2 Payment Guard integration', () => {
         txId: SETTLED_TX,
       });
       expect(ctx.store.findByIdempotencyKey('fetch-ok-1')?.status).toBe('confirmed');
+
+      // The same key again: already paid, so the transaction is not resent.
+      mockFetch.mockClear();
+      const again = await fetchWithX402(ctx, 'https://merchant.example.com/items/coffee', undefined, 'fetch-ok-1');
+      expect(again.status).toBe(402);
+      expect(again.data).toBeNull();
+      expect(again.payment?.status).toBe('paid');
+      expect(again.payment?.signature).toBe(SETTLED_TX);
+      expect(again.error?.code).toBe('X402_ALREADY_PAID');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(new Headers(mockFetch.mock.calls[0]![1]?.headers).get(X402_PAYMENT_HEADER)).toBeNull();
+      expect(signX402Transfer).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }

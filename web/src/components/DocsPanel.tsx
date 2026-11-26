@@ -529,7 +529,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 x402 supports protocol v2 with scheme <code>exact</code> for SPL tokens on Solana Devnet
                 (<code>solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1</code>). The facilitator named in the challenge pays the
                 network fee: the agent signs a <code>TransferChecked</code> transaction with that facilitator as fee
-                payer, does not broadcast it, and attaches it in <code>PAYMENT-SIGNATURE</code>.
+                payer, does not broadcast it, and attaches it in <code>PAYMENT-SIGNATURE</code>. Calling again with the
+                key of a payment that already landed sends nothing and returns <code>X402_ALREADY_PAID</code>.
               </p>
               <p>
                 Requests over <code>maxTokenAmountByMint</code> wait for owner approval and remain in{' '}
