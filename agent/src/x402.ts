@@ -465,6 +465,29 @@ export async function fetchWithX402(
     };
   }
 
+  // A key whose payment is already on chain has nothing left to settle: resending the same
+  // transaction can only be rejected by the facilitator. The resource was due on the call that paid.
+  if (resolution.request.status === 'confirmed') {
+    const txId = resolution.request.execution?.signature;
+    return {
+      status: first.status,
+      headers: {},
+      data: null,
+      payment: {
+        status: 'paid',
+        idempotencyKey: resolution.idempotencyKey,
+        requestId: resolution.request.id,
+        signature: txId,
+        explorerUrl: txId ? explorerTxUrl(txId, ctx.config.SOLANA_CLUSTER) : undefined,
+      },
+      error: {
+        code: 'X402_ALREADY_PAID',
+        message: `idempotencyKey ${resolution.idempotencyKey} already paid for this resource; nothing was signed or sent`,
+        remediation: 'To buy the resource again, call without idempotencyKey or with a new one.',
+      },
+    };
+  }
+
   const headers = new Headers(init?.headers);
   headers.set(X402_PAYMENT_HEADER, resolution.paymentHeader);
   const final = await fetch(url, { ...fetchInit, headers });
