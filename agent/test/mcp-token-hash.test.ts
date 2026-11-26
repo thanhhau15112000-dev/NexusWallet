@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import { Keypair } from '@solana/web3.js';
@@ -35,6 +35,8 @@ async function startApp(authRequired: boolean) {
     saltPath: join(dataDir, 'audit-salt'),
   };
   const ctx = createContext(config);
+  // Token balances on /api/state must not reach a live Devnet RPC.
+  vi.spyOn(ctx.connection, 'getParsedTokenAccountsByOwner').mockResolvedValue({ context: { slot: 0 }, value: [] });
   const app = Fastify();
   await app.register(cookie, { secret: config.SESSION_COOKIE_SECRET });
   registerAuthHook(app, ctx);

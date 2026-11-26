@@ -360,23 +360,16 @@ export function PolicyPanel(props: {
               value={mintAddress}
               onChange={(e) => setMintAddress(e.target.value.trim())}
             />
-            <div className="relative">
-              <Input
-                type="number"
-                min="0"
-                step="any"
-                aria-label={dict.policy.capPlaceholder}
-                placeholder={dict.policy.capPlaceholder}
-                className={cn('tabular-nums', mintLabel && 'pr-24')}
-                value={mintCap}
-                onChange={(e) => setMintCap(e.target.value)}
-              />
-              {mintLabel ? (
-                <span className="pointer-events-none absolute right-3 top-1/2 max-w-20 -translate-y-1/2 truncate text-xs text-muted">
-                  {mintLabel}
-                </span>
-              ) : null}
-            </div>
+            <Input
+              type="number"
+              min="0"
+              step="any"
+              aria-label={dict.policy.capPlaceholder}
+              placeholder={dict.policy.capPlaceholder}
+              className="tabular-nums"
+              value={mintCap}
+              onChange={(e) => setMintCap(e.target.value)}
+            />
             <Button
               type="button"
               variant="outline"

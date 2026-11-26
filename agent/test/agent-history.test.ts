@@ -13,6 +13,7 @@ vi.mock('../src/chain.js', async (importOriginal) => {
   return {
     ...actual,
     getLamportBalance: vi.fn().mockResolvedValue(500_000_000),
+    getTokenBalances: vi.fn().mockResolvedValue([]),
     getAgentHistory: vi.fn(),
   };
 });
