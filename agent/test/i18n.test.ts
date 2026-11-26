@@ -113,8 +113,8 @@ describe('i18n Translation Dictionary Integrity', () => {
     }
   });
 
-  it('all 12 mascot SVG poses are defined in MASCOT_POSES', () => {
-    expect(MASCOT_POSES).toHaveLength(12);
+  it('all 13 mascot SVG poses are defined in MASCOT_POSES', () => {
+    expect(MASCOT_POSES).toHaveLength(13);
     expect(MASCOT_POSES).toContain('wallet');
     expect(MASCOT_POSES).toContain('tasks');
     expect(MASCOT_POSES).toContain('command');
@@ -127,6 +127,7 @@ describe('i18n Translation Dictionary Integrity', () => {
     expect(MASCOT_POSES).toContain('think');
     expect(MASCOT_POSES).toContain('denied');
     expect(MASCOT_POSES).toContain('sleep');
+    expect(MASCOT_POSES).toContain('shield');
   });
 
   it('request statuses are completely localized in both languages', () => {

@@ -9,7 +9,7 @@
   --color-panel: #ffffff;
   --color-surface-muted: #eef1ef;
   --color-line: #e3e7e5;
-  --color-line-strong: #cdd3d0;
+  --color-line-strong: #c3cbc7;
   --color-ink: #111816;
   --color-muted: #5a6561;
 
@@ -31,20 +31,12 @@
   --color-bad-soft: #fbeeec;
   --color-bad-line: #f0c6bf;
 
-  /* Motion: short, single-purpose. Components add motion-reduce:animate-none. */
-  --animate-feed-in: feed-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  --animate-float: float 3.2s ease-in-out infinite;
+  /* Depth: same recipe as the logo (pine-tinted soft drop + small contact shadow). */
+  --shadow-card: 0 1px 2px rgb(2 26 21 / 0.06), 0 8px 24px -14px rgb(1 15 12 / 0.22);
+  --shadow-raised: 0 2px 4px rgb(2 26 21 / 0.08), 0 24px 48px -20px rgb(1 15 12 / 0.35);
 
-  @keyframes feed-in {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
+  /* Motion: short, single-purpose. Components add motion-reduce:animate-none. */
+  --animate-float: float 3.2s ease-in-out infinite;
 
   @keyframes float {
     0%,

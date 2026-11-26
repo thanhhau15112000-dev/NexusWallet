@@ -16,7 +16,8 @@ nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The in
 - **Monospace identifiers:** Every Solana address, transaction signature, PDA, request ID, and code snippet MUST use `font-mono` and be shortened inline (`shorten(...)`) with a full `title` attribute and one-click copy when actionable.
 - **Timestamps:** render every date/time through `<DateTime value={...} />` from `web/src/components/ui.tsx`: fixed-width local `YYYY-MM-DD HH:mm:ss`, UTC ISO in `title` and `dateTime`. Do not call `toLocaleString`/`toLocaleTimeString` in components.
 
-- **Motion:** only the tokens in `styles.css` (`animate-feed-in` for rows entering a list, `animate-float` for the BootScreen mascot), always paired with `motion-reduce:animate-none`. Motion must explain state (new item, live demo), never decorate. The BootScreen `PolicyPlayground` is a labeled simulation and must not call the API.
+- **Motion:** only `animate-float` (BootScreen mascot) from `styles.css`, plus the `PolicyPlayground` conveyor (requests slide in from the left, rest at the center, slide out right; edges fade) and `TransactionFlow`. All motion is disabled under reduced motion (`motion-reduce:*`). Motion must explain state (new item, live demo), never decorate. The BootScreen `PolicyPlayground` runs on static demo data and must not call the API.
+- **BootScreen background:** the only animated background is `TransactionFlow`: each `PolicyPlayground` row (`data-flow-row`, `data-verdict`) has its own lane to the shield mascot and emits dots in its verdict color: signed (emerald) run on into the wallet card, needs-approval (apricot) pause at the shield then continue to the wallet, blocked (bad red) stop at the shield. It renders only at `lg` and shows static lanes under reduced motion. No other background patterns.
 
 **Strictly forbidden ("AI slop"):**
 - NO uppercase, letter-spaced monospace "telemetry" labels (`SOLANA // ...`, `01 POLICY`, `ACCESS // WALLET`), numbered feature strips, or grid-line background patterns.
@@ -24,7 +25,7 @@ nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The in
 - NO marketing pitch boxes, promo banners, external repo links inside the app header, or multi-paragraph onboarding walls inside authenticated workspace tabs.
 - NO redundant subtitles or helper paragraphs repeating what a card title or input label already states.
 - NO emojis in UI labels, headings, badges, buttons, or toasts.
-- **Mascot restraint:** `Mascot` (`web/public/brand/mascot-*.svg`) is restricted to the unauthenticated `BootScreen` (sign-in / offline / loading) as a quiet `48px` figure without speech bubbles or box wrappers. Do NOT add mascots to operational cards, sidebars, or tab headers. Keep `MASCOT_POSES` and `i18n.mascot` keys intact so `agent/test/i18n.test.ts` continues to pass.
+- **Mascot restraint:** `Mascot` (`web/public/brand/mascot-*.svg`) is restricted to the unauthenticated `BootScreen` (sign-in / offline / loading) as the shield guard between the request feed and the wallet card (`shield` pose, `160px`, `lg` and up; a `64px` copy inside the sign-in card below `lg`), without speech bubbles or box wrappers. Do NOT add mascots to operational cards, sidebars, or tab headers. Keep `MASCOT_POSES` and `i18n.mascot` keys intact so `agent/test/i18n.test.ts` continues to pass.
 
 ---
 
@@ -44,7 +45,7 @@ All tokens live in the `@theme` block of `web/src/styles.css`.
 - **Brand (from the mascot SVGs):**
   - Primary `#177b65` (`--color-accent`), hover `#0f5f4e` (`--color-accent-hover`), deep pine `#0b3f35` (`--color-accent-strong`)
   - Soft tint `#e6f4ef` (`--color-accent-soft`), border tint `#bcebdc` (`--color-accent-line`)
-- **Companion:** Apricot `#f0a04b` (`--color-apricot`), reserved for counters that need the owner's attention (pending approvals badge). Never as a CTA or large fill.
+- **Companion:** Apricot `#f0a04b` (`--color-apricot`), reserved for things that need the owner's attention (pending approvals badge, needs-approval dots in `TransactionFlow`). Never as a CTA or large fill.
 - **Status tones:**
   - `ok` (Confirmed / Active / Allow): text `#177b65`, bg `#e6f4ef`, border `#bcebdc`
   - `warn` (Pending Approval / Held): text `#8a5a12`, bg `#fbf3e4`, border `#ecd6aa`

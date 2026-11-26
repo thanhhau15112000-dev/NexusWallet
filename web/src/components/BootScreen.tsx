@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { ArrowRight, ShieldCheck, Wallet, X } from 'lucide-react';
 import { useI18n } from '../i18n/context.js';
 import { LanguageToggle } from './SettingsMenu.js';
 import { Mascot } from './Mascot.js';
 import { PolicyPlayground } from './PolicyPlayground.js';
+import { TransactionFlow } from './TransactionFlow.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
 
@@ -20,53 +21,52 @@ export function BootScreen(props: {
   const { dict } = useI18n();
   const { boot } = dict;
 
-  const [mascotHover, setMascotHover] = useState(false);
-  const pose = props.offline ? 'sleep' : props.needsSignIn ? (mascotHover ? 'cheer' : 'wave') : 'think';
+  const sourceRef = useRef<HTMLDivElement>(null);
+  const guardRef = useRef<HTMLDivElement>(null);
+  const targetRef = useRef<HTMLElement>(null);
+  const pose = props.offline ? 'sleep' : props.needsSignIn ? 'shield' : 'think';
+  const caption = props.offline ? dict.mascot.offline : props.needsSignIn ? dict.mascot.policy : dict.mascot.loading;
 
   return (
-    <main className="grid min-h-screen grid-cols-1 bg-bg text-ink lg:grid-cols-[1.15fr_1fr]">
-      <section className="flex flex-col justify-between gap-10 px-6 py-6 sm:px-10 sm:py-8 lg:px-14 lg:py-10">
-        <div className="flex items-center justify-between gap-3">
+    <main className="relative min-h-screen overflow-hidden bg-bg text-ink">
+      <TransactionFlow source={sourceRef} guard={guardRef} target={targetRef} />
+
+      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-6 sm:px-10 sm:py-8 lg:px-14 lg:py-10">
+        <header className="flex items-center justify-between gap-3">
           <div className="flex shrink-0 items-center gap-2.5">
             <img src="/brand/logo.svg" alt="" width={28} height={28} className="h-7 w-7 shrink-0" />
             <span className="text-base font-semibold [font-stretch:112%] text-ink">nexusPay</span>
             <Badge variant="ok">Devnet</Badge>
           </div>
-          <div className="lg:hidden">
-            <LanguageToggle />
-          </div>
-        </div>
+          <LanguageToggle />
+        </header>
 
-        <div className="max-w-xl space-y-5">
-          <h1 className="text-4xl font-semibold leading-[1.1] [font-stretch:115%] text-ink text-balance sm:text-5xl">
-            {boot.heroTitle}
-          </h1>
-          <p className="max-w-md text-base text-muted">{boot.introTagline}</p>
-          <div className="max-w-md pt-2">
+        <div className="flex flex-1 flex-col justify-center gap-10 py-10">
+          <section className="space-y-4">
+            <h1 className="max-w-3xl text-4xl font-semibold leading-[1.1] [font-stretch:115%] text-ink text-balance sm:text-5xl">
+              {boot.heroTitle}
+            </h1>
+            <p className="max-w-md text-base text-muted">{boot.introTagline}</p>
+          </section>
+
+          <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,1fr)_240px_minmax(0,380px)] lg:gap-6">
+          <div ref={sourceRef} className="max-w-lg">
             <PolicyPlayground />
           </div>
-        </div>
 
-        <div className="hidden h-6 lg:block" aria-hidden="true" />
-      </section>
-
-      <section className="flex flex-col justify-between border-t border-line bg-panel px-6 py-8 sm:px-10 sm:py-10 lg:border-t-0 lg:border-l lg:px-12">
-        <div className="hidden justify-end lg:flex">
-          <LanguageToggle />
-        </div>
-
-        <div className="mx-auto my-auto w-full max-w-[380px] space-y-6">
-          <div
-            className="inline-flex"
-            onMouseEnter={() => setMascotHover(true)}
-            onMouseLeave={() => setMascotHover(false)}
-          >
-            <Mascot
-              className="shrink-0 animate-float motion-reduce:animate-none [&_img]:h-14 [&_img]:w-14"
-              pose={pose}
-              caption={props.offline ? dict.mascot.offline : props.needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
-            />
+          {/* pt aligns the shield with the middle of the four request lanes so the wires run nearly straight. */}
+          <div className="hidden justify-center pt-[22px] lg:flex">
+            <div ref={guardRef} className="inline-flex">
+              <Mascot className="animate-float motion-reduce:animate-none [&_img]:h-40 [&_img]:w-40" pose={pose} caption={caption} />
+            </div>
           </div>
+
+          <section
+            ref={targetRef}
+            aria-labelledby="login-title"
+            className="w-full space-y-6 rounded-2xl border-[1.5px] border-line-strong bg-panel p-7 shadow-raised sm:p-8"
+          >
+          <Mascot className="lg:hidden [&_img]:h-16 [&_img]:w-16" pose={pose} caption={caption} />
 
           <h2 id="login-title" className="text-2xl font-semibold [font-stretch:112%] text-ink">
             {props.needsSignIn ? boot.signInRequired : props.offline ? boot.serviceUnavailable : boot.loading}
@@ -114,7 +114,7 @@ export function BootScreen(props: {
               {props.pickerOpen ? (
                 <div
                   id="login-wallet-options"
-                  className="rounded-lg border border-line bg-bg p-3"
+                  className="rounded-lg bg-surface-muted p-3"
                 >
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-semibold text-ink">{dict.walletModal.title}</span>
@@ -135,7 +135,7 @@ export function BootScreen(props: {
               ) : null}
 
               {!props.hasWallets ? (
-                <p className="rounded-lg border border-line bg-bg px-3.5 py-2.5 text-xs text-muted">
+                <p className="rounded-lg bg-surface-muted px-3.5 py-2.5 text-xs text-muted">
                   {boot.installPhantom}
                 </p>
               ) : null}
@@ -146,10 +146,10 @@ export function BootScreen(props: {
               </p>
             </div>
           ) : null}
+          </section>
+          </div>
         </div>
-
-        <div className="hidden h-8 lg:block" aria-hidden="true" />
-      </section>
+      </div>
     </main>
   );
 }

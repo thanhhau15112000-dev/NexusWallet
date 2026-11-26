@@ -14,6 +14,7 @@ export const MASCOT_POSES = [
   'think',
   'denied',
   'sleep',
+  'shield',
 ] as const;
 
 export type MascotPose = (typeof MASCOT_POSES)[number];
@@ -22,7 +23,7 @@ const poseSrc = (pose: MascotPose) => `/brand/mascot-${pose}.svg`;
 
 /**
  * Brand mascot restricted to the unauthenticated BootScreen.
- * Keeps all 12 poses defined for shared i18n/asset verification.
+ * Keeps all 13 poses defined for shared i18n/asset verification.
  */
 export function Mascot(props: { pose: MascotPose; caption: string; className?: string }) {
   useEffect(() => {
