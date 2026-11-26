@@ -85,7 +85,7 @@ export function McpConnectPanel() {
       <Card
         title={dict.mcp.title}
         titleIcon={<Plug size={15} />}
-        actions={<Badge variant="neutral" className="font-mono text-[10px]">MCP</Badge>}
+        actions={<Badge variant="neutral" className="text-[10px]">MCP</Badge>}
       >
         <div className="space-y-3">
           {connection ? (

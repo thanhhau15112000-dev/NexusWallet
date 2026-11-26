@@ -1,0 +1,9 @@
+name = "nexuspay-demo-merchant"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+
+[vars]
+MERCHANT_WALLET = "6VPd7LHbx96D2QiSsAo5JrEdRQUdW1PGk3bUNYhVECAz"
+USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+SOLANA_RPC_URL = "https://api.devnet.solana.com"
+TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

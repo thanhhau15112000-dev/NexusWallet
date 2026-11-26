@@ -6,50 +6,52 @@ This document defines the mandatory UI, styling, and copy rules for `web/`. Ever
 
 ## 1. Product Aesthetic & Anti-AI-Slop Rules
 
-nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The interface follows an **editorial cockpit aesthetic**: high-contrast binary framing between **deep pine-obsidian (`#0d1513`)** navigation/hero surfaces and a **warm architectural off-white (`#f4f3ee`)** workspace, anchored by Nexus Emerald (`#177b65`) CTAs and crisp monospace telemetry markers.
+nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The interface is a **light, quiet wallet dashboard**: white cards on a cool near-white canvas, one brand color taken from the mascot (Nexus Emerald `#177b65`), and typographic hierarchy instead of decoration.
 
 **Mandatory visual principles:**
-- **Binary contrast & flat geometry:** Rely on `1px` hairline borders (`border-line` / `border-obsidian-line`), dark-vs-warm-light structural split (asymmetric `BootScreen` split, dark sidebar + dark Agent Balance hero card against `#f4f3ee` operational workspace), and a consistent `4px` / `8px` spacing scale.
-- **Telemetry metadata over prose:** Prefer compact monospace technical markers (`SOLANA // PAYMENT GUARD`, `01 POLICY`, `PER-TX · 24H`) over multi-line explanatory paragraphs.
+- **One light surface system:** canvas `bg-bg`, cards `bg-panel` with a `1px` `border-line` and `rounded-xl`, no drop shadows on cards. The sidebar is a white panel with a right hairline. Do not reintroduce dark split panels or dark hero cards.
+- **Hierarchy through type, not chrome:** page titles `text-2xl` and key balances `text-3xl` use Mona Sans at a wider stretch (`[font-stretch:112%]`); body stays at the default width. Labels are sentence case `text-xs font-medium text-muted`.
+- **Brand color is scarce:** emerald marks the primary CTA, the selected nav item (`bg-accent-soft` + `text-accent-strong`), success states and the agent balance card. Everything else stays neutral.
 - **Tabular numbers:** Every SOL/token balance, spending limit, delta, fee, countdown, and metric cell MUST use `tabular-nums`.
-- **Monospace identifiers:** Every Solana address, transaction signature, PDA, request ID, and code snippet MUST use `font-mono` and be shortened inline (`shorten(...)`) with a full `title` attribute and one-click copy when actionable.
+- **Identifiers:** Every Solana address, transaction signature, PDA and request ID stays in Mona Sans and is shortened inline (`shorten(...)`) with a full `title` attribute and one-click copy when actionable. `font-mono` is reserved for code: `<pre>` blocks (raw JSON, MCP config snippets) and endpoint URLs in `<code>`.
+- **Weight floor:** body text is `font-weight: 500` (set on `body`); `font-medium` is `580` and `font-semibold` is `660` (`--font-weight-*` in `@theme`) so the hierarchy survives. Do not use `font-light`, `font-thin` or `font-normal`.
+- **Dark theme:** `:root[data-theme="dark"]` in `styles.css` redefines the color and shadow tokens: cool charcoal surfaces (`#121417` canvas, `#191c20` cards), no green tint in neutrals, emerald stays the only brand color. Components use tokens only; text on a solid accent/bad fill is `text-white`, text on an inverted surface (`bg-ink`, `bg-accent-strong`) is `text-panel`. `index.html` applies the saved (`nexus.theme`) or system theme before paint; `ThemeToggle` (`SettingsMenu.tsx`) sits next to `LanguageToggle`.
+- **Timestamps:** render every date/time through `<DateTime value={...} />` from `web/src/components/ui.tsx`: fixed-width local `YYYY-MM-DD HH:mm:ss`, UTC ISO in `title` and `dateTime`. Do not call `toLocaleString`/`toLocaleTimeString` in components.
+
+- **Motion:** only `animate-float` (BootScreen mascot) from `styles.css`, plus the `PolicyPlayground` conveyor (requests slide in from the left, rest at the center, slide out right; edges fade) and `TransactionFlow`. All motion is disabled under reduced motion (`motion-reduce:*`). Motion must explain state (new item, live demo), never decorate. The BootScreen `PolicyPlayground` runs on static demo data and must not call the API.
+- **BootScreen background:** the only animated background is `TransactionFlow`: each `PolicyPlayground` row (`data-flow-row`, `data-verdict`) has its own lane to the shield mascot and emits dots in its verdict color: signed (emerald) run on into the wallet card, needs-approval (apricot) pause at the shield then continue to the wallet, blocked (bad red) stop at the shield. It renders only at `lg` and shows static lanes under reduced motion. No other background patterns.
 
 **Strictly forbidden ("AI slop"):**
-- NO purple/neon gradients, glowing shadows, rainbow borders, or decorative glassmorphism (`backdrop-blur` spam).
+- NO uppercase, letter-spaced monospace "telemetry" labels (`SOLANA // ...`, `01 POLICY`, `ACCESS // WALLET`), numbered feature strips, or grid-line background patterns.
+- NO purple/neon gradients, glowing shadows, rainbow borders, or decorative glassmorphism (`backdrop-blur` spam). The one exception is Solana's own logomark gradient on the black "Solana Faucet" link (`AgentFundingPanel.tsx`), a third-party brand mark.
 - NO marketing pitch boxes, promo banners, external repo links inside the app header, or multi-paragraph onboarding walls inside authenticated workspace tabs.
 - NO redundant subtitles or helper paragraphs repeating what a card title or input label already states.
 - NO emojis in UI labels, headings, badges, buttons, or toasts.
-- **Mascot restraint:** `Mascot` (`web/public/brand/mascot-*.svg`) is restricted to the unauthenticated `BootScreen` (sign-in / offline / loading) as a quiet `40px–44px` figure without speech bubbles or heavy box wrappers. Do NOT add mascots to operational cards, sidebars, or tab headers. Keep `MASCOT_POSES` and `i18n.mascot` keys intact so `agent/test/i18n.test.ts` continues to pass.
+- **Mascot restraint:** `Mascot` (`web/public/brand/mascot-*.svg`) is restricted to the unauthenticated `BootScreen` (sign-in / offline / loading) as the shield guard between the request feed and the wallet card (`shield` pose, `160px`, `lg` and up; a `64px` copy inside the sign-in card below `lg`), without speech bubbles or box wrappers. Do NOT add mascots to operational cards, sidebars, or tab headers. Keep `MASCOT_POSES` and `i18n.mascot` keys intact so `agent/test/i18n.test.ts` continues to pass.
 
 ---
 
 ## 2. Typography & Color Tokens
 
 ### Typography
-- **Primary UI font:** `Be Vietnam Pro` (`@fontsource/be-vietnam-pro`, weights `400`, `500`, `600`, `700`), imported in `web/src/main.tsx` and configured via `--font-sans` in `web/src/styles.css`.
-- **Monospace font:** `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace` (`--font-mono`).
-- **Scale & hierarchy:** Editorial statement headings (`text-3xl`/`text-[42px]` on `BootScreen`, `text-3xl` Hero Balance, `text-xl` tab titles), `14px` body (`text-sm`), `13px` compact table/nav cells, `10px–11px` uppercase monospace labels (`tracking-[0.14em]`).
+- **UI font:** `Mona Sans` variable (`@fontsource-variable/mona-sans/wdth.css`, weight `200–900`, stretch `75–125%`, includes the Vietnamese subset), imported in `web/src/main.tsx` and exposed as `--font-sans`.
+- **Monospace font:** `JetBrains Mono` (`@fontsource/jetbrains-mono`, weights `400`, `500`, Vietnamese subset included) as `--font-mono`, for code blocks only.
+- **Scale:** `text-4xl`/`text-5xl` BootScreen headline (`[font-stretch:115%]`), `text-2xl` tab titles and stat values, `text-3xl` agent balance, `15px` card titles, `14px` body (`text-sm`), `12px` labels and table headers.
 
 ### Semantic Color Palette
-Harmonized around Nexus Emerald (`#177b65`) with pine-obsidian dark surfaces and warm off-white light surfaces:
-- **Light workspace:**
-  - Canvas background: `#f4f3ee` (`--color-bg`)
-  - Card / elevated surface: `#ffffff` (`--color-panel`)
-  - Muted / disabled surface: `#eae8e1` (`--color-surface-muted`)
-  - Hairline border: `#dddad0` (`--color-line`), strong border `#c5c1b5` (`--color-line-strong`)
-  - Text: primary `#0d1513` (`--color-ink`), muted `#5c6662` (`--color-muted`)
-- **Dark cockpit surfaces (left split panel, sidebar, Hero Balance card):**
-  - Surface base: `#0d1513` (`--color-obsidian`), raised `#14201d` (`--color-obsidian-raised`)
-  - Border: `#22322e` (`--color-obsidian-line`)
-  - Text: primary `#f4f3ee` (`--color-obsidian-ink`), muted `#8fa39c` (`--color-obsidian-muted`)
-- **Brand & Telemetry Accent:**
-  - Primary CTA & light accent: `#177b65` (`--color-accent`), hover `#126351` (`--color-accent-hover`), soft tint `#e6f4ef` (`--color-accent-soft`), border tint `#bce0d3` (`--color-accent-line`)
-  - Dark-surface telemetry signal: `#34d399` (`--color-signal`)
-  - Wallet badge ink: `#0d1513` (`--color-wallet-ink`)
-- **Status tones (restrained, high-contrast):**
-  - `ok` (Confirmed / Active / Allow): text `#177b65`, bg `#e6f4ef`, border `#bce0d3`
-  - `warn` (Pending Approval / Held): text `#9a6008`, bg `#fdf4e2`, border `#edd4a1`
-  - `bad` (Denied / Frozen / Error): text `#b42318`, bg `#fceceb`, border `#f2c0bc`
+All tokens live in the `@theme` block of `web/src/styles.css`.
+- **Neutrals (cool, slightly green-tinted):**
+  - Canvas `#f6f7f6` (`--color-bg`), card `#ffffff` (`--color-panel`), muted surface `#eef1ef` (`--color-surface-muted`)
+  - Hairline `#e3e7e5` (`--color-line`), strong border `#cdd3d0` (`--color-line-strong`)
+  - Text `#111816` (`--color-ink`), muted `#5a6561` (`--color-muted`)
+- **Brand (from the mascot SVGs):**
+  - Primary `#177b65` (`--color-accent`), hover `#0f5f4e` (`--color-accent-hover`), deep pine `#0b3f35` (`--color-accent-strong`)
+  - Soft tint `#e6f4ef` (`--color-accent-soft`), border tint `#bcebdc` (`--color-accent-line`)
+- **Companion:** Apricot `#f0a04b` (`--color-apricot`), reserved for things that need the owner's attention (pending approvals badge, needs-approval dots in `TransactionFlow`). Never as a CTA or large fill.
+- **Status tones:**
+  - `ok` (Confirmed / Active / Allow): text `#177b65`, bg `#e6f4ef`, border `#bcebdc`
+  - `warn` (Pending Approval / Held): text `#8a5a12`, bg `#fbf3e4`, border `#ecd6aa`
+  - `bad` (Denied / Frozen / Error): text `#b4382a`, bg `#fbeeec`, border `#f0c6bf`
 
 ---
 
@@ -57,9 +59,9 @@ Harmonized around Nexus Emerald (`#177b65`) with pine-obsidian dark surfaces and
 
 - **Styling:** **Tailwind CSS v4** (`@tailwindcss/vite`) configured in `web/vite.config.ts` and `web/src/styles.css`.
 - **Component primitives:** **shadcn/ui** pattern in `web/src/components/ui/` built on Radix UI primitives + `class-variance-authority` + `cn()` (`web/src/lib/utils.ts`).
-  - Available primitives: `Button` (including `darkOutline` for dark surfaces), `Card`, `Badge` (including `signal` and `obsidian` variants), `Input`, `Textarea`, `Dialog`, `Tabs`, `Table`, `Tooltip`.
-  - Domain helpers live in `web/src/components/ui.tsx` (`Card`, `CopyAddressButton`, `Mono`, `Pill`, `Empty`, `shorten`).
-- **CSS boundary rule:** Do NOT add custom component CSS classes to `web/src/styles.css`. Style all layouts and components directly with Tailwind utilities and shadcn/ui primitives. `styles.css` is reserved solely for `@import "tailwindcss"`, `@theme`/CSS tokens, base element defaults, and minimal scoped formatting for `DocsPanel` prose (`docs-*`).
+  - Available primitives: `Button`, `Card`, `Badge`, `Input`, `Textarea`, `Dialog`, `Tabs`, `Table`, `Tooltip`, `Slider`.
+  - Domain helpers live in `web/src/components/ui.tsx` (`Card`, `CopyAddressButton`, `Mono`, `Pill`, `Empty`, `shorten`, `DateTime`, `formatDateTime`).
+- **CSS boundary rule:** Do NOT add custom component CSS classes to `web/src/styles.css`. Style all layouts and components directly with Tailwind utilities and shadcn/ui primitives. `styles.css` is reserved solely for `@import "tailwindcss"`, `@theme`/CSS tokens (including the dark theme overrides) and base element defaults. Docs prose is styled with Tailwind arbitrary variants on the section (`PROSE` in `DocsPanel.tsx`); docs tables, tabs, inputs and buttons use the shadcn primitives.
 
 ---
 

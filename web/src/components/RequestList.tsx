@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from './icons.js';
 import { type PaymentRequest, type RequestStatus } from '@nexus/shared';
-import { Card, Empty, Mono, Pill, shorten } from './ui.js';
+import { Card, DateTime, Empty, Mono, Pill, shorten } from './ui.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
 import { cn } from '../lib/utils.js';
@@ -79,6 +79,10 @@ function RequestRow(props: {
     && new Date(request.approval.payload.expiresAt).getTime() <= props.now,
   );
   const displayedStatus = approvalExpired ? 'expired' : request.status;
+  const statusLabel =
+    request.x402 && displayedStatus === 'approved'
+      ? dict.requests.statuses.x402Approved
+      : dict.requests.statuses[displayedStatus];
 
   return (
     <li
@@ -90,15 +94,15 @@ function RequestRow(props: {
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <Pill tone={TONE[displayedStatus]}>{dict.requests.statuses[displayedStatus]}</Pill>
+          <Pill tone={TONE[displayedStatus]}>{statusLabel}</Pill>
           <span className="truncate text-sm font-medium text-ink" title={request.prompt}>
             {request.prompt}
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted">
           <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
-          <span className="font-mono text-[11px] tabular-nums">
-            {new Date(request.createdAt).toLocaleTimeString()}
+          <span className="text-[11px] tabular-nums">
+            <DateTime value={request.createdAt} />
           </span>
         </div>
       </div>
@@ -150,8 +154,8 @@ function RequestRow(props: {
             >
               {dict.requests.cancel}
             </Button>
-            <span className="ml-auto font-mono text-[11px] text-muted tabular-nums">
-              {dict.requests.expires} {new Date(request.approval.payload.expiresAt).toLocaleTimeString()}
+            <span className="ml-auto text-[11px] text-muted tabular-nums">
+              {dict.requests.expires} <DateTime value={request.approval.payload.expiresAt} />
             </span>
           </div>
           {!props.canApprove ? (
@@ -172,8 +176,8 @@ function RequestRow(props: {
         <p className="text-[11px] text-muted">
           {dict.requests.approvedBy}{' '}
           <Mono className="text-ink">{shorten(request.approval.signerPubkey ?? '', 6)}</Mono>{' '}
-          <span className="font-mono tabular-nums">
-            {new Date(request.approval.signedAt ?? '').toLocaleTimeString()}
+          <span className="tabular-nums">
+            <DateTime value={request.approval.signedAt} />
           </span>
         </p>
       ) : null}
@@ -185,11 +189,29 @@ function RequestRow(props: {
         <div className="mt-2 space-y-1.5 rounded-md border border-line bg-surface-muted/50 p-2.5 text-[11px]">
           {decision ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="neutral" className="font-mono">v{decision.policyVersion}</Badge>
+              <Badge variant="neutral">v{decision.policyVersion}</Badge>
               <Pill tone={verdictTone(decision.verdict)}>{decision.verdict}</Pill>
               <span className="text-muted">{decision.reasons.join('; ')}</span>
             </div>
           ) : null}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>
+              <span className="font-semibold text-muted">{dict.requests.createdTag}:</span>{' '}
+              <DateTime value={request.createdAt} />
+            </span>
+            {request.updatedAt !== request.createdAt ? (
+              <span>
+                <span className="font-semibold text-muted">{dict.requests.updatedTag}:</span>{' '}
+                <DateTime value={request.updatedAt} />
+              </span>
+            ) : null}
+            {request.execution ? (
+              <span>
+                <span className="font-semibold text-muted">{dict.requests.confirmedTag}:</span>{' '}
+                <DateTime value={request.execution.confirmedAt} />
+              </span>
+            ) : null}
+          </div>
           {request.execution ? (
             <div className="flex items-center gap-2">
               <span className="font-semibold text-muted">{dict.requests.signatureTag}:</span>
@@ -197,7 +219,7 @@ function RequestRow(props: {
                 href={request.execution.explorerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-accent hover:underline"
+                className="text-accent hover:underline"
               >
                 {shorten(request.execution.signature, 10)}
               </a>
@@ -253,7 +275,7 @@ export function RequestList(props: {
   return (
     <Card
       title={dict.requests.title}
-      actions={<Badge variant="neutral" className="font-mono">{props.requests.length}</Badge>}
+      actions={<Badge variant="neutral">{props.requests.length}</Badge>}
     >
       {props.requests.length === 0 ? (
         <Empty>{dict.requests.noRequests}</Empty>

@@ -256,6 +256,21 @@ export const Languages = icon('Languages', (
   </>
 ));
 
+export const Sun = icon('Sun', (
+  <>
+    <circle cx="12" cy="12" r="4" {...tint} />
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+  </>
+));
+
+export const Moon = icon('Moon', (
+  <>
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" {...tint} />
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+  </>
+));
+
 export const LogOut = icon('LogOut', <path d="M9.5 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3.5M15.5 16.5 20 12l-4.5-4.5M20 12H9.5" />);
 
 export const Copy = icon('Copy', (

@@ -220,6 +220,20 @@ export type ExecutionRecord = {
   slot: number | null;
 };
 
+/**
+ * An x402 payment: the policy-approved SPL transfer is not broadcast by the agent. The agent
+ * signs it as fee payer right before handing it to the resource server, whose facilitator submits it.
+ */
+export type X402PaymentState = {
+  resource: string;
+  network: string;
+  /** Base64 signed transaction; null until signed. Once set it may land, so it is never re-signed while valid. */
+  transaction: string | null;
+  /** Transaction id: the agent's fee-payer signature. */
+  signature: string | null;
+  lastValidBlockHeight: number | null;
+};
+
 export type PaymentRequest = {
   id: string;
   agentId: string;
@@ -237,6 +251,8 @@ export type PaymentRequest = {
   /** Result of a read-only action such as get_balance. */
   balanceLamports: number | null;
   error: RequestError | null;
+  /** Set for x402 payments only. */
+  x402?: X402PaymentState | null;
 };
 
 /**

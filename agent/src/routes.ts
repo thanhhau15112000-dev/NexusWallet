@@ -36,7 +36,6 @@ import {
   getLamportBalance,
   getAgentHistory,
   isValidAddress,
-  requestAirdrop,
 } from './chain.js';
 import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
@@ -127,9 +126,18 @@ const AgentActionBody = z.object({
   idempotencyKey: z.string().trim().max(120).optional(),
 });
 
+const x402IdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9:_-]+$/)
+  .optional();
+
 const X402ResolveBody = z.object({
   challenge: z.union([z.string(), z.record(z.string(), z.unknown())]),
   resourceUrl: z.string().url().optional(),
+  idempotencyKey: x402IdempotencyKeySchema,
 });
 
 const X402FetchBody = z.object({
@@ -137,6 +145,7 @@ const X402FetchBody = z.object({
   method: z.string().optional().default('GET'),
   headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
+  idempotencyKey: x402IdempotencyKeySchema,
 });
 
 const OwnerBody = z.object({ pubkey: PubkeySchema });
@@ -154,7 +163,6 @@ const ApproveBody = z.object({
   signerPubkey: PubkeySchema,
 });
 
-const AirdropBody = z.object({ sol: z.number().positive().max(5).default(1) });
 const ChallengeBody = z.object({ pubkey: PubkeySchema });
 const LoginBody = z.object({
   challengeId: z.string().regex(/^[a-f0-9]{64}$/i),
@@ -690,27 +698,6 @@ const inFlightClaims = new Set<string>();
     return { frozen: false, frozenAt: null };
   });
 
-  app.post('/api/agent/airdrop', async (req, reply) => {
-    const userCtx = resolveUserContext(ctx, req);
-    const body = AirdropBody.parse(req.body ?? {});
-    try {
-      const signature = await requestAirdrop({
-        connection: userCtx.connection,
-        address: userCtx.agentPubkey,
-        lamports: solToLamports(body.sol),
-      });
-      userCtx.audit.record('agent.airdrop', null, { sol: body.sol, signature });
-      const lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
-      return { signature, lamports };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return reply.status(502).send({
-        error: 'airdrop_failed',
-        message: `${message} | the devnet faucet rate-limits aggressively, fund the agent from https://faucet.solana.com instead`,
-      });
-    }
-  });
-
   app.post('/api/commands', async (req) => {
     const userCtx = resolveUserContext(ctx, req);
     const body = CommandBody.parse(req.body);
@@ -747,9 +734,9 @@ const inFlightClaims = new Set<string>();
   app.post('/api/agent/x402/resolve', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const body = X402ResolveBody.parse(req.body);
-    const result = await resolveX402Payment(userCtx, body.challenge, body.resourceUrl);
+    const result = await resolveX402Payment(userCtx, body.challenge, body.resourceUrl, body.idempotencyKey);
     if (result.status === 'denied') {
-      const status = result.code === 'AGENT_FROZEN' ? 409 : 403;
+      const status = result.code === 'AGENT_FROZEN' || result.code === 'IDEMPOTENCY_CONFLICT' ? 409 : 403;
       return reply.status(status).send(result);
     }
     if (result.status === 'pending_approval') {
@@ -766,7 +753,7 @@ const inFlightClaims = new Set<string>();
       headers: body.headers,
       body: body.body,
     };
-    const result = await fetchWithX402(userCtx, body.url, init);
+    const result = await fetchWithX402(userCtx, body.url, init, body.idempotencyKey);
     return reply.status(200).send(result);
   });
 

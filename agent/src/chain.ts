@@ -21,8 +21,10 @@ import {
   createTransferCheckedInstruction,
   getAccount,
   getAssociatedTokenAddress,
+  getAssociatedTokenAddressSync,
   getMint,
 } from '@solana/spl-token';
+import bs58 from 'bs58';
 
 export type Cluster = 'devnet';
 
@@ -410,18 +412,84 @@ export async function transferSpl(params: {
   return { signature, slot: status.value?.slot ?? null };
 }
 
-export async function requestAirdrop(params: {
+/**
+ * x402 `exact` payment: one SPL `TransferChecked` to the payee's existing token account, signed
+ * by the agent as fee payer and returned unsent. The resource server's facilitator submits it.
+ * Facilitators accept only compute-budget and transfer instructions, so the recipient token
+ * account must already exist and the fee is the fixed minimum.
+ */
+export async function signX402Transfer(params: {
   connection: Connection;
-  address: string;
-  lamports: number;
-}): Promise<string> {
-  const { connection, address, lamports } = params;
-  const signature = await withRpcRetry(
-    () => connection.requestAirdrop(new PublicKey(address), lamports),
-    { attempts: 2 },
-  );
-  await connection.confirmTransaction(signature, 'confirmed');
-  return signature;
+  payer: Keypair;
+  recipient: string;
+  mint: string;
+  /** Integer base units, taken from the challenge. */
+  baseUnits: bigint;
+  /** Decimals and token program the challenge claims; must match the mint on chain. */
+  claimed: { decimals?: number; tokenProgram?: string };
+}): Promise<{ transaction: string; signature: string; lastValidBlockHeight: number }> {
+  const { connection, payer, recipient, mint, baseUnits, claimed } = params;
+  const { mintKey, programId, decimals } = await resolveSplMint(connection, mint);
+  if (claimed.decimals !== undefined && claimed.decimals !== decimals) {
+    throw new Error(`challenge claims ${claimed.decimals} decimals, mint ${mint} has ${decimals}`);
+  }
+  if (claimed.tokenProgram !== undefined && claimed.tokenProgram !== programId.toBase58()) {
+    throw new Error(`challenge claims token program ${claimed.tokenProgram}, mint ${mint} uses ${programId.toBase58()}`);
+  }
+
+  const sourceAta = getAssociatedTokenAddressSync(mintKey, payer.publicKey, false, programId);
+  const destinationAta = getAssociatedTokenAddressSync(mintKey, new PublicKey(recipient), false, programId);
+  const [source, destination, latest] = await Promise.all([
+    withRpcRetry(() => getAccount(connection, sourceAta, 'confirmed', programId)).catch(() => null),
+    withRpcRetry(() => connection.getAccountInfo(destinationAta, 'confirmed')),
+    withRpcRetry(() => connection.getLatestBlockhash('confirmed')),
+  ]);
+  const held = source ? BigInt(source.amount.toString()) : 0n;
+  if (held < baseUnits) {
+    throw new Error(`agent token account holds ${held} base units of ${mint}, needs ${baseUnits}`);
+  }
+  if (!destination) {
+    throw new Error(`payee ${recipient} has no token account for ${mint}`);
+  }
+
+  const message = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: latest.blockhash,
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 40_000 }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
+      createTransferCheckedInstruction(sourceAta, mintKey, destinationAta, payer.publicKey, baseUnits, decimals, [], programId),
+    ],
+  }).compileToV0Message();
+  const transaction = new VersionedTransaction(message);
+  transaction.sign([payer]);
+  return {
+    transaction: Buffer.from(transaction.serialize()).toString('base64'),
+    signature: bs58.encode(transaction.signatures[0]!),
+    lastValidBlockHeight: latest.lastValidBlockHeight,
+  };
+}
+
+/**
+ * Where a signed but unsubmitted-by-us transaction stands. `expired` means it was not found and its
+ * blockhash can no longer land, so signing a new one cannot pay twice.
+ */
+export async function getSignedTransactionState(
+  connection: Connection,
+  signature: string,
+  lastValidBlockHeight: number,
+): Promise<'landed' | 'failed' | 'pending' | 'expired'> {
+  const [statuses, blockHeight] = await Promise.all([
+    withRpcRetry(() => connection.getSignatureStatuses([signature], { searchTransactionHistory: true })),
+    withRpcRetry(() => connection.getBlockHeight('confirmed')),
+  ]);
+  const status = statuses.value[0];
+  if (status) {
+    if (status.err) return 'failed';
+    if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') return 'landed';
+    return 'pending';
+  }
+  return blockHeight > lastValidBlockHeight ? 'expired' : 'pending';
 }
 
 export type { Connection, Keypair };

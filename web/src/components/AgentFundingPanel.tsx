@@ -1,13 +1,33 @@
-import { ArrowDownToLine, CheckCircle2, ExternalLink, Wallet, Zap } from './icons.js';
+import { ArrowDownToLine, CheckCircle2, ExternalLink, Zap } from './icons.js';
+import { useId } from 'react';
 import type { AgentState } from '../api.js';
-import { Card } from './ui.js';
 import { Button } from './ui/button.js';
 import { useI18n } from '../i18n/context.js';
 
-export function AgentFundingPanel(props: {
+/** Solana logomark in its brand gradient; used only on the link to Solana's official faucet. */
+function SolanaMark() {
+  const id = useId();
+  return (
+    <svg viewBox="0 0 397.7 311.7" width={14} height={11} aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={id} x1="360.88" y1="351.46" x2="141.21" y2="-69.29" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#00FFA3" />
+          <stop offset="1" stopColor="#DC1FFF" />
+        </linearGradient>
+      </defs>
+      <g fill={`url(#${id})`}>
+        <path d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z" />
+        <path d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z" />
+        <path d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z" />
+      </g>
+    </svg>
+  );
+}
+
+/** Funding actions for the agent wallet: one-time seed, deposit from the owner wallet, faucet. */
+export function AgentFundingActions(props: {
   state: AgentState;
   busy: boolean;
-  onAirdrop: () => void;
   onClaimSeed: () => void;
   onDeposit: (amountSol: number) => void;
 }) {
@@ -15,9 +35,9 @@ export function AgentFundingPanel(props: {
   const { agent } = props.state;
 
   return (
-    <Card title={dict.funding.title} titleIcon={<Wallet size={15} />}>
+    <div className="flex flex-wrap items-center gap-2">
       {agent.rpcError ? (
-        <p className="rounded-md border border-warn-line bg-warn-soft px-2.5 py-1.5 text-xs text-warn">
+        <p className="w-full rounded-md border border-warn-line bg-warn-soft px-2.5 py-1.5 text-xs text-warn">
           {agent.rpcError}
         </p>
       ) : null}
@@ -41,7 +61,7 @@ export function AgentFundingPanel(props: {
         </Button>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <>
         <Button
           type="button"
           variant="outline"
@@ -54,27 +74,17 @@ export function AgentFundingPanel(props: {
           {dict.funding.deposit}
         </Button>
         <Button
-          type="button"
-          variant="outline"
           size="sm"
-          disabled={props.busy}
-          onClick={props.onAirdrop}
-          title={dict.funding.airdropTitle}
+          asChild
+          className="border border-white/10 bg-black text-white shadow-2xs hover:bg-[#14161a]"
         >
-          <Zap size={13} aria-hidden="true" />
-          {props.busy ? dict.funding.airdropRequesting : dict.funding.airdrop}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" asChild>
-          <a
-            href={`https://faucet.solana.com/?address=${agent.pubkey}`}
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a href={`https://faucet.solana.com/?address=${agent.pubkey}`} target="_blank" rel="noreferrer">
+            <SolanaMark />
             {dict.funding.officialFaucet}
-            <ExternalLink size={12} aria-hidden="true" />
+            <ExternalLink size={12} className="opacity-60" aria-hidden="true" />
           </a>
         </Button>
-      </div>
-    </Card>
+      </>
+    </div>
   );
 }

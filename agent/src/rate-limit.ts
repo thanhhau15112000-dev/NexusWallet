@@ -42,7 +42,6 @@ export const DEFAULT_RATE_RULES: Record<string, RateRule> = {
   'POST /api/auth/challenge': authRule('auth.challenge'),
   'POST /api/auth/login': authRule('auth.login'),
   'POST /api/agent/claim-seed': faucetRule('claim-seed'),
-  'POST /api/agent/airdrop': faucetRule('airdrop'),
   'POST /api/agent/intents': proposeRule,
   'POST /api/agent/x402/resolve': proposeRule,
   'POST /api/agent/x402/fetch': proposeRule,

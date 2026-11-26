@@ -450,35 +450,55 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
       submit({ type: 'transfer_spl', recipient, mint, amount }, idempotencyKey),
   );
 
+  const x402IdempotencyKeyInput = z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .regex(/^[A-Za-z0-9:_-]+$/)
+    .optional()
+    .describe(
+      'Optional idempotency key. Reuse the returned idempotencyKey to resume after owner approval or retry a failed settlement without paying twice.',
+    );
+
   server.registerTool(
     'nexuspay_x402_fetch',
     {
       title: 'Fetch URL with x402 payment support',
       description:
-        'Fetch an HTTP resource. If the endpoint responds with HTTP 402 Payment Required, automatically negotiate the x402 challenge against the nexusPay spending policy, sign and settle the payment if allowed, and retry the request to retrieve the data.',
+        'Fetch an HTTP resource. On HTTP 402 Payment Required (x402 v1, scheme exact, SPL token on Solana devnet), negotiate the challenge against the nexusPay spending policy, sign the transfer without broadcasting, send it in the X-PAYMENT header, and return the response. Reuse the returned idempotencyKey to resume after owner approval or retry settlement safely.',
       inputSchema: {
         url: z.string().url().describe('The HTTP or HTTPS URL to fetch.'),
         method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().default('GET'),
         headers: z.record(z.string(), z.string()).optional().describe('Optional request headers.'),
         body: z.string().optional().describe('Optional request body.'),
+        idempotencyKey: x402IdempotencyKeyInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    async ({ url, method, headers, body }) => {
+    async ({ url, method, headers, body, idempotencyKey }) => {
       try {
         const result = await api.post<{
           status: number;
           headers: Record<string, string>;
           data: unknown;
-          payment?: { status: string; signature?: string; requestId?: string };
+          payment?: { status: string; idempotencyKey?: string; signature?: string; requestId?: string };
           error?: { code: string; message: string; remediation?: string; details?: Record<string, unknown> };
-        }>('/api/agent/x402/fetch', { url, method, headers, body });
+        }>('/api/agent/x402/fetch', { url, method, headers, body, idempotencyKey });
 
         if (result.error) {
-          return fail(result.error.code, result.error.message, {}, {
-            remediation: result.error.remediation,
-            details: result.error.details,
-          });
+          return fail(
+            result.error.code,
+            result.error.message,
+            {
+              ...(result.payment?.idempotencyKey ? { idempotencyKey: result.payment.idempotencyKey } : {}),
+              ...(result.payment?.requestId ? { requestId: result.payment.requestId } : {}),
+            },
+            {
+              remediation: result.error.remediation,
+              details: result.error.details,
+            },
+          );
         }
         return ok(result);
       } catch (err) {
@@ -492,18 +512,20 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
     {
       title: 'Resolve x402 challenge',
       description:
-        'Evaluate and sign an x402 payment challenge (base64 PAYMENT-REQUIRED header or JSON payload) through the nexusPay Payment Guard. Returns the payment signature header to include on retry.',
+        'Evaluate and sign an x402 v1 (scheme exact, SPL token on Solana devnet) payment challenge through the nexusPay Payment Guard without broadcasting. Returns paymentHeader (for the X-PAYMENT header on retry) and idempotencyKey. Reuse that idempotencyKey to resume after owner approval or retry without paying twice.',
       inputSchema: {
-        challenge: z.string().describe('The raw JSON or base64-encoded PAYMENT-REQUIRED challenge.'),
+        challenge: z.string().describe('The raw JSON or base64-encoded x402 v1 PaymentRequired challenge.'),
         resourceUrl: z.string().url().optional().describe('The URL of the resource being paid for.'),
+        idempotencyKey: x402IdempotencyKeyInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
-    async ({ challenge, resourceUrl }) => {
+    async ({ challenge, resourceUrl, idempotencyKey }) => {
       try {
         const result = await api.post<Record<string, unknown>>('/api/agent/x402/resolve', {
           challenge,
           resourceUrl,
+          idempotencyKey,
         });
         return ok(result);
       } catch (err) {
