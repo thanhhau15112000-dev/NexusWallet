@@ -180,7 +180,19 @@ describe('demo-merchant x402 Worker', () => {
     const html = await res.text();
     expect(html).toContain('Devnet Espresso');
     expect(html).toContain('Deep Research Report');
-    expect(html).toContain('MerchantUsdcAta111');
     expect(html).toContain('5xConfirmedTxSig1234567890abcdef');
+  });
+
+  it('says the payments could not be read instead of guessing when the RPC fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'blocked' } }), { status: 403 })));
+    const html = await (await handleRequest(new Request('https://merchant.example.com/'), BASE_ENV)).text();
+    expect(html).toContain('Could not read payments from Devnet.');
+    expect(html).not.toContain('No payments yet.');
+  });
+
+  it('shows no payments when the merchant has no USDC account yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ result: { value: [] } }), { status: 200 })));
+    const html = await (await handleRequest(new Request('https://merchant.example.com/'), BASE_ENV)).text();
+    expect(html).toContain('No payments yet.');
   });
 });
