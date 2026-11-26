@@ -76,6 +76,14 @@ export type TranslationDictionary = {
     introAllow: string;
     introApproval: string;
     introDeny: string;
+    playgroundTitle: string;
+    playgroundSimulated: string;
+    playgroundLive: string;
+    playgroundPaused: string;
+    perTxLimit: string;
+    verdictAllow: string;
+    verdictApproval: string;
+    verdictDeny: string;
     introDevnet: string;
     introDocs: string;
   };

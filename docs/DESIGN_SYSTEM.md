@@ -16,6 +16,8 @@ nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The in
 - **Monospace identifiers:** Every Solana address, transaction signature, PDA, request ID, and code snippet MUST use `font-mono` and be shortened inline (`shorten(...)`) with a full `title` attribute and one-click copy when actionable.
 - **Timestamps:** render every date/time through `<DateTime value={...} />` from `web/src/components/ui.tsx`: fixed-width local `YYYY-MM-DD HH:mm:ss`, UTC ISO in `title` and `dateTime`. Do not call `toLocaleString`/`toLocaleTimeString` in components.
 
+- **Motion:** only the tokens in `styles.css` (`animate-feed-in` for rows entering a list, `animate-float` for the BootScreen mascot), always paired with `motion-reduce:animate-none`. Motion must explain state (new item, live demo), never decorate. The BootScreen `PolicyPlayground` is a labeled simulation and must not call the API.
+
 **Strictly forbidden ("AI slop"):**
 - NO uppercase, letter-spaced monospace "telemetry" labels (`SOLANA // ...`, `01 POLICY`, `ACCESS // WALLET`), numbered feature strips, or grid-line background patterns.
 - NO purple/neon gradients, glowing shadows, rainbow borders, or decorative glassmorphism (`backdrop-blur` spam).

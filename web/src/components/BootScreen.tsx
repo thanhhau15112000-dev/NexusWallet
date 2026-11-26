@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
-import { ArrowRight, Ban, CheckCircle2, Clock, ShieldCheck, Wallet, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { ArrowRight, ShieldCheck, Wallet, X } from 'lucide-react';
 import { useI18n } from '../i18n/context.js';
 import { LanguageToggle } from './SettingsMenu.js';
 import { Mascot } from './Mascot.js';
+import { PolicyPlayground } from './PolicyPlayground.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
 
@@ -19,11 +20,8 @@ export function BootScreen(props: {
   const { dict } = useI18n();
   const { boot } = dict;
 
-  const rules = [
-    { icon: CheckCircle2, tone: 'text-ok', text: boot.introAllow },
-    { icon: Clock, tone: 'text-warn', text: boot.introApproval },
-    { icon: Ban, tone: 'text-bad', text: boot.introDeny },
-  ];
+  const [mascotHover, setMascotHover] = useState(false);
+  const pose = props.offline ? 'sleep' : props.needsSignIn ? (mascotHover ? 'cheer' : 'wave') : 'think';
 
   return (
     <main className="grid min-h-screen grid-cols-1 bg-bg text-ink lg:grid-cols-[1.15fr_1fr]">
@@ -39,19 +37,14 @@ export function BootScreen(props: {
           </div>
         </div>
 
-        <div className="max-w-xl space-y-6">
+        <div className="max-w-xl space-y-5">
           <h1 className="text-4xl font-semibold leading-[1.1] [font-stretch:115%] text-ink text-balance sm:text-5xl">
             {boot.heroTitle}
           </h1>
           <p className="max-w-md text-base text-muted">{boot.introTagline}</p>
-          <ul className="space-y-3 border-t border-line pt-6">
-            {rules.map(({ icon: Icon, tone, text }) => (
-              <li key={text} className="flex items-start gap-3 text-sm text-ink">
-                <Icon size={18} className={`mt-0.5 shrink-0 ${tone}`} aria-hidden="true" />
-                <span>{text}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="max-w-md pt-2">
+            <PolicyPlayground />
+          </div>
         </div>
 
         <div className="hidden h-6 lg:block" aria-hidden="true" />
@@ -63,11 +56,17 @@ export function BootScreen(props: {
         </div>
 
         <div className="mx-auto my-auto w-full max-w-[380px] space-y-6">
-          <Mascot
-            className="shrink-0 [&_img]:h-12 [&_img]:w-12"
-            pose={props.offline ? 'sleep' : props.needsSignIn ? 'wave' : 'think'}
-            caption={props.offline ? dict.mascot.offline : props.needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
-          />
+          <div
+            className="inline-flex"
+            onMouseEnter={() => setMascotHover(true)}
+            onMouseLeave={() => setMascotHover(false)}
+          >
+            <Mascot
+              className="shrink-0 animate-float motion-reduce:animate-none [&_img]:h-14 [&_img]:w-14"
+              pose={pose}
+              caption={props.offline ? dict.mascot.offline : props.needsSignIn ? dict.mascot.signIn : dict.mascot.loading}
+            />
+          </div>
 
           <h2 id="login-title" className="text-2xl font-semibold [font-stretch:112%] text-ink">
             {props.needsSignIn ? boot.signInRequired : props.offline ? boot.serviceUnavailable : boot.loading}
