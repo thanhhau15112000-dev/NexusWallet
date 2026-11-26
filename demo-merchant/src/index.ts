@@ -337,6 +337,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
         {
           ...accepts.body,
           error: settleJson?.errorMessage || settleJson?.errorReason || 'Payment settlement failed',
+          // The facilitator's own answer, so a failed settlement can be diagnosed from the client.
+          settlement: { httpStatus: settleRes.status, ...settleJson },
         },
         402,
       );
