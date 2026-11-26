@@ -42,7 +42,17 @@ export type TranslationDictionary = {
     perDay: string;
     unlimited: string;
     spent24h: string;
-    recipientsCount: string;
+    policyTitle: string;
+    solLimits: string;
+    remaining24h: string;
+    recipientsTitle: string;
+    tokensTitle: string;
+    noRecipients: string;
+    noTokens: string;
+    perTxCap: string;
+    moreItems: string;
+    policyVersion: string;
+    policyUpdated: string;
     editPolicy: string;
     review: string;
     noPending: string;

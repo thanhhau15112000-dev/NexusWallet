@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
 import { Bot, CheckCircle2, Lock, ShieldCheck, Unlock, Wallet } from './icons.js';
 import { api, type AgentState } from '../api.js';
-import { Card, CopyAddressButton, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, DateTime, Mono, Pill, shorten } from './ui.js';
 import { Button } from './ui/button.js';
 import { Card as ShadcnCard, CardContent } from './ui/card.js';
 import { AgentFundingPanel } from './AgentFundingPanel.js';
@@ -146,6 +146,139 @@ function AgentControlCard(props: {
   );
 }
 
+const LIST_PREVIEW = 5;
+
+function SectionLabel(props: { children: ReactNode; count?: number }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs font-medium text-muted">
+      <span>{props.children}</span>
+      {props.count !== undefined ? <span className="tabular-nums">{props.count}</span> : null}
+    </div>
+  );
+}
+
+/** The whole spending policy at a glance: SOL limits with 24h usage, allowed recipients, allowed tokens. */
+function PolicySummaryCard(props: { state: AgentState; onEdit: () => void }) {
+  const { dict, interpolate } = useI18n();
+  const { policy, usage } = props.state;
+  const dailyCap = policy.maxSolPerDay ?? null;
+  const spent = usage?.spentSol24h ?? 0;
+  const usedRatio = dailyCap ? Math.min(1, spent / dailyCap) : 0;
+  const recipients = policy.allowedRecipients;
+  const mints = policy.allowedMints;
+
+  return (
+    <Card
+      title={dict.overview.policyTitle}
+      titleIcon={<ShieldCheck size={15} />}
+      actions={
+        <Button type="button" variant="link" size="sm" className="text-xs" onClick={props.onEdit}>
+          {dict.overview.editPolicy}
+        </Button>
+      }
+    >
+      <div className="grid gap-5 lg:grid-cols-3 lg:gap-0 lg:divide-x lg:divide-line">
+        <section className="space-y-3 lg:pr-5">
+          <SectionLabel>{dict.overview.solLimits}</SectionLabel>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-xs text-muted">{dict.overview.perTx}</div>
+              <div className="mt-0.5 text-xl font-semibold [font-stretch:112%] text-ink tabular-nums">
+                {policy.maxSolPerTx} <span className="text-xs font-medium text-muted">SOL</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted">{dict.overview.perDay}</div>
+              <div className="mt-0.5 text-xl font-semibold [font-stretch:112%] text-ink tabular-nums">
+                {dailyCap === null ? (
+                  <span className="text-sm font-medium text-muted">{dict.overview.unlimited}</span>
+                ) : (
+                  <>
+                    {dailyCap} <span className="text-xs font-medium text-muted">SOL</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          {dailyCap !== null ? (
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-surface-muted"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={dailyCap}
+              aria-valuenow={spent}
+              aria-label={dict.overview.perDay}
+            >
+              <div
+                className={cn('h-full rounded-full', usedRatio >= 0.8 ? 'bg-apricot' : 'bg-accent')}
+                style={{ width: `${usedRatio * 100}%` }}
+              />
+            </div>
+          ) : null}
+          <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 text-xs text-muted tabular-nums">
+            <span>{interpolate(dict.overview.spent24h, { amount: formatSol(spent) })}</span>
+            {usage?.remainingSol24h != null ? (
+              <span>{interpolate(dict.overview.remaining24h, { amount: formatSol(usage.remainingSol24h) })}</span>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="space-y-2 lg:px-5">
+          <SectionLabel count={recipients.length}>{dict.overview.recipientsTitle}</SectionLabel>
+          {recipients.length === 0 ? (
+            <p className="text-xs text-bad">{dict.overview.noRecipients}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {recipients.slice(0, LIST_PREVIEW).map((entry) => (
+                <li key={entry.address} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate text-ink">{entry.label}</span>
+                  <Mono className="text-muted" title={entry.address}>{shorten(entry.address, 4)}</Mono>
+                </li>
+              ))}
+              {recipients.length > LIST_PREVIEW ? (
+                <li className="text-xs text-muted">
+                  {interpolate(dict.overview.moreItems, { count: recipients.length - LIST_PREVIEW })}
+                </li>
+              ) : null}
+            </ul>
+          )}
+        </section>
+
+        <section className="space-y-2 lg:pl-5">
+          <SectionLabel count={mints.length}>{dict.overview.tokensTitle}</SectionLabel>
+          {mints.length === 0 ? (
+            <p className="text-xs text-muted">{dict.overview.noTokens}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {mints.slice(0, LIST_PREVIEW).map((entry) => (
+                <li key={entry.address} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate text-ink" title={entry.address}>{entry.label}</span>
+                  <Mono className="text-muted">
+                    {interpolate(dict.overview.perTxCap, { amount: policy.maxTokenAmountByMint[entry.address] ?? 0 })}
+                  </Mono>
+                </li>
+              ))}
+              {mints.length > LIST_PREVIEW ? (
+                <li className="text-xs text-muted">
+                  {interpolate(dict.overview.moreItems, { count: mints.length - LIST_PREVIEW })}
+                </li>
+              ) : null}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-2 border-t border-line pt-3 text-xs text-muted">
+        <span>{interpolate(dict.overview.policyVersion, { version: policy.version })}</span>
+        <span aria-hidden="true">·</span>
+        <span>
+          {dict.overview.policyUpdated} <DateTime value={policy.updatedAt} />
+        </span>
+      </div>
+    </Card>
+  );
+}
+
 export function OverviewPanel(props: {
   state: AgentState;
   wallet: string | null;
@@ -165,11 +298,10 @@ export function OverviewPanel(props: {
   const owner = useOwnerBalance(state.rpcUrl, wallet);
   const agentBalance = agent.lamports === null ? null : agent.lamports / LAMPORTS_PER_SOL;
   const pending = props.requests.filter((request) => request.status === 'pending_approval').length;
-  const dailyCap = policy.maxSolPerDay ?? null;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <ShadcnCard className="border-accent-line bg-accent-soft">
           <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
             <div className="flex items-center justify-between gap-2">
@@ -232,33 +364,6 @@ export function OverviewPanel(props: {
           </CardContent>
         </ShadcnCard>
 
-        <ShadcnCard>
-          <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-                <ShieldCheck size={14} aria-hidden="true" />
-                {dict.overview.spendingLimits}
-              </span>
-              <Button type="button" variant="link" size="sm" className="text-xs" onClick={() => props.onOpenTab('policy')}>
-                {dict.overview.editPolicy}
-              </Button>
-            </div>
-            <div className="flex items-baseline gap-1.5 text-2xl font-semibold [font-stretch:112%] text-ink tabular-nums">
-              <span>{policy.maxSolPerTx}</span>
-              <span className="text-xs font-medium text-muted">SOL / tx</span>
-            </div>
-            <div className="space-y-0.5 border-t border-line pt-2.5 text-[11px] text-muted tabular-nums">
-              <div className="flex items-center justify-between gap-2">
-                <span>{dict.overview.perDay}: {dailyCap === null ? dict.overview.unlimited : `${dailyCap} SOL`}</span>
-                <span>{interpolate(dict.overview.recipientsCount, { count: policy.allowedRecipients.length })}</span>
-              </div>
-              {state.usage ? (
-                <div>{interpolate(dict.overview.spent24h, { amount: formatSol(state.usage.spentSol24h) })}</div>
-              ) : null}
-            </div>
-          </CardContent>
-        </ShadcnCard>
-
         <ShadcnCard className={cn(pending > 0 && 'border-warn-line bg-warn-soft/30')}>
           <CardContent className="flex h-full flex-col justify-between gap-3 p-5">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
@@ -278,6 +383,8 @@ export function OverviewPanel(props: {
           </CardContent>
         </ShadcnCard>
       </div>
+
+      <PolicySummaryCard state={state} onEdit={() => props.onOpenTab('policy')} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <AgentControlCard state={state} onRefresh={props.onRefresh} onToast={props.onToast} />
