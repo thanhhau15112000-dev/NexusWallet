@@ -504,7 +504,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 x402 hỗ trợ giao thức v2 với scheme <code>exact</code> cho SPL token trên Solana Devnet
                 (<code>solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1</code>). Facilitator ghi trong challenge trả phí mạng:
                 agent ký một giao dịch <code>TransferChecked</code> nhận facilitator đó làm fee payer, không tự
-                broadcast, rồi gửi trong header <code>PAYMENT-SIGNATURE</code>.
+                broadcast, rồi gửi trong header <code>PAYMENT-SIGNATURE</code>. Gọi lại bằng khóa của một khoản đã lên
+                chain thì agent không gửi gì và trả về <code>X402_ALREADY_PAID</code>.
               </p>
               <p>
                 Khoản vượt <code>maxTokenAmountByMint</code> sẽ chờ chủ ví duyệt và giữ trạng thái{' '}
