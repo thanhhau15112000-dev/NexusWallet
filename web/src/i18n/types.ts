@@ -360,8 +360,6 @@ export type TranslationDictionary = {
     connectToOperate: string;
     create: {
       title: string;
-      taskId: string;
-      taskIdPlaceholder: string;
       totalBudget: string;
       perPaymentCap: string;
       allowedWorker: string;
@@ -388,8 +386,6 @@ export type TranslationDictionary = {
     escrowStatuses: { held: string; settled: string; refunded: string };
     detail: {
       taskTitle: string;
-      defaultTitle: string;
-      emptySelect: string;
       revoke: string;
       refundAndClose: string;
       refundBlockedPending: string;

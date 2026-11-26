@@ -52,13 +52,11 @@ export function TaskVaultPanel(props: {
   } | null>(null);
 
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [reviewedOutputs, setReviewedOutputs] = useState<Set<string>>(new Set());
 
   // Create form state
-  const [newTaskId, setNewTaskId] = useState(`task-${Date.now().toString(36)}`);
   const [newBudgetSol, setNewBudgetSol] = useState('0.5');
   const [newCapSol, setNewCapSol] = useState('0.2');
   const [newHours, setNewHours] = useState('24');
@@ -91,7 +89,6 @@ export function TaskVaultPanel(props: {
       });
     } finally {
       setLoading(false);
-      setLoaded(true);
     }
   };
 
@@ -144,6 +141,8 @@ export function TaskVaultPanel(props: {
     }
 
     setBusyAction('create');
+    // The id seeds the on-chain capability PDA, so it must exist before the owner signs.
+    const taskId = `task-${Date.now().toString(36)}`;
     try {
       const now = Math.floor(Date.now() / 1000);
       const expiry = now + Math.round(hours * 3600);
@@ -163,7 +162,7 @@ export function TaskVaultPanel(props: {
         const ix = createAndFundTaskInstruction({
           owner: ownerPubkey,
           agentSigner: agentPubkey,
-          taskId: newTaskId.trim(),
+          taskId,
           budgetLamports: Math.round(budgetSol * LAMPORTS_PER_SOL),
           perPaymentCapLamports: Math.round(capSol * LAMPORTS_PER_SOL),
           allowedWorker: newAllowedWorker.trim() ? new PublicKey(newAllowedWorker.trim()) : undefined,
@@ -188,7 +187,7 @@ export function TaskVaultPanel(props: {
       }
 
       const res = await api.createTask({
-        taskId: newTaskId.trim(),
+        taskId,
         budgetLamports: Math.round(budgetSol * LAMPORTS_PER_SOL),
         perPaymentCapLamports: Math.round(capSol * LAMPORTS_PER_SOL),
         expiry,
@@ -210,7 +209,6 @@ export function TaskVaultPanel(props: {
         });
       }
 
-      setNewTaskId(`task-${Date.now().toString(36)}`);
       setShowCreate(false);
       await loadTasks(res.task.taskId);
     } catch (err) {
@@ -471,7 +469,7 @@ export function TaskVaultPanel(props: {
 
   const locked = !props.connected;
   const paymentActionsLocked = locked || Boolean(detail?.task.isClosed) || Boolean(detail && nowSeconds >= detail.task.expiry);
-  const createOpen = showCreate || (loaded && tasks.length === 0);
+  const createOpen = showCreate;
 
   const statusTone = (status: string): 'ok' | 'warn' | 'bad' | 'neutral' => {
     switch (status) {
@@ -638,7 +636,7 @@ export function TaskVaultPanel(props: {
               >
                 <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
               </Button>
-              {tasks.length > 0 && !createOpen ? (
+              {!createOpen ? (
                 <Button type="button" variant="default" size="sm" className="h-7 px-2.5 text-xs" onClick={() => setShowCreate(true)}>
                   <Plus size={12} />
                   {dict.taskVault.list.newTask}
@@ -696,51 +694,39 @@ export function TaskVaultPanel(props: {
               title={dict.taskVault.create.title}
               titleIcon={<Plus size={15} />}
               actions={
-                tasks.length > 0 ? (
-                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowCreate(false)}>
-                    {dict.taskVault.create.cancel}
-                  </Button>
-                ) : null
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowCreate(false)}>
+                  {dict.taskVault.create.cancel}
+                </Button>
               }
             >
               <form onSubmit={handleCreateTask} className="space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <Field label={dict.taskVault.create.totalBudget}>
+                  <Field label={dict.taskVault.create.totalBudget} required>
                     <UnitInput unit="SOL" min="0.01" value={newBudgetSol} onChange={setNewBudgetSol} />
                   </Field>
-                  <Field label={dict.taskVault.create.perPaymentCap}>
+                  <Field label={dict.taskVault.create.perPaymentCap} required>
                     <UnitInput unit="SOL" min="0.01" value={newCapSol} onChange={setNewCapSol} />
                   </Field>
-                  <Field label={dict.taskVault.create.expiryDuration}>
+                  <Field label={dict.taskVault.create.expiryDuration} required>
                     <UnitInput unit={dict.taskVault.create.hoursUnit} min="0.05" max="168" value={newHours} onChange={setNewHours} />
                   </Field>
                 </div>
 
-                <Field label={dict.taskVault.create.allowedWorker}>
-                  <Input
-                    type="text"
-                    value={newAllowedWorker}
-                    onChange={(e) => setNewAllowedWorker(e.target.value)}
-                    placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
-                  />
-                </Field>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                  <Field label={dict.taskVault.create.allowedWorker} required={submitOnchain}>
+                    <Input
+                      type="text"
+                      value={newAllowedWorker}
+                      onChange={(e) => setNewAllowedWorker(e.target.value)}
+                      placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
+                    />
+                  </Field>
                   <Field label={dict.taskVault.create.allowedService}>
                     <Input
                       type="text"
                       value={newAllowedServiceId}
                       onChange={(e) => setNewAllowedServiceId(e.target.value)}
                       placeholder={dict.taskVault.create.allowedServicePlaceholder}
-                    />
-                  </Field>
-                  <Field label={dict.taskVault.create.taskId}>
-                    <Input
-                      type="text"
-                      value={newTaskId}
-                      onChange={(e) => setNewTaskId(e.target.value)}
-                      placeholder={dict.taskVault.create.taskIdPlaceholder}
-                      required
                     />
                   </Field>
                 </div>
@@ -920,10 +906,10 @@ export function TaskVaultPanel(props: {
                         placeholder={dict.taskVault.payment.workerPlaceholder}
                       />
                     </Field>
-                    <Field label={dict.taskVault.payment.serviceId}>
+                    <Field label={dict.taskVault.payment.serviceId} required>
                       <Input type="text" value={paymentService} onChange={(e) => setPaymentService(e.target.value)} required />
                     </Field>
-                    <Field label={dict.taskVault.payment.amount}>
+                    <Field label={dict.taskVault.payment.amount} required>
                       <UnitInput unit="SOL" min="0.001" value={paymentAmountSol} onChange={setPaymentAmountSol} />
                     </Field>
                     <Button type="submit" variant="default" disabled={busyAction === 'execute_payment' || locked}>
@@ -980,21 +966,24 @@ export function TaskVaultPanel(props: {
                 )}
               </Card>
             </>
-          ) : (
-            <Card title={dict.taskVault.detail.defaultTitle}>
-              <Empty>{dict.taskVault.detail.emptySelect}</Empty>
-            </Card>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function Field(props: { label: string; children: React.ReactNode }) {
+function Field(props: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block space-y-1.5">
-      <span className="block text-xs font-medium text-ink">{props.label}</span>
+      <span className="block text-xs font-medium text-ink">
+        {props.label}
+        {props.required ? (
+          <span className="ml-0.5 text-bad" aria-hidden="true">
+            *
+          </span>
+        ) : null}
+      </span>
       {props.children}
     </label>
   );
