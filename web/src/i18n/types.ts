@@ -177,6 +177,7 @@ export type TranslationDictionary = {
     save: string;
     saving: string;
     unsaved: string;
+    pendingEntry: string;
     tokens: string;
     noTokens: string;
     mintPlaceholder: string;

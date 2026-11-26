@@ -177,6 +177,7 @@ export const en: TranslationDictionary = {
     save: 'Save',
     saving: 'Saving',
     unsaved: 'Unsaved',
+    pendingEntry: 'Add or clear the entry you are typing before saving.',
     tokens: 'Allowed tokens',
     noTokens: 'No SPL token allowed. Token transfers and x402 payments are denied.',
     mintPlaceholder: 'Mint address',

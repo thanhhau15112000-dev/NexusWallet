@@ -177,6 +177,7 @@ export const vi: TranslationDictionary = {
     save: 'Lưu',
     saving: 'Đang lưu...',
     unsaved: 'Chưa lưu thay đổi',
+    pendingEntry: 'Bấm Thêm hoặc xóa mục đang nhập dở trước khi lưu.',
     tokens: 'Token được phép',
     noTokens: 'Chưa cho phép token SPL nào. Chuyển token và thanh toán x402 sẽ bị từ chối.',
     mintPlaceholder: 'Địa chỉ mint',

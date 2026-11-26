@@ -85,6 +85,8 @@ export function PolicyPanel(props: {
   const existingRecipientInvalid = recipients.some(
     (entry) => !AllowlistEntrySchema.safeParse(entry).success,
   );
+  // Save sends only the lists, so a typed-but-unadded entry would be dropped without notice.
+  const pendingEntry = Boolean(label || address || mintLabel || mintAddress || mintCap);
 
   // Re-sync when the agent reports a newer policy and nothing local is pending.
   useEffect(() => {
@@ -321,7 +323,9 @@ export function PolicyPanel(props: {
                           setDirty(true);
                         }}
                       />
-                      <span className="text-xs text-muted">{dict.overview.perTxUnit}</span>
+                      <span className="max-w-40 truncate text-xs text-muted" title={entry.label}>
+                        {entry.label} {dict.overview.perTxUnit}
+                      </span>
                       <Button
                         type="button"
                         variant="link"
@@ -356,16 +360,23 @@ export function PolicyPanel(props: {
               value={mintAddress}
               onChange={(e) => setMintAddress(e.target.value.trim())}
             />
-            <Input
-              type="number"
-              min="0"
-              step="any"
-              aria-label={dict.policy.capPlaceholder}
-              placeholder={dict.policy.capPlaceholder}
-              className="tabular-nums"
-              value={mintCap}
-              onChange={(e) => setMintCap(e.target.value)}
-            />
+            <div className="relative">
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                aria-label={dict.policy.capPlaceholder}
+                placeholder={dict.policy.capPlaceholder}
+                className={cn('tabular-nums', mintLabel && 'pr-24')}
+                value={mintCap}
+                onChange={(e) => setMintCap(e.target.value)}
+              />
+              {mintLabel ? (
+                <span className="pointer-events-none absolute right-3 top-1/2 max-w-20 -translate-y-1/2 truncate text-xs text-muted">
+                  {mintLabel}
+                </span>
+              ) : null}
+            </div>
             <Button
               type="button"
               variant="outline"
@@ -409,11 +420,23 @@ export function PolicyPanel(props: {
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-line pt-3">
-        {dirty ? <span className="text-xs font-medium text-warn">{dict.policy.unsaved}</span> : null}
+        {pendingEntry ? (
+          <span className="text-xs font-medium text-warn">{dict.policy.pendingEntry}</span>
+        ) : dirty ? (
+          <span className="text-xs font-medium text-warn">{dict.policy.unsaved}</span>
+        ) : null}
         <Button
           type="button"
           variant="default"
-          disabled={props.busy || !dirty || maxSolInvalid || maxSolDayInvalid || existingRecipientInvalid || savedCapInvalid}
+          disabled={
+            props.busy ||
+            !dirty ||
+            pendingEntry ||
+            maxSolInvalid ||
+            maxSolDayInvalid ||
+            existingRecipientInvalid ||
+            savedCapInvalid
+          }
           onClick={save}
         >
           {props.busy ? dict.policy.saving : dict.policy.save}
