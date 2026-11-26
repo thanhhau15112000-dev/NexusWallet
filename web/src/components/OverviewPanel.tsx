@@ -271,6 +271,20 @@ export function OverviewPanel(props: {
   const { agent, policy } = state;
   const owner = useOwnerBalance(state.rpcUrl, wallet);
   const agentBalance = agent.lamports === null ? null : agent.lamports / LAMPORTS_PER_SOL;
+  // Every token the policy allows, at 0 when the wallet holds none, then any other token held.
+  // Unknown balances (`tokens` null) show nothing rather than a misleading 0.
+  const tokenRows = agent.tokens
+    ? [
+        ...policy.allowedMints.map((entry) => ({
+          mint: entry.address,
+          label: entry.label,
+          amount: agent.tokens!.find((token) => token.mint === entry.address)?.amount ?? '0',
+        })),
+        ...agent.tokens
+          .filter((token) => !policy.allowedMints.some((entry) => entry.address === token.mint))
+          .map((token) => ({ mint: token.mint, label: shorten(token.mint, 4), amount: token.amount })),
+      ]
+    : [];
   const pending = props.requests.filter((request) => request.status === 'pending_approval').length;
 
   return (
@@ -294,19 +308,16 @@ export function OverviewPanel(props: {
                     <span className="text-base font-medium text-muted">SOL</span>
                   </div>
                 )}
-                {agent.tokens?.length ? (
+                {tokenRows.length ? (
                   <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                    {agent.tokens.map((token) => {
-                      const label = policy.allowedMints.find((entry) => entry.address === token.mint)?.label;
-                      return (
-                        <li key={token.mint} className="flex items-baseline gap-1.5">
-                          <span className="font-semibold text-ink tabular-nums">{token.amount}</span>
-                          <span className="text-muted" title={token.mint}>
-                            {label ?? shorten(token.mint, 4)}
-                          </span>
-                        </li>
-                      );
-                    })}
+                    {tokenRows.map((token) => (
+                      <li key={token.mint} className="flex items-baseline gap-1.5">
+                        <span className="font-semibold text-ink tabular-nums">{token.amount}</span>
+                        <span className="text-muted" title={token.mint}>
+                          {token.label}
+                        </span>
+                      </li>
+                    ))}
                   </ul>
                 ) : null}
                 <div className="flex items-center gap-1 text-xs">
