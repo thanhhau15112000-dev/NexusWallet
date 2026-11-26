@@ -1,6 +1,6 @@
 import type { PaymentRequest } from '@nexus/shared';
 import { Activity, ExternalLink } from './icons.js';
-import { Card, Empty, Mono, Pill } from './ui.js';
+import { Card, DateTime, Empty, Mono, Pill } from './ui.js';
 import { Button } from './ui/button.js';
 import {
   Table,
@@ -59,9 +59,9 @@ export function RecentRequests(props: {
                 <TableCell>
                   <Mono>{describeAction(request, dict.requests.actions)}</Mono>
                 </TableCell>
-                <TableCell className="text-right font-mono text-xs text-muted tabular-nums">
+                <TableCell className="text-right text-xs text-muted tabular-nums">
                   <span className="inline-flex items-center justify-end gap-1.5">
-                    {new Date(request.createdAt).toLocaleTimeString()}
+                    <DateTime value={request.createdAt} />
                     {request.execution ? (
                       <a
                         href={request.execution.explorerUrl}

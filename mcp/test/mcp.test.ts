@@ -799,35 +799,60 @@ describe('nexusPay MCP tools', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('calls nexuspay_x402_fetch and returns data on success', async () => {
+  it('calls nexuspay_x402_fetch and passes idempotencyKey on success and preserves it on settlement failure', async () => {
     const fetchImpl = vi.fn(async () => json(200, {
       status: 200,
       headers: { 'content-type': 'application/json' },
       data: { hello: 'world' },
-      payment: { status: 'paid', signature: 'sig-123' },
+      payment: { status: 'paid', idempotencyKey: 'x402-key-1', signature: 'sig-123' },
     }));
     const client = await connect(fetchImpl as unknown as Fetch);
     const result = parse(await client.callTool({
       name: 'nexuspay_x402_fetch',
-      arguments: { url: 'https://api.example.com/data' },
+      arguments: { url: 'https://api.example.com/data', idempotencyKey: 'x402-key-1' },
     }));
     expect(result.data).toEqual({ hello: 'world' });
     expect(result.payment.status).toBe('paid');
+    const sentBody = JSON.parse((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(sentBody.idempotencyKey).toBe('x402-key-1');
+
+    const failFetch = vi.fn(async () => json(200, {
+      status: 402,
+      headers: {},
+      data: null,
+      payment: { status: 'not_settled', idempotencyKey: 'x402-key-2', requestId: 'req-9' },
+      error: { code: 'X402_SETTLEMENT_FAILED', message: 'not settled', remediation: 'retry same key' },
+    }));
+    const failClient = await connect(failFetch as unknown as Fetch);
+    const failResult = await failClient.callTool({
+      name: 'nexuspay_x402_fetch',
+      arguments: { url: 'https://api.example.com/data', idempotencyKey: 'x402-key-2' },
+    });
+    expect(failResult.isError).toBe(true);
+    expect(parse(failResult)).toMatchObject({
+      code: 'X402_SETTLEMENT_FAILED',
+      idempotencyKey: 'x402-key-2',
+      requestId: 'req-9',
+    });
   });
 
-  it('calls nexuspay_x402_resolve and returns challenge result', async () => {
+  it('calls nexuspay_x402_resolve with idempotencyKey and returns paymentHeader', async () => {
     const fetchImpl = vi.fn(async () => json(200, {
       status: 'completed',
+      idempotencyKey: 'resolve-key-1',
       signature: 'sig-x402',
-      paymentSignatureHeader: 'base64header',
+      paymentHeader: 'base64header',
     }));
     const client = await connect(fetchImpl as unknown as Fetch);
     const result = parse(await client.callTool({
       name: 'nexuspay_x402_resolve',
-      arguments: { challenge: '{"accepts":[]}' },
+      arguments: { challenge: '{"x402Version":1,"accepts":[]}', idempotencyKey: 'resolve-key-1' },
     }));
     expect(result.status).toBe('completed');
     expect(result.signature).toBe('sig-x402');
+    expect(result.paymentHeader).toBe('base64header');
+    const sentBody = JSON.parse((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(sentBody.idempotencyKey).toBe('resolve-key-1');
   });
 });
 

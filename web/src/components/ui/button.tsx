@@ -12,8 +12,6 @@ const buttonVariants = cva(
           'bg-accent text-white hover:bg-accent-hover shadow-2xs disabled:border disabled:border-line disabled:bg-surface-muted disabled:text-muted disabled:shadow-none',
         secondary: 'border border-line-strong bg-surface-muted text-ink hover:bg-line/70 disabled:opacity-50',
         outline: 'border border-line-strong bg-panel text-ink hover:bg-surface-muted disabled:opacity-50',
-        darkOutline:
-          'border border-obsidian-line bg-obsidian-raised text-obsidian-ink hover:bg-obsidian-line/70 disabled:opacity-50',
         ghost: 'text-muted hover:bg-surface-muted hover:text-ink disabled:opacity-50',
         destructive: 'bg-bad text-white hover:bg-bad/90 disabled:opacity-50',
         destructiveOutline: 'border border-bad/35 bg-panel text-bad hover:bg-bad-soft disabled:opacity-50',

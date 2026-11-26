@@ -6,7 +6,7 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
     <section
       ref={ref}
       className={cn(
-        'rounded-lg border border-line bg-panel text-ink shadow-2xs',
+        'rounded-xl border border-line bg-panel text-ink shadow-card',
         className,
       )}
       {...props}
@@ -20,7 +20,7 @@ export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
     <header
       ref={ref}
       className={cn(
-        'flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3',
+        'flex flex-wrap items-center justify-between gap-2 px-5 pt-4 pb-0',
         className,
       )}
       {...props}
@@ -33,7 +33,7 @@ export const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttribut
   ({ className, ...props }, ref) => (
     <h2
       ref={ref}
-      className={cn('flex items-center gap-2 text-sm font-semibold tracking-tight text-ink', className)}
+      className={cn('flex items-center gap-2 text-[15px] font-semibold text-ink', className)}
       {...props}
     />
   ),
@@ -42,7 +42,7 @@ CardTitle.displayName = 'CardTitle';
 
 export const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('p-4', className)} {...props} />
+    <div ref={ref} className={cn('p-5', className)} {...props} />
   ),
 );
 CardContent.displayName = 'CardContent';

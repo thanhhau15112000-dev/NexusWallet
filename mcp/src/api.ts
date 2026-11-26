@@ -121,8 +121,19 @@ export class NexusApi {
     }
 
     if (!response.ok) {
-      const fields = (payload ?? {}) as { error?: unknown; message?: unknown; remediation?: unknown; details?: unknown };
-      const code = typeof fields.error === 'string' ? fields.error : `http_${response.status}`;
+      const fields = (payload ?? {}) as {
+        error?: unknown;
+        code?: unknown;
+        message?: unknown;
+        remediation?: unknown;
+        details?: unknown;
+      };
+      const code =
+        typeof fields.error === 'string'
+          ? fields.error
+          : typeof fields.code === 'string'
+            ? fields.code
+            : `http_${response.status}`;
       const message = typeof fields.message === 'string' ? fields.message : code;
       const remediation = typeof fields.remediation === 'string' ? fields.remediation : undefined;
       const details =

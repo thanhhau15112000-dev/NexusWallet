@@ -168,12 +168,12 @@ describe('rate limit on sensitive routes', () => {
     }
   });
 
-  it('limits claim-seed and airdrop per address before the handler runs', async () => {
+  it('limits claim-seed per address before the handler runs', async () => {
     const { app } = await startHostedApp({ now: () => 0 });
     try {
       const owner = Keypair.generate();
       const cookieHeader = await login(app, owner);
-      for (const url of ['/api/agent/claim-seed', '/api/agent/airdrop']) {
+      for (const url of ['/api/agent/claim-seed']) {
         const statuses: number[] = [];
         for (let i = 0; i < 6; i += 1) {
           // An invalid body keeps the handler off the network; only the limiter decides the 6th answer.

@@ -40,7 +40,7 @@ Hai luồng có enforcement boundary khác nhau. Payment Guard là off-chain pol
 
 1. Bật **Testnet Mode** trong Developer Settings của Phantom và chọn Solana Devnet.
 2. Mở [dashboard](https://nexuspay-56wn.onrender.com), kết nối ví và ký tin nhắn đăng nhập. Bước này không chuyển tiền.
-3. Lấy SOL thử nghiệm từ [Solana Faucet](https://faucet.solana.com), nạp cho ví agent hiển thị trên dashboard. Nút seed/airdrop có thể hết quỹ, chạm giới hạn seed toàn server trong 24 giờ, bị rate limit theo IP hoặc bị RPC giới hạn.
+3. Lấy SOL thử nghiệm từ [Solana Faucet](https://faucet.solana.com), nạp cho ví agent hiển thị trên dashboard. Nút nhận seed có thể hết quỹ, chạm giới hạn seed toàn server trong 24 giờ hoặc bị rate limit theo IP.
 4. Đặt người nhận được phép, mức tối đa mỗi giao dịch và ngưỡng SOL trong 24 giờ ở tab **Chính sách chi tiêu**.
 5. Mở **Yêu cầu thanh toán** để nhập lệnh, hoặc kết nối ứng dụng AI qua card MCP trên dashboard.
 
@@ -103,7 +103,7 @@ flowchart LR
 | **Idempotency** | Với structured transfer action, `idempotencyKey` nhận diện retry cùng action; key khác action trả `IDEMPOTENCY_CONFLICT` khi record còn được giữ lại |
 | **Retention / rolling 24-hour window** | Request retention mặc định là 200. Khi prune, giao dịch SOL/SPL đã hoặc có thể đã chuyển tiền trong 24 giờ và request chưa kết thúc được giữ lại, nên SOL spending accounting và idempotency key của chúng không mất trong cửa sổ 24 giờ ([store.test.ts](agent/test/store.test.ts)) |
 | **Deterministic fallback parser** | Màn Yêu cầu thanh toán dùng deterministic parser khi không dùng model provider; action vẫn qua schema validation và `evaluatePolicy` |
-| **Rate limit / seed cap** | Fixed-window limit theo route: đăng nhập 10/phút/IP, seed/airdrop 5/giờ/IP, đề xuất transfer và tạo Escrow dùng chung 30/phút/owner trong mỗi loại danh tính (session hoặc MCP token), các route `/api` còn lại 240/phút/owner. Vượt giới hạn trả `RATE_LIMITED` kèm `retryAfterSeconds`. Seed từ master funder tối đa `SEED_CAP_PER_DAY` (mặc định 50) mỗi 24 giờ cho toàn server, giữ chỗ trước khi gửi giao dịch. Counter rate limit nằm trong memory, reset khi restart; không thay thế WAF/CDN |
+| **Rate limit / seed cap** | Fixed-window limit theo route: đăng nhập 10/phút/IP, seed 5/giờ/IP, đề xuất transfer và tạo Escrow dùng chung 30/phút/owner trong mỗi loại danh tính (session hoặc MCP token), các route `/api` còn lại 240/phút/owner. Vượt giới hạn trả `RATE_LIMITED` kèm `retryAfterSeconds`. Seed từ master funder tối đa `SEED_CAP_PER_DAY` (mặc định 50) mỗi 24 giờ cho toàn server, giữ chỗ trước khi gửi giao dịch. Counter rate limit nằm trong memory, reset khi restart; không thay thế WAF/CDN |
 | **Multi-tenant / single-instance** | Context riêng theo owner; Store JSON và session hiện phục vụ một instance, chưa có transaction chung cho nhiều replica |
 
 Nguồn: [`crypto.ts`](agent/src/crypto.ts), [`audit.ts`](agent/src/audit.ts), [`pipeline.ts`](agent/src/pipeline.ts), [`mcp-remote.ts`](agent/src/mcp-remote.ts), [`store.ts`](agent/src/store.ts), [`rate-limit.ts`](agent/src/rate-limit.ts), [`seed-ledger.ts`](agent/src/seed-ledger.ts), [`mcp-token.ts`](agent/src/mcp-token.ts).
@@ -127,7 +127,7 @@ Nguồn: [`crypto.ts`](agent/src/crypto.ts), [`audit.ts`](agent/src/audit.ts), [
 
 Endpoint hosted: `https://nexuspay-56wn.onrender.com/mcp`. Đăng nhập dashboard rồi sao chép cấu hình theo client từ card MCP. Hosted mode chỉ hiển thị token một lần khi tạo hoặc đổi token, server lưu hash SHA-256. Local mode giữ token trên disk để stdio client đọc cấu hình. Token là mã truy cập bí mật; không đưa vào issue, ảnh chụp hoặc repo. Đổi token sẽ ngắt các client dùng token cũ.
 
-MCP hiện cung cấp **8 tool** cho Payment Guard và Task Vault:
+MCP hiện cung cấp **10 tool** cho Payment Guard, x402 và Task Vault:
 
 | Tool | Chức năng |
 | --- | --- |
@@ -136,6 +136,8 @@ MCP hiện cung cấp **8 tool** cho Payment Guard và Task Vault:
 | `nexuspay_get_request` | Chi tiết một yêu cầu, trạng thái duyệt và link Explorer nếu có |
 | `nexuspay_transfer_sol` | Đề xuất chuyển SOL qua Payment Guard |
 | `nexuspay_transfer_spl` | Đề xuất chuyển SPL token; cần allowlist recipient/mint và hạn mức tương ứng |
+| `nexuspay_x402_fetch` | Gọi URL HTTP 402 theo chuẩn x402 v1 (`exact`, SPL trên Solana Devnet), ký qua Payment Guard và gửi `X-PAYMENT` |
+| `nexuspay_x402_resolve` | Đánh giá và ký challenge x402 v1 (không tự broadcast), trả về header `X-PAYMENT` và `idempotencyKey` |
 | `nexuspay_list_tasks` | Danh sách Task Vault, capability, ngân sách còn lại, cap và expiry từ record local |
 | `nexuspay_get_task` | Chi tiết task, Escrow và Receipt; phân biệt mô phỏng/Devnet, chưa reconcile lại chain |
 | `nexuspay_execute_task_payment` | Tạo Escrow trong capability chủ ví đã cấp; Worker nhận tiền ở bước settlement riêng |
@@ -167,6 +169,13 @@ Local có bản stdio: chạy `pnpm mcp:build`, sau đó `pnpm mcp:install -- --
 5. Bật kill switch rồi đề xuất transfer: `AGENT_FROZEN`. MCP không có tool tự unfreeze hoặc thay policy.
 
 MCP trả `code`, `message`, `remediation` và `details` cho error/pending approval. `details` dùng SOL và lamports; pending request có `pollIntervalMs` và `dashboardUrl`. Ví dụ này kiểm tra hành vi trong retention hiện tại, không chứng minh idempotency hoặc daily cap enforcement ngoài retention window.
+
+### Thanh toán x402 (v1, `exact`, SPL trên Solana Devnet)
+
+- **Chuẩn hỗ trợ:** chỉ x402 v1, scheme `exact`, SPL token trên Solana Devnet (`solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` hoặc `solana-devnet`) với facilitator thirdweb. Mainnet CAIP-2 và `extra.feePayer` khác ví agent bị từ chối.
+- **Ký và chống trả hai lần:** agent tự làm fee payer, ký giao dịch gồm `SetComputeUnitLimit(40_000)`, `SetComputeUnitPrice(1)`, `TransferChecked` (không Memo) nhưng **không tự broadcast**, gửi qua header `X-PAYMENT`. Giao dịch đã ký được lưu theo `idempotencyKey`; retry dùng lại giao dịch cũ khi còn hiệu lực và chỉ ký giao dịch mới khi blockhash cũ đã `expired`. Request chỉ chuyển `confirmed` khi chữ ký đã `confirmed`/`finalized` trên chain.
+- **Policy & approval:** đi qua policy `transfer_spl` (`payTo` trong `allowedRecipients`, `asset` trong `allowedMints`, hạn mức `maxTokenAmountByMint`). Khoản vượt cap dừng ở `pending_approval`; sau khi chủ ví duyệt, request giữ trạng thái `approved` (chờ thanh toán) và agent gọi lại với **cùng** `idempotencyKey` để ký và gửi `X-PAYMENT`.
+- **Demo merchant (`demo-merchant/`):** Cloudflare Worker dùng thirdweb `/v1/payments/x402/accepts` và `/v1/payments/x402/settle`, trả 200 kèm `X-PAYMENT-RESPONSE`, đọc lịch sử thanh toán trực tiếp từ ATA USDC của merchant trên Devnet. Chạy local với `pnpm demo:merchant`; ví agent cần có Devnet SOL + USDC Devnet, ví merchant cần có sẵn ATA USDC, và URL gọi từ `nexuspay_x402_fetch` phải là URL công khai (SSRF guard chặn localhost/private IP).
 
 ## Task Capability Vault
 

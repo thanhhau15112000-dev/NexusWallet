@@ -1,5 +1,6 @@
 import type { TranslationDictionary } from '../i18n/types.js';
 import { Callout, CodeBlock, Steps, TabLink, Tabs, type DocPage, type DocsContext } from './docsBlocks.js';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table.js';
 
 /**
  * Vietnamese copy of the pages built by `buildPages` in DocsPanel.tsx. Page ids, section ids, code
@@ -58,22 +59,22 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           id: 'map',
           title: 'Bản đồ dashboard',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Tab</th>
-                  <th>Dùng để</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Tổng quan</td><td>Xem ví agent, kết nối ví chủ sở hữu, nạp vốn cho agent.</td></tr>
-                <tr><td>Task Vault</td><td>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</td></tr>
-                <tr><td>Yêu cầu thanh toán</td><td>Yêu cầu agent kiểm tra số dư hoặc gửi SOL bằng văn bản thường.</td></tr>
-                <tr><td>Chính sách chi tiêu</td><td>Đặt hạn mức mỗi giao dịch và danh sách người nhận được phép.</td></tr>
-                <tr><td>Chờ duyệt</td><td>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</td></tr>
-                <tr><td>Nhật ký kiểm toán</td><td>Đọc nhật ký chỉ ghi thêm về các quyết định và lần thực thi.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tab</TableHead>
+                  <TableHead>Dùng để</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>Tổng quan</TableCell><TableCell>Xem ví agent, kết nối ví chủ sở hữu, nạp vốn cho agent.</TableCell></TableRow>
+                <TableRow><TableCell>Task Vault</TableCell><TableCell>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</TableCell></TableRow>
+                <TableRow><TableCell>Yêu cầu thanh toán</TableCell><TableCell>Yêu cầu agent kiểm tra số dư hoặc gửi SOL bằng văn bản thường.</TableCell></TableRow>
+                <TableRow><TableCell>Chính sách chi tiêu</TableCell><TableCell>Đặt hạn mức mỗi giao dịch và danh sách người nhận được phép.</TableCell></TableRow>
+                <TableRow><TableCell>Chờ duyệt</TableCell><TableCell>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</TableCell></TableRow>
+                <TableRow><TableCell>Nhật ký kiểm toán</TableCell><TableCell>Đọc nhật ký chỉ ghi thêm về các quyết định và lần thực thi.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
       ],
@@ -144,7 +145,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
       group: 'Hướng dẫn',
       title: 'Ví và nạp vốn',
       summary: 'Ví agent, ví chủ sở hữu và các cách nạp SOL Devnet vào agent.',
-      keywords: 'airdrop faucet seed deposit balance owner nạp số dư',
+      keywords: 'faucet seed deposit balance owner nạp số dư',
       sections: [
         {
           id: 'two-wallets',
@@ -167,20 +168,19 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Các cách nạp vốn',
           body: (
             <>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Nút</th>
-                    <th>Điều gì xảy ra</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td>Nhận 0.1 SOL seed</td><td>Chuyển một lần từ ví cấp phát của dịch vụ. Mỗi agent chỉ nhận được một lần.</td></tr>
-                  <tr><td>Nạp 0.1 SOL</td><td>Ví của bạn gửi 0.1 SOL cho agent. Ví sẽ yêu cầu bạn xác nhận.</td></tr>
-                  <tr><td>Airdrop 1 SOL</td><td>Yêu cầu SOL từ vòi Devnet công khai. Thường bị giới hạn tần suất.</td></tr>
-                  <tr><td>Trang vòi Solana chính thức</td><td>Mở faucet.solana.com với địa chỉ agent đã điền sẵn.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nút</TableHead>
+                    <TableHead>Điều gì xảy ra</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell>Nhận 0.1 SOL seed</TableCell><TableCell>Chuyển một lần từ ví cấp phát của dịch vụ. Mỗi agent chỉ nhận được một lần.</TableCell></TableRow>
+                  <TableRow><TableCell>Nạp 0.1 SOL</TableCell><TableCell>Ví của bạn gửi 0.1 SOL cho agent. Ví sẽ yêu cầu bạn xác nhận.</TableCell></TableRow>
+                  <TableRow><TableCell>Trang vòi Solana chính thức</TableCell><TableCell>Mở faucet.solana.com với địa chỉ agent đã điền sẵn.</TableCell></TableRow>
+                </TableBody>
+              </Table>
               <Callout tone="note" title="Số dư bằng 0 vẫn kiểm tra được chính sách">
                 Quyết định của chính sách không phụ thuộc vào số dư. Chỉ giao dịch on-chain mới cần có tiền.
               </Callout>
@@ -219,22 +219,22 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           id: 'verdicts',
           title: 'Cách quyết định kết luận',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Điều kiện</th>
-                  <th>Kết luận</th>
-                  <th>Kết quả</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Người nhận không có trong danh sách cho phép</td><td><code>deny</code></td><td>Không ký gì cả. Không có lời mời duyệt.</td></tr>
-                <tr><td>Số tiền bằng 0 hoặc không hợp lệ</td><td><code>deny</code></td><td>Không ký gì cả.</td></tr>
-                <tr><td>Số tiền vượt hạn mức</td><td><code>require_approval</code></td><td>Giữ lại cho tới khi chủ ví duyệt.</td></tr>
-                <tr><td>Có trong danh sách cho phép và trong hạn mức</td><td><code>allow</code></td><td>Agent ký và gửi giao dịch.</td></tr>
-                <tr><td>Kiểm tra số dư</td><td><code>allow</code></td><td>Chỉ đọc, luôn được phép.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Điều kiện</TableHead>
+                  <TableHead>Kết luận</TableHead>
+                  <TableHead>Kết quả</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>Người nhận không có trong danh sách cho phép</TableCell><TableCell><code>deny</code></TableCell><TableCell>Không ký gì cả. Không có lời mời duyệt.</TableCell></TableRow>
+                <TableRow><TableCell>Số tiền bằng 0 hoặc không hợp lệ</TableCell><TableCell><code>deny</code></TableCell><TableCell>Không ký gì cả.</TableCell></TableRow>
+                <TableRow><TableCell>Số tiền vượt hạn mức</TableCell><TableCell><code>require_approval</code></TableCell><TableCell>Giữ lại cho tới khi chủ ví duyệt.</TableCell></TableRow>
+                <TableRow><TableCell>Có trong danh sách cho phép và trong hạn mức</TableCell><TableCell><code>allow</code></TableCell><TableCell>Agent ký và gửi giao dịch.</TableCell></TableRow>
+                <TableRow><TableCell>Kiểm tra số dư</TableCell><TableCell><code>allow</code></TableCell><TableCell>Chỉ đọc, luôn được phép.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
         {
@@ -269,20 +269,20 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           body: (
             <>
               <p>Một lệnh được chuyển thành đúng một trong các hành động này. Mọi thứ khác không được thực thi.</p>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Hành động</th>
-                    <th>Lệnh ví dụ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td><code>get_balance</code></td><td>What is my balance?</td></tr>
-                  <tr><td><code>transfer_sol</code></td><td>Send 0.05 SOL to my-wallet</td></tr>
-                  <tr><td><code>transfer_spl</code></td><td>Send 5 USDC to my-wallet (chỉ khi mint đó nằm trong danh sách cho phép; mặc định chưa có mint nào)</td></tr>
-                  <tr><td><code>request_manual_approval</code></td><td>Dùng khi yêu cầu chưa rõ; không có gì được thực thi.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Hành động</TableHead>
+                    <TableHead>Lệnh ví dụ</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell><code>get_balance</code></TableCell><TableCell>What is my balance?</TableCell></TableRow>
+                  <TableRow><TableCell><code>transfer_sol</code></TableCell><TableCell>Send 0.05 SOL to my-wallet</TableCell></TableRow>
+                  <TableRow><TableCell><code>transfer_spl</code></TableCell><TableCell>Send 5 USDC to my-wallet (chỉ khi mint đó nằm trong danh sách cho phép; mặc định chưa có mint nào)</TableCell></TableRow>
+                  <TableRow><TableCell><code>request_manual_approval</code></TableCell><TableCell>Dùng khi yêu cầu chưa rõ; không có gì được thực thi.</TableCell></TableRow>
+                </TableBody>
+              </Table>
             </>
           ),
         },
@@ -462,24 +462,26 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Công cụ',
           body: (
             <>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Công cụ</th>
-                    <th>Chức năng</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td><code>nexuspay_get_status</code></td><td>Địa chỉ agent, số dư SOL, hạn mức mỗi giao dịch, các nhãn trong danh sách cho phép.</td></tr>
-                  <tr><td><code>nexuspay_list_requests</code></td><td>Các yêu cầu gần đây kèm kết luận và kết quả. Có thể lọc theo trạng thái.</td></tr>
-                  <tr><td><code>nexuspay_get_request</code></td><td>Một yêu cầu, ví dụ để xem bạn đã duyệt hay chưa.</td></tr>
-                  <tr><td><code>nexuspay_transfer_sol</code></td><td>Đề xuất chuyển SOL. Chính sách quyết định.</td></tr>
-                  <tr><td><code>nexuspay_transfer_spl</code></td><td>Đề xuất chuyển token SPL. Người nhận và mint phải nằm trong danh sách cho phép.</td></tr>
-                  <tr><td><code>nexuspay_list_tasks</code></td><td>Đọc Task Vault đã được cấp quyền, ngân sách còn lại, cap và expiry.</td></tr>
-                  <tr><td><code>nexuspay_get_task</code></td><td>Đọc task, Escrow và Receipt. Record local chưa được reconcile lại với chain.</td></tr>
-                  <tr><td><code>nexuspay_execute_task_payment</code></td><td>Tạo Escrow trong capability đã cấp. Worker nhận tiền ở bước settlement riêng.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Công cụ</TableHead>
+                    <TableHead>Chức năng</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell><code>nexuspay_get_status</code></TableCell><TableCell>Địa chỉ agent, số dư SOL, hạn mức mỗi giao dịch, các nhãn trong danh sách cho phép.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_list_requests</code></TableCell><TableCell>Các yêu cầu gần đây kèm kết luận và kết quả. Có thể lọc theo trạng thái.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_get_request</code></TableCell><TableCell>Một yêu cầu, ví dụ để xem bạn đã duyệt hay chưa.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_transfer_sol</code></TableCell><TableCell>Đề xuất chuyển SOL. Chính sách quyết định.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_transfer_spl</code></TableCell><TableCell>Đề xuất chuyển token SPL. Người nhận và mint phải nằm trong danh sách cho phép.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_x402_fetch</code></TableCell><TableCell>Gọi URL trả HTTP 402 qua x402 v1 (SPL trên Solana Devnet) và gửi <code>X-PAYMENT</code> khi gọi lại.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_x402_resolve</code></TableCell><TableCell>Kiểm tra và ký challenge x402 v1 nhưng không tự gửi lên chain; trả về giá trị header <code>X-PAYMENT</code>.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_list_tasks</code></TableCell><TableCell>Đọc Task Vault đã được cấp quyền, ngân sách còn lại, cap và expiry.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_get_task</code></TableCell><TableCell>Đọc task, Escrow và Receipt. Record local chưa được reconcile lại với chain.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_execute_task_payment</code></TableCell><TableCell>Tạo Escrow trong capability đã cấp. Worker nhận tiền ở bước settlement riêng.</TableCell></TableRow>
+                </TableBody>
+              </Table>
               <p>
                 MCP có thể đọc trạng thái ví, request và task, đề xuất transfer và tạo Escrow trong capability đã cấp.
                 Đổi chính sách, ký duyệt, tạo/nạp task, thu hồi quyền, settlement, refund và khóa/mở khóa agent
@@ -490,6 +492,40 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 chưa rõ, giữ nguyên <code>paymentId</code> và các tham số. Task mô phỏng không chuyển SOL;
                 bản Devnet hiện sử dụng Mock Worker do server giữ signer.
               </p>
+            </>
+          ),
+        },
+        {
+          id: 'x402',
+          title: 'Thanh toán x402 (SPL trên Devnet)',
+          body: (
+            <>
+              <p>
+                x402 hỗ trợ giao thức v1 với scheme <code>exact</code> cho SPL token trên Solana Devnet
+                (<code>solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1</code> hoặc <code>solana-devnet</code>) qua
+                facilitator thirdweb. Agent tự trả phí mạng, ký một giao dịch <code>TransferChecked</code> nhưng không
+                tự broadcast, rồi gửi trong header <code>X-PAYMENT</code>.
+              </p>
+              <p>
+                Khoản vượt <code>maxTokenAmountByMint</code> sẽ chờ chủ ví duyệt và giữ trạng thái{' '}
+                <code>approved</code> cho đến khi agent gọi lại với đúng <code>idempotencyKey</code>. Khi giao dịch đã
+                ký còn hiệu lực trên chain, các lần retry dùng lại đúng giao dịch đó; chỉ ký giao dịch mới khi
+                blockhash cũ đã hết hạn, và request chỉ sang <code>confirmed</code> khi signature đã xác nhận trên chain.
+              </p>
+              <Steps>
+                <li>
+                  Thêm ví merchant và SPL mint vào allowlist rồi đặt <code>maxTokenAmountByMint</code> trong{' '}
+                  <TabLink tab="policy" label="Chính sách chi tiêu" ctx={ctx} />.
+                </li>
+                <li>
+                  Nạp Devnet SOL (trả phí) và SPL token cho ví agent, đồng thời đảm bảo ví merchant đã có sẵn tài khoản
+                  token (ATA) cho mint đó.
+                </li>
+                <li>
+                  Gọi <code>nexuspay_x402_fetch</code> (hoặc <code>nexuspay_x402_resolve</code>) và giữ nguyên{' '}
+                  <code>idempotencyKey</code> trả về để tiếp tục sau khi chủ ví duyệt hoặc khi thử settle lại.
+                </li>
+              </Steps>
             </>
           ),
         },
@@ -507,20 +543,20 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 <li>
                   Chọn client của bạn và sao chép cấu hình tương ứng. Card hiện token ở dạng bị ẩn; <em>Sao chép</em>
                   {' '}vẫn chép đủ giá trị vào clipboard.
-                  <table className="docs-table">
-                    <thead>
-                      <tr>
-                        <th>Client</th>
-                        <th>Cấu hình đặt ở đâu</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr><td>Claude Code</td><td>Chạy một lần lệnh <code>claude mcp add --transport http …</code>.</td></tr>
-                      <tr><td>Codex</td><td><code>~/.codex/config.toml</code> (<code>url</code> + <code>http_headers</code>).</td></tr>
-                      <tr><td>Antigravity</td><td><code>~/.gemini/config/mcp_config.json</code> (<code>serverUrl</code> + <code>headers</code>).</td></tr>
-                      <tr><td>Claude Desktop</td><td><code>claude_desktop_config.json</code>, qua cầu nối <code>mcp-remote</code> (cần Node.js).</td></tr>
-                    </tbody>
-                  </table>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Client</TableHead>
+                        <TableHead>Cấu hình đặt ở đâu</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow><TableCell>Claude Code</TableCell><TableCell>Chạy một lần lệnh <code>claude mcp add --transport http …</code>.</TableCell></TableRow>
+                      <TableRow><TableCell>Codex</TableCell><TableCell><code>~/.codex/config.toml</code> (<code>url</code> + <code>http_headers</code>).</TableCell></TableRow>
+                      <TableRow><TableCell>Antigravity</TableCell><TableCell><code>~/.gemini/config/mcp_config.json</code> (<code>serverUrl</code> + <code>headers</code>).</TableCell></TableRow>
+                      <TableRow><TableCell>Claude Desktop</TableCell><TableCell><code>claude_desktop_config.json</code>, qua cầu nối <code>mcp-remote</code> (cần Node.js).</TableCell></TableRow>
+                    </TableBody>
+                  </Table>
                 </li>
                 <li>
                   Khởi động lại hoặc tải lại client, rồi hỏi nó kiểu như <em>&ldquo;Kiểm tra trạng thái ví nexusPay của
@@ -553,7 +589,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                         id: 'claude-code',
                         label: 'Claude Code',
                         body: (
-                          <p className="docs-muted">
+                          <p className="text-muted">
                             Mở Claude Code ở thư mục gốc của repository, không phải thư mục con, và đồng ý cho dùng
                             server của dự án từ <code>.mcp.json</code> khi được hỏi. File này đã được commit sẵn; không có
                             đường dẫn hay bí mật nào cần điền.
@@ -564,7 +600,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                         id: 'cursor',
                         label: 'Cursor',
                         body: (
-                          <p className="docs-muted">
+                          <p className="text-muted">
                             Mở thư mục gốc của repository (không phải thư mục con) và bật <code>nexuspay</code> từ file
                             {' '}<code>.cursor/mcp.json</code> đã commit sẵn.
                           </p>
@@ -575,7 +611,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                         label: 'Codex',
                         body: (
                           <>
-                            <p className="docs-muted">
+                            <p className="text-muted">
                               Đăng ký server vào <code>~/.codex/config.toml</code>. Repository cũng có sẵn
                               {' '}<code>.codex/config.toml</code> của dự án, nhưng Codex chỉ đọc nó với các dự án được tin
                               cậy, nên dùng trình cài đặt là cách chắc chắn.
@@ -589,7 +625,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                         label: 'Claude Desktop',
                         body: (
                           <>
-                            <p className="docs-muted">
+                            <p className="text-muted">
                               Đăng ký server vào <code>claude_desktop_config.json</code>. Sau đó hãy khởi động lại
                               Claude Desktop.
                             </p>
@@ -602,7 +638,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                         label: 'Antigravity',
                         body: (
                           <>
-                            <p className="docs-muted">
+                            <p className="text-muted">
                               Đăng ký server vào <code>~/.gemini/config/mcp_config.json</code>.
                             </p>
                             <CodeBlock label="Terminal" code="pnpm mcp:install -- --client antigravity" />
@@ -664,23 +700,23 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 Với một chủ ví duy nhất và cấu hình mặc định thì không cần cái nào. Đặt chúng trong khối
                 {' '}<code>env</code> của client.
               </p>
-              <table className="docs-table">
-                <thead>
-                  <tr>
-                    <th>Biến</th>
-                    <th>Mặc định</th>
-                    <th>Khi nào cần đặt</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td><code>NEXUS_OWNER_PUBKEY</code></td><td>tự động</td><td>Có hơn một chủ ví đã đăng nhập trên máy này.</td></tr>
-                  <tr><td><code>NEXUS_AGENT_DATA_DIR</code></td><td>tự động</td><td>Dịch vụ agent dùng thư mục dữ liệu khác mặc định.</td></tr>
-                  <tr><td><code>NEXUS_AGENT_TOKEN</code></td><td>tự động</td><td>Dùng một token cụ thể thay cho token trên đĩa.</td></tr>
-                  <tr><td><code>NEXUS_API_URL</code></td><td><code>http://127.0.0.1:8787</code></td><td>Agent chạy ở cổng khác. Chỉ loopback.</td></tr>
-                  <tr><td><code>NEXUS_DASHBOARD_URL</code></td><td><code>http://localhost:5173</code></td><td>Hiện trong gợi ý duyệt. Chỉ loopback.</td></tr>
-                  <tr><td><code>NEXUS_TIMEOUT_MS</code></td><td><code>45000</code></td><td>Giữ dưới mức timeout công cụ mặc định 60 giây của Codex.</td></tr>
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Biến</TableHead>
+                    <TableHead>Mặc định</TableHead>
+                    <TableHead>Khi nào cần đặt</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow><TableCell><code>NEXUS_OWNER_PUBKEY</code></TableCell><TableCell>tự động</TableCell><TableCell>Có hơn một chủ ví đã đăng nhập trên máy này.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_AGENT_DATA_DIR</code></TableCell><TableCell>tự động</TableCell><TableCell>Dịch vụ agent dùng thư mục dữ liệu khác mặc định.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_AGENT_TOKEN</code></TableCell><TableCell>tự động</TableCell><TableCell>Dùng một token cụ thể thay cho token trên đĩa.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_API_URL</code></TableCell><TableCell><code>http://127.0.0.1:8787</code></TableCell><TableCell>Agent chạy ở cổng khác. Chỉ loopback.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_DASHBOARD_URL</code></TableCell><TableCell><code>http://localhost:5173</code></TableCell><TableCell>Hiện trong gợi ý duyệt. Chỉ loopback.</TableCell></TableRow>
+                  <TableRow><TableCell><code>NEXUS_TIMEOUT_MS</code></TableCell><TableCell><code>45000</code></TableCell><TableCell>Giữ dưới mức timeout công cụ mặc định 60 giây của Codex.</TableCell></TableRow>
+                </TableBody>
+              </Table>
             </>
           ),
         },
@@ -709,28 +745,28 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           id: 'mcp-troubleshooting',
           title: 'Xử lý sự cố',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Triệu chứng</th>
-                  <th>Cách xử lý</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td><code>mcp_setup_required</code>: không tìm thấy MCP token</td><td>Đăng nhập dashboard này bằng ví một lần trên máy này. Lần gọi công cụ kế tiếp sẽ nhận token; không cần khởi động lại client.</td></tr>
-                <tr><td><code>mcp_setup_required</code>: có nhiều chủ ví</td><td>Đặt <code>NEXUS_OWNER_PUBKEY</code> bằng địa chỉ ví của bạn trong env của client.</td></tr>
-                <tr><td><code>mcp_token_rejected</code></td><td>Token đã bị đổi hoặc agent dùng thư mục dữ liệu khác. Kiểm tra <code>NEXUS_AGENT_DATA_DIR</code>, hoặc đăng nhập lại.</td></tr>
-                <tr><td><code>agent_unreachable</code></td><td>Chạy <code>pnpm dev</code> từ thư mục gốc của repository; kiểm tra <code>NEXUS_API_URL</code>.</td></tr>
-                <tr><td>Server không khởi động được từ <code>.mcp.json</code></td><td>Client được mở ở thư mục con nên đường dẫn tương đối tới bundle không phân giải được. Hãy mở nó ở thư mục gốc của repository, hoặc đăng ký đường dẫn tuyệt đối: <code>claude mcp add -s user nexuspay -- node &lt;path from pnpm mcp:config&gt;</code> cho Claude Code, hoặc dán JSON của <code>pnpm mcp:config</code> vào <code>~/.cursor/mcp.json</code> cho Cursor. <code>pnpm mcp:install</code> chỉ bao gồm Codex, Claude Desktop và Antigravity.</td></tr>
-                <tr><td><code>Cannot find module .../nexuspay-mcp.mjs</code></td><td>Chạy <code>pnpm mcp:build</code> và kiểm tra <code>dist/mcp/nexuspay-mcp.mjs</code>.</td></tr>
-                <tr><td>Không tìm thấy <code>node</code></td><td>Cài Node.js 22+, hoặc đặt đường dẫn tuyệt đối của <code>node</code> vào <code>command</code>.</td></tr>
-                <tr><td>Codex cắt lệnh gọi ở 60 giây</td><td>Giữ <code>tool_timeout_sec = 90</code> trong cấu hình Codex.</td></tr>
-                <tr><td>Antigravity từ chối schema của công cụ</td><td>Chạy <code>pnpm mcp:build</code> và khởi động lại Antigravity.</td></tr>
-                <tr><td><code>AGENT_FROZEN</code></td><td>Chủ ví đã khóa agent. Nhờ chủ ví mở khóa trên dashboard; đừng thử lại giao dịch khi agent đang bị khóa.</td></tr>
-                <tr><td><code>RATE_LIMITED</code></td><td>Quá nhiều request từ token hoặc địa chỉ này. Chờ <code>details.retryAfterSeconds</code> giây rồi thử lại; với giao dịch thì dùng lại đúng <code>idempotencyKey</code>.</td></tr>
-                <tr><td><code>DAILY_LIMIT_EXCEEDED</code></td><td>Đã vượt hạn mức chi tiêu 24 giờ. Chủ ví phải duyệt giao dịch này trên dashboard, hoặc chờ hạn mức được hoàn lại.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Triệu chứng</TableHead>
+                  <TableHead>Cách xử lý</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell><code>mcp_setup_required</code>: không tìm thấy MCP token</TableCell><TableCell>Đăng nhập dashboard này bằng ví một lần trên máy này. Lần gọi công cụ kế tiếp sẽ nhận token; không cần khởi động lại client.</TableCell></TableRow>
+                <TableRow><TableCell><code>mcp_setup_required</code>: có nhiều chủ ví</TableCell><TableCell>Đặt <code>NEXUS_OWNER_PUBKEY</code> bằng địa chỉ ví của bạn trong env của client.</TableCell></TableRow>
+                <TableRow><TableCell><code>mcp_token_rejected</code></TableCell><TableCell>Token đã bị đổi hoặc agent dùng thư mục dữ liệu khác. Kiểm tra <code>NEXUS_AGENT_DATA_DIR</code>, hoặc đăng nhập lại.</TableCell></TableRow>
+                <TableRow><TableCell><code>agent_unreachable</code></TableCell><TableCell>Chạy <code>pnpm dev</code> từ thư mục gốc của repository; kiểm tra <code>NEXUS_API_URL</code>.</TableCell></TableRow>
+                <TableRow><TableCell>Server không khởi động được từ <code>.mcp.json</code></TableCell><TableCell>Client được mở ở thư mục con nên đường dẫn tương đối tới bundle không phân giải được. Hãy mở nó ở thư mục gốc của repository, hoặc đăng ký đường dẫn tuyệt đối: <code>claude mcp add -s user nexuspay -- node &lt;path from pnpm mcp:config&gt;</code> cho Claude Code, hoặc dán JSON của <code>pnpm mcp:config</code> vào <code>~/.cursor/mcp.json</code> cho Cursor. <code>pnpm mcp:install</code> chỉ bao gồm Codex, Claude Desktop và Antigravity.</TableCell></TableRow>
+                <TableRow><TableCell><code>Cannot find module .../nexuspay-mcp.mjs</code></TableCell><TableCell>Chạy <code>pnpm mcp:build</code> và kiểm tra <code>dist/mcp/nexuspay-mcp.mjs</code>.</TableCell></TableRow>
+                <TableRow><TableCell>Không tìm thấy <code>node</code></TableCell><TableCell>Cài Node.js 22+, hoặc đặt đường dẫn tuyệt đối của <code>node</code> vào <code>command</code>.</TableCell></TableRow>
+                <TableRow><TableCell>Codex cắt lệnh gọi ở 60 giây</TableCell><TableCell>Giữ <code>tool_timeout_sec = 90</code> trong cấu hình Codex.</TableCell></TableRow>
+                <TableRow><TableCell>Antigravity từ chối schema của công cụ</TableCell><TableCell>Chạy <code>pnpm mcp:build</code> và khởi động lại Antigravity.</TableCell></TableRow>
+                <TableRow><TableCell><code>AGENT_FROZEN</code></TableCell><TableCell>Chủ ví đã khóa agent. Nhờ chủ ví mở khóa trên dashboard; đừng thử lại giao dịch khi agent đang bị khóa.</TableCell></TableRow>
+                <TableRow><TableCell><code>RATE_LIMITED</code></TableCell><TableCell>Quá nhiều request từ token hoặc địa chỉ này. Chờ <code>details.retryAfterSeconds</code> giây rồi thử lại; với giao dịch thì dùng lại đúng <code>idempotencyKey</code>.</TableCell></TableRow>
+                <TableRow><TableCell><code>DAILY_LIMIT_EXCEEDED</code></TableCell><TableCell>Đã vượt hạn mức chi tiêu 24 giờ. Chủ ví phải duyệt giao dịch này trên dashboard, hoặc chờ hạn mức được hoàn lại.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
       ],
@@ -746,25 +782,25 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           id: 'table',
           title: 'Các trạng thái',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Nhãn</th>
-                  <th>Trạng thái</th>
-                  <th>Ý nghĩa</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Chờ xử lý</td><td><code>planned</code></td><td>Đã lập kế hoạch, chưa có quyết định.</td></tr>
-                <tr><td>Tự động</td><td><code>auto_approved</code></td><td>Chính sách cho phép; agent đang ký.</td></tr>
-                <tr><td>Chờ duyệt</td><td><code>pending_approval</code></td><td>Vượt hạn mức; đang chờ chủ ví.</td></tr>
-                <tr><td>Đã duyệt</td><td><code>approved</code></td><td>Chủ ví đã duyệt; agent đang gửi giao dịch.</td></tr>
-                <tr><td>Thành công</td><td><code>confirmed</code></td><td>Đã được xác nhận trên Devnet. Có liên kết Explorer.</td></tr>
-                <tr><td>Bị từ chối</td><td><code>denied</code></td><td>Bị chính sách từ chối. Không có gì được ký.</td></tr>
-                <tr><td>Đã hết hạn</td><td><code>expired</code></td><td>Khung thời gian duyệt đã đóng.</td></tr>
-                <tr><td>Thất bại</td><td><code>failed</code></td><td>Gửi giao dịch thất bại, ví dụ do số dư thấp.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nhãn</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead>Ý nghĩa</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>Chờ xử lý</TableCell><TableCell><code>planned</code></TableCell><TableCell>Đã lập kế hoạch, chưa có quyết định.</TableCell></TableRow>
+                <TableRow><TableCell>Tự động</TableCell><TableCell><code>auto_approved</code></TableCell><TableCell>Chính sách cho phép; agent đang ký.</TableCell></TableRow>
+                <TableRow><TableCell>Chờ duyệt</TableCell><TableCell><code>pending_approval</code></TableCell><TableCell>Vượt hạn mức; đang chờ chủ ví.</TableCell></TableRow>
+                <TableRow><TableCell>Đã duyệt</TableCell><TableCell><code>approved</code></TableCell><TableCell>Chủ ví đã duyệt; agent đang gửi giao dịch (với x402, chờ gọi lại kèm <code>X-PAYMENT</code>).</TableCell></TableRow>
+                <TableRow><TableCell>Thành công</TableCell><TableCell><code>confirmed</code></TableCell><TableCell>Đã được xác nhận trên Devnet. Có liên kết Explorer.</TableCell></TableRow>
+                <TableRow><TableCell>Bị từ chối</TableCell><TableCell><code>denied</code></TableCell><TableCell>Bị chính sách từ chối. Không có gì được ký.</TableCell></TableRow>
+                <TableRow><TableCell>Đã hết hạn</TableCell><TableCell><code>expired</code></TableCell><TableCell>Khung thời gian duyệt đã đóng.</TableCell></TableRow>
+                <TableRow><TableCell>Thất bại</TableCell><TableCell><code>failed</code></TableCell><TableCell>Gửi giao dịch thất bại, ví dụ do số dư thấp.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
       ],
@@ -780,22 +816,21 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           id: 'common',
           title: 'Vấn đề thường gặp',
           body: (
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Triệu chứng</th>
-                  <th>Nguyên nhân và cách xử lý</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td>Airdrop lỗi 429</td><td>Vòi công khai đang bị giới hạn tần suất. Hãy nạp từ ví của bạn hoặc dùng liên kết Trang vòi Solana chính thức.</td></tr>
-                <tr><td>“Kết nối ví chủ sở hữu” ở nút Duyệt</td><td>Ví đang kết nối không phải ví chủ sở hữu. Hãy chuyển sang ví bạn đã dùng để đăng nhập.</td></tr>
-                <tr><td>Lần duyệt bị từ chối</td><td>Yêu cầu đã hết hạn, hoặc chính sách đã được lưu sau khi yêu cầu bị giữ. Hãy chạy lại lệnh.</td></tr>
-                <tr><td>“Phiên làm việc đã hết hạn”</td><td>Hãy đăng nhập lại bằng ví. Đổi tài khoản ví cũng làm kết thúc phiên.</td></tr>
-                <tr><td>Yêu cầu hiện <code>[fallback]</code></td><td>Chưa cấu hình API key của model. Deterministic parser xử lý các lệnh đơn giản.</td></tr>
-                <tr><td>Thực thi thất bại</td><td>Số dư của agent không đủ cho số tiền cộng phí. Hãy nạp vốn cho agent.</td></tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Triệu chứng</TableHead>
+                  <TableHead>Nguyên nhân và cách xử lý</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow><TableCell>“Kết nối ví chủ sở hữu” ở nút Duyệt</TableCell><TableCell>Ví đang kết nối không phải ví chủ sở hữu. Hãy chuyển sang ví bạn đã dùng để đăng nhập.</TableCell></TableRow>
+                <TableRow><TableCell>Lần duyệt bị từ chối</TableCell><TableCell>Yêu cầu đã hết hạn, hoặc chính sách đã được lưu sau khi yêu cầu bị giữ. Hãy chạy lại lệnh.</TableCell></TableRow>
+                <TableRow><TableCell>“Phiên làm việc đã hết hạn”</TableCell><TableCell>Hãy đăng nhập lại bằng ví. Đổi tài khoản ví cũng làm kết thúc phiên.</TableCell></TableRow>
+                <TableRow><TableCell>Yêu cầu hiện <code>[fallback]</code></TableCell><TableCell>Chưa cấu hình API key của model. Deterministic parser xử lý các lệnh đơn giản.</TableCell></TableRow>
+                <TableRow><TableCell>Thực thi thất bại</TableCell><TableCell>Số dư của agent không đủ cho số tiền cộng phí. Hãy nạp vốn cho agent.</TableCell></TableRow>
+              </TableBody>
+            </Table>
           ),
         },
         {

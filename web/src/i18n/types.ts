@@ -32,6 +32,8 @@ export type TranslationDictionary = {
     ready: string;
     offline: string;
     switchLanguage: string;
+    switchToDark: string;
+    switchToLight: string;
   };
   overview: {
     agentBalance: string;
@@ -42,7 +44,17 @@ export type TranslationDictionary = {
     perDay: string;
     unlimited: string;
     spent24h: string;
-    recipientsCount: string;
+    policyTitle: string;
+    solLimits: string;
+    remaining24h: string;
+    recipientsTitle: string;
+    tokensTitle: string;
+    noRecipients: string;
+    noTokens: string;
+    perTxCap: string;
+    perTxUnit: string;
+    per24hUnit: string;
+    moreItems: string;
     editPolicy: string;
     review: string;
     noPending: string;
@@ -76,6 +88,14 @@ export type TranslationDictionary = {
     introAllow: string;
     introApproval: string;
     introDeny: string;
+    perTxLimit: string;
+    verdictAllow: string;
+    verdictApproval: string;
+    verdictDeny: string;
+    allowlistAria: string;
+    ruleNotAllowlisted: string;
+    ruleOverLimit: string;
+    ruleWithinLimit: string;
     introDevnet: string;
     introDocs: string;
   };
@@ -86,8 +106,8 @@ export type TranslationDictionary = {
     denied: string;
     executionFailed: string;
     depositSent: string;
+    connectWalletToDeposit: string;
     policySaved: string;
-    airdropRequested: string;
     seedClaimed: string;
     agentFrozen: string;
     agentUnfrozen: string;
@@ -133,9 +153,6 @@ export type TranslationDictionary = {
     claimSeedTitle: string;
     deposit: string;
     depositTitle: string;
-    airdrop: string;
-    airdropRequesting: string;
-    airdropTitle: string;
     officialFaucet: string;
   };
   policy: {
@@ -198,6 +215,9 @@ export type TranslationDictionary = {
     modelsTag: string;
     balanceTag: string;
     signatureTag: string;
+    createdTag: string;
+    updatedTag: string;
+    confirmedTag: string;
     explorer: string;
     actions: {
       balance: string;
@@ -208,6 +228,7 @@ export type TranslationDictionary = {
       auto_approved: string;
       pending_approval: string;
       approved: string;
+      x402Approved: string;
       confirmed: string;
       failed: string;
       denied: string;
@@ -401,6 +422,7 @@ export type TranslationDictionary = {
       colStatus: string;
       colAction: string;
       proof: string;
+      settledAt: string;
       proofHint: string;
       receiptLocked: string;
       receiptWorkerOnly: string;

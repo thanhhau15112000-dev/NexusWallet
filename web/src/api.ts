@@ -202,11 +202,6 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
-  airdrop: (sol: number) =>
-    request<{ signature: string; lamports: number }>('/api/agent/airdrop', {
-      method: 'POST',
-      body: JSON.stringify({ sol }),
-    }),
 
   claimSeed: () =>
     request<{ signature: string; lamports: number; claimedInitialFunding: boolean }>(

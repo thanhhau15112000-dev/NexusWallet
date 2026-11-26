@@ -1,0 +1,16 @@
+{
+  "name": "@nexus/demo-merchant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Demo x402 merchant Cloudflare Worker backed by thirdweb facilitator on Solana devnet",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8",
+    "wrangler": "^4.16.0"
+  }
+}
