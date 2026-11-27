@@ -256,7 +256,6 @@ export function OverviewPanel(props: {
   wallet: string | null;
   requests: PaymentRequest[];
   fundingBusy: boolean;
-  onClaimSeed: () => void;
   onDeposit: (amountSol: number) => void;
   onRefresh: () => Promise<void>;
   onToast: (toast: Toast) => void;
@@ -333,7 +332,6 @@ export function OverviewPanel(props: {
               <AgentFundingActions
                 state={state}
                 busy={props.fundingBusy}
-                onClaimSeed={props.onClaimSeed}
                 onDeposit={props.onDeposit}
               />
             </div>

@@ -112,7 +112,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 <TabLink tab="policy" label="Chính sách chi tiêu" ctx={ctx} />
               </li>
               <li>
-                <strong>Nạp vốn cho agent.</strong> Nhận seed 0.1 SOL (một lần) hoặc nạp từ ví của bạn.{' '}
+                <strong>Nạp vốn cho agent.</strong> Nạp 0.1 SOL từ ví của bạn hoặc dùng faucet của Solana.{' '}
                 <TabLink tab="wallet" label="Tổng quan" ctx={ctx} />
               </li>
               <li>
@@ -145,7 +145,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
       group: 'Hướng dẫn',
       title: 'Ví và nạp vốn',
       summary: 'Ví agent, ví chủ sở hữu và các cách nạp SOL Devnet vào agent.',
-      keywords: 'faucet seed deposit balance owner nạp số dư',
+      keywords: 'faucet deposit balance owner nạp số dư',
       sections: [
         {
           id: 'two-wallets',
@@ -176,9 +176,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow><TableCell>Nhận miễn phí 0.1 SOL thử nghiệm</TableCell><TableCell>Chuyển một lần từ ví cấp phát của dịch vụ. Mỗi agent chỉ nhận được một lần.</TableCell></TableRow>
-                  <TableRow><TableCell>Chuyển 0.1 SOL từ ví của tôi</TableCell><TableCell>Ví của bạn gửi 0.1 SOL cho agent. Ví sẽ yêu cầu bạn xác nhận.</TableCell></TableRow>
-                  <TableRow><TableCell>Lấy thêm SOL thử nghiệm</TableCell><TableCell>Mở faucet.solana.com với địa chỉ agent đã điền sẵn.</TableCell></TableRow>
+                  <TableRow><TableCell>Nạp 0.1 SOL vào ví agent</TableCell><TableCell>Ví của bạn gửi 0.1 SOL cho agent. Ví sẽ yêu cầu bạn xác nhận.</TableCell></TableRow>
+                  <TableRow><TableCell>Solana Official Faucet</TableCell><TableCell>Mở faucet.solana.com với địa chỉ agent đã điền sẵn.</TableCell></TableRow>
                 </TableBody>
               </Table>
               <Callout tone="note" title="Số dư bằng 0 vẫn kiểm tra được chính sách">

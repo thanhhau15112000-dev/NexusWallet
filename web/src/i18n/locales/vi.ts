@@ -82,7 +82,6 @@ export const vi: TranslationDictionary = {
     depositSent: 'Đã gửi {amount} SOL vào ví agent. Mã giao dịch: {tx}',
     connectWalletToDeposit: 'Chưa kết nối ví. Hãy kết nối ví để nạp SOL.',
     policySaved: 'Đã lưu chính sách chi tiêu',
-    seedClaimed: 'Đã nhận 0.1 SOL thử nghiệm',
     agentFrozen: 'Đã khóa agent',
     agentUnfrozen: 'Đã mở khóa agent',
     requestCancelled: 'Đã hủy yêu cầu',
@@ -117,17 +116,9 @@ export const vi: TranslationDictionary = {
   },
   funding: {
     title: 'Nạp SOL cho agent',
-    initialSeedClaimed: 'Đã nhận SOL thử nghiệm',
-    claimSeed: 'Nhận miễn phí 0.1 SOL thử nghiệm',
-    claimSeedTitle: 'Mỗi ví agent được nhận 0.1 SOL thử nghiệm một lần',
-    deposit: 'Chuyển 0.1 SOL từ ví của tôi',
+    deposit: 'Nạp 0.1 SOL vào ví agent',
     depositTitle: 'Chuyển 0.1 SOL từ ví đã kết nối sang ví agent này',
-    officialFaucet: 'Lấy thêm SOL thử nghiệm',
-    seedUnavailable: {
-      funder_unavailable: 'Bản cài đặt này không phát SOL thử nghiệm miễn phí. Hãy chuyển SOL từ ví của bạn hoặc dùng faucet của Solana.',
-      funder_empty: 'SOL thử nghiệm miễn phí tạm thời đã hết. Hãy chuyển SOL từ ví của bạn hoặc dùng faucet của Solana.',
-      cap_reached: 'SOL thử nghiệm miễn phí trong 24 giờ qua đã phát hết. Hãy chuyển SOL từ ví của bạn hoặc dùng faucet của Solana.',
-    },
+    officialFaucet: 'Solana Official Faucet',
   },
   policy: {
     title: 'Chính sách chi tiêu',
@@ -244,8 +235,6 @@ export const vi: TranslationDictionary = {
   },
   apiErrors: {
     rateLimited: 'Quá nhiều yêu cầu. Chờ {seconds} giây rồi thử lại.',
-    seedCapReached:
-      'SOL demo miễn phí trong 24 giờ qua đã được phát hết. Lấy SOL Devnet tại https://faucet.solana.com, hoặc thử lại sau.',
     timeout: 'Dịch vụ nexusPay không phản hồi kịp. Kiểm tra kết nối rồi tải lại trang.',
   },
   history: {

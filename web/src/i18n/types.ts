@@ -82,7 +82,6 @@ export type TranslationDictionary = {
     depositSent: string;
     connectWalletToDeposit: string;
     policySaved: string;
-    seedClaimed: string;
     agentFrozen: string;
     agentUnfrozen: string;
     requestCancelled: string;
@@ -117,17 +116,9 @@ export type TranslationDictionary = {
   };
   funding: {
     title: string;
-    initialSeedClaimed: string;
-    claimSeed: string;
-    claimSeedTitle: string;
     deposit: string;
     depositTitle: string;
     officialFaucet: string;
-    seedUnavailable: {
-      funder_unavailable: string;
-      funder_empty: string;
-      cap_reached: string;
-    };
   };
   policy: {
     title: string;
@@ -245,7 +236,6 @@ export type TranslationDictionary = {
   };
   apiErrors: {
     rateLimited: string;
-    seedCapReached: string;
     timeout: string;
   };
   history: {

@@ -82,7 +82,6 @@ export const en: TranslationDictionary = {
     depositSent: 'Deposit of {amount} SOL sent! Tx: {tx}',
     connectWalletToDeposit: 'Connect your wallet first to deposit SOL.',
     policySaved: 'Policy saved',
-    seedClaimed: '0.1 SOL demo seed claimed!',
     agentFrozen: 'Agent frozen',
     agentUnfrozen: 'Agent unfrozen',
     requestCancelled: 'Request cancelled',
@@ -117,17 +116,9 @@ export const en: TranslationDictionary = {
   },
   funding: {
     title: 'Agent funding',
-    initialSeedClaimed: 'Initial seed claimed',
-    claimSeed: 'Get 0.1 free test SOL',
-    claimSeedTitle: 'One-time gift of 0.1 test SOL to this agent wallet',
-    deposit: 'Send 0.1 SOL from my wallet',
+    deposit: 'Fund the agent wallet with 0.1 SOL',
     depositTitle: 'Send 0.1 SOL from your connected wallet to this agent wallet',
-    officialFaucet: 'More test SOL',
-    seedUnavailable: {
-      funder_unavailable: 'Free test SOL is not offered on this instance. Send SOL from your wallet or use the Solana faucet.',
-      funder_empty: 'Free test SOL has run out for now. Send SOL from your wallet or use the Solana faucet.',
-      cap_reached: 'Free test SOL for the last 24 hours has been handed out. Send SOL from your wallet or use the Solana faucet.',
-    },
+    officialFaucet: 'Solana Official Faucet',
   },
   policy: {
     title: 'Policy',
@@ -244,8 +235,6 @@ export const en: TranslationDictionary = {
   },
   apiErrors: {
     rateLimited: 'Too many requests. Wait {seconds} seconds and try again.',
-    seedCapReached:
-      'The free demo SOL for the last 24 hours has been handed out. Get Devnet SOL from https://faucet.solana.com, or try again later.',
     timeout: 'The nexusPay service did not answer in time. Check your connection and reload the page.',
   },
   history: {
