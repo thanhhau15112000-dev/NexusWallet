@@ -26,18 +26,22 @@ import {
   deriveVaultPda,
 } from '@nexus/shared';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
-import { getPhantom, signPhantomMessage } from '../phantom.js';
+import { signAndSendWithWallet, signMessageWithWallet, type ConnectedWallet } from '../solanaWallets.js';
 import { api, ApiError } from '../api.js';
-import { Card, CopyAddressButton, DateTime, Empty, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, DateTime, Empty, Mono, Notice, Pill, shorten } from './ui.js';
 import { Button } from './ui/button.js';
 import { Input } from './ui/input.js';
 import { cn } from '../lib/utils.js';
 import { useI18n } from '../i18n/context.js';
 
+function errorText(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 export function TaskVaultPanel(props: {
   owner: string | null;
-  /** Wallet currently connected in this browser; actions that act as the owner need it. */
-  connected: boolean;
+  /** Wallet connected in this browser; on-chain owner actions sign with it when it is the owner. */
+  wallet: ConnectedWallet | null;
   agentPubkey: string;
   mockWorkerPubkey: string | null;
   /** Policy mints a task budget may use besides SOL. */
@@ -46,6 +50,20 @@ export function TaskVaultPanel(props: {
   onToast: (toast: { tone: 'ok' | 'warn' | 'bad'; text: string }) => void;
 }) {
   const { dict, interpolate } = useI18n();
+  const ownerWallet = props.wallet && props.wallet.address === props.owner ? props.wallet : null;
+
+  /** Signs with the owner's wallet, submits, and waits for confirmation. */
+  const sendAsOwner = async (transaction: Transaction): Promise<string> => {
+    if (!ownerWallet) throw new Error(dict.taskVault.toasts.connectOwnerFirst);
+    const connection = new Connection(props.rpcUrl, 'confirmed');
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = new PublicKey(ownerWallet.address);
+    const signature = await signAndSendWithWallet(ownerWallet, transaction);
+    const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    if (confirmation.value.err) throw new Error(dict.taskVault.toasts.transactionFailed);
+    return signature;
+  };
   const [tasks, setTasks] = useState<TaskCapabilityRecord[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [detail, setDetail] = useState<{
@@ -211,14 +229,12 @@ export function TaskVaultPanel(props: {
       let txSignature: string | undefined;
 
       if (submitOnchain) {
-        const provider = getPhantom();
-        if (!provider) {
+        if (!ownerWallet) {
           setCreateAdvancedOpen(true);
-          props.onToast({ tone: 'warn', text: dict.taskVault.toasts.phantomNotFound });
+          props.onToast({ tone: 'warn', text: dict.taskVault.toasts.connectOwnerFirst });
           setBusyAction(null);
           return;
         }
-        const connection = new Connection(props.rpcUrl, 'confirmed');
         const ownerPubkey = new PublicKey(props.owner);
         const agentPubkey = new PublicKey(props.agentPubkey);
 
@@ -234,7 +250,6 @@ export function TaskVaultPanel(props: {
           mint,
         });
 
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction();
         if (mint) {
           // The vault holds a token budget in its own associated token account.
@@ -242,18 +257,7 @@ export function TaskVaultPanel(props: {
           tx.add(createAssociatedTokenAccountIdempotentInstruction(ownerPubkey, vault, mint));
         }
         tx.add(ix);
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = ownerPubkey;
-
-        const { signature } = await provider.signAndSendTransaction(tx as any);
-        txSignature = signature;
-        const confirmation = await connection.confirmTransaction(
-          { signature, blockhash, lastValidBlockHeight },
-          'confirmed',
-        );
-        if (confirmation.value.err) {
-          throw new Error(dict.taskVault.toasts.transactionFailed);
-        }
+        txSignature = await sendAsOwner(tx);
       }
 
       const res = await api.createTask({
@@ -285,7 +289,7 @@ export function TaskVaultPanel(props: {
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.createFailed,
+        text: errorText(err, dict.taskVault.toasts.createFailed),
       });
     } finally {
       setBusyAction(null);
@@ -394,13 +398,12 @@ export function TaskVaultPanel(props: {
     const paymentId = payment.paymentId;
     setBusyAction(`settle-${paymentId}`);
     try {
-      const provider = getPhantom();
-      if (!props.connected || !provider || provider.publicKey?.toString() !== detail.task.owner) {
+      if (!ownerWallet || ownerWallet.address !== detail.task.owner) {
         throw new Error(dict.taskVault.toasts.connectOwnerFirst);
       }
       const [taskCapability] = deriveTaskCapabilityPda(new PublicKey(detail.task.owner), detail.task.taskId);
       const [escrow] = deriveEscrowPda(taskCapability, paymentId);
-      const ownerSignature = await signPhantomMessage(computeTaskAcceptanceMessage({
+      const ownerSignature = await signMessageWithWallet(ownerWallet, computeTaskAcceptanceMessage({
         taskCapability, escrow, requestHash: payment.requestHash,
         resultHash: payment.delivery.resultHash, amountLamports: payment.amountLamports, mint: detail.task.mint,
       }));
@@ -420,7 +423,7 @@ export function TaskVaultPanel(props: {
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.settleFailed,
+        text: errorText(err, dict.taskVault.toasts.settleFailed),
       });
     } finally {
       setBusyAction(null);
@@ -431,9 +434,6 @@ export function TaskVaultPanel(props: {
     if (!detail || !props.owner) return;
     setBusyAction(`close-receipt-${paymentId}`);
     try {
-      const provider = getPhantom();
-      if (!provider) throw new Error(dict.taskVault.toasts.phantomNotFound);
-      const connection = new Connection(props.rpcUrl, 'confirmed');
       const ownerPubkey = new PublicKey(props.owner);
       const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, detail.task.taskId);
       const [receiptPda] = deriveReceiptPda(taskPda, paymentId);
@@ -444,13 +444,7 @@ export function TaskVaultPanel(props: {
         // The program returns receipt rent to the worker who paid it.
         rentRecipient: new PublicKey(worker),
       });
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-      const transaction = new Transaction().add(instruction);
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = ownerPubkey;
-      const { signature } = await provider.signAndSendTransaction(transaction as any);
-      const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-      if (confirmation.value.err) throw new Error(dict.taskVault.toasts.transactionFailed);
+      const signature = await sendAsOwner(new Transaction().add(instruction));
       await api.closeTaskReceipt(detail.task.taskId, paymentId, signature);
       props.onToast({
         tone: 'ok',
@@ -460,7 +454,7 @@ export function TaskVaultPanel(props: {
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.closeReceiptFailed,
+        text: errorText(err, dict.taskVault.toasts.closeReceiptFailed),
       });
     } finally {
       setBusyAction(null);
@@ -473,20 +467,9 @@ export function TaskVaultPanel(props: {
       let txSignature: string | undefined;
       if (detail?.task.isSimulated === false) {
         if (!props.owner) throw new Error(dict.taskVault.toasts.ownerWalletRequired);
-        const provider = getPhantom();
-        if (!provider) throw new Error(dict.taskVault.toasts.phantomNotFound);
-        const connection = new Connection(props.rpcUrl, 'confirmed');
         const ownerPubkey = new PublicKey(props.owner);
         const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
-        const ix = revokeTaskInstruction({ taskCapability: taskPda, owner: ownerPubkey });
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-        const tx = new Transaction().add(ix);
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = ownerPubkey;
-        const { signature } = await provider.signAndSendTransaction(tx as any);
-        const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-        if (confirmation.value.err) throw new Error(dict.taskVault.toasts.transactionFailed);
-        txSignature = signature;
+        txSignature = await sendAsOwner(new Transaction().add(revokeTaskInstruction({ taskCapability: taskPda, owner: ownerPubkey })));
       }
       await api.revokeTask(taskId, txSignature);
       props.onToast({
@@ -495,7 +478,7 @@ export function TaskVaultPanel(props: {
       });
       await selectTask(taskId);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.revokeFailed });
+      props.onToast({ tone: 'bad', text: errorText(err, dict.taskVault.toasts.revokeFailed) });
     } finally {
       setBusyAction(null);
     }
@@ -507,9 +490,6 @@ export function TaskVaultPanel(props: {
       let txSignature: string | undefined;
       if (detail?.task.isSimulated === false) {
         if (!props.owner) throw new Error(dict.taskVault.toasts.ownerWalletRequired);
-        const provider = getPhantom();
-        if (!provider) throw new Error(dict.taskVault.toasts.phantomNotFound);
-        const connection = new Connection(props.rpcUrl, 'confirmed');
         const ownerPubkey = new PublicKey(props.owner);
         const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
         const mint = detail.task.mint ? new PublicKey(detail.task.mint) : undefined;
@@ -519,17 +499,11 @@ export function TaskVaultPanel(props: {
           caller: ownerPubkey,
           mint,
         });
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const tx = new Transaction();
         // The remainder goes to the owner's associated token account, recreated if it was closed.
         if (mint) tx.add(createAssociatedTokenAccountIdempotentInstruction(ownerPubkey, ownerPubkey, mint));
         tx.add(ix);
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = ownerPubkey;
-        const { signature } = await provider.signAndSendTransaction(tx as any);
-        const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-        if (confirmation.value.err) throw new Error(dict.taskVault.toasts.transactionFailed);
-        txSignature = signature;
+        txSignature = await sendAsOwner(tx);
       }
       const res = await api.refundTask(taskId, txSignature);
       props.onToast({
@@ -540,7 +514,7 @@ export function TaskVaultPanel(props: {
       });
       await selectTask(taskId);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.refundFailed });
+      props.onToast({ tone: 'bad', text: errorText(err, dict.taskVault.toasts.refundFailed) });
     } finally {
       setBusyAction(null);
     }
@@ -551,7 +525,7 @@ export function TaskVaultPanel(props: {
   const effectiveStatus = (task: TaskCapabilityRecord) =>
     task.status === 'active' && nowSeconds >= task.expiry ? 'expired' : task.status;
 
-  const locked = !props.connected;
+  const locked = !props.wallet;
   const paymentActionsLocked = locked || Boolean(detail?.task.isClosed) || Boolean(detail && nowSeconds >= detail.task.expiry);
   const createOpen = showCreate;
 
@@ -707,9 +681,9 @@ export function TaskVaultPanel(props: {
   return (
     <div className="space-y-4">
       {locked ? (
-        <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+        <Notice tone="warn" role="status">
           {dict.taskVault.connectToOperate}
-        </p>
+        </Notice>
       ) : null}
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -958,14 +932,14 @@ export function TaskVaultPanel(props: {
                 </dl>
 
                 {detailStatus === 'expired' && !detail.task.isClosed ? (
-                  <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+                  <Notice tone="warn" role="status">
                     {dict.taskVault.detail.expiredNote}
-                  </p>
+                  </Notice>
                 ) : null}
                 {hasHeldEscrow && !detail.task.isClosed ? (
-                  <p id="refund-blocked-note" className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+                  <Notice tone="warn" id="refund-blocked-note" role="status">
                     {dict.taskVault.detail.refundBlockedPending}
-                  </p>
+                  </Notice>
                 ) : null}
 
                 <details className="text-xs">

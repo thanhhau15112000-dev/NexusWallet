@@ -39,7 +39,7 @@ import { RequestList } from './components/RequestList.js';
 import { TaskVaultPanel } from './components/TaskVaultPanel.js';
 import { LanguageToggle, ThemeToggle } from './components/SettingsMenu.js';
 import { BootScreen } from './components/BootScreen.js';
-import { Mono, Pill, shorten } from './components/ui.js';
+import { Mono, Notice, Pill, shorten } from './components/ui.js';
 import { Button } from './components/ui/button.js';
 import { Badge } from './components/ui/badge.js';
 import {
@@ -708,9 +708,9 @@ export function App() {
         </header>
 
         {offline ? (
-          <div className="mb-4 rounded-md border border-bad-line bg-bad-soft px-3.5 py-2.5 text-xs font-medium text-bad">
+          <Notice tone="bad" className="mb-4 font-medium">
             {interpolate(dict.walletModal.serviceUnavailable, { offline })}
-          </div>
+          </Notice>
         ) : null}
 
         {panel(
@@ -766,7 +766,7 @@ export function App() {
           'tasks',
           <TaskVaultPanel
             owner={state.owner}
-            connected={Boolean(wallet)}
+            wallet={connectedWallet}
             agentPubkey={state.agent.pubkey}
             mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
             allowedMints={state.policy.allowedMints}

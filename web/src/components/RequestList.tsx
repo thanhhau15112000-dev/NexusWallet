@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from './icons.js';
 import { type PaymentRequest, type RequestStatus } from '@nexus/shared';
-import { Card, DateTime, Empty, Mono, Pill, shorten } from './ui.js';
+import { Card, DateTime, Empty, Mono, Notice, Pill, shorten } from './ui.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
 import { cn } from '../lib/utils.js';
@@ -140,18 +140,18 @@ function RequestRow(props: {
       </div>
 
       {request.error ? (
-        <p className="rounded-md border border-bad-line bg-bad-soft px-2.5 py-1.5 text-xs text-bad">
+        <Notice tone="bad">
           {localizeError(request.error, dict.requests.errors, interpolate)}
-        </p>
+        </Notice>
       ) : null}
       {approvalExpired ? (
-        <p className="rounded-md border border-warn-line bg-warn-soft px-2.5 py-1.5 text-xs text-warn">
+        <Notice tone="warn">
           {dict.requests.expiredNotice}
-        </p>
+        </Notice>
       ) : null}
 
       {request.status === 'pending_approval' && request.approval && !approvalExpired ? (
-        <div className="space-y-2 rounded-md border border-warn-line bg-warn-soft/50 p-3">
+        <div className="space-y-2 border-l-2 border-warn py-1 pl-3">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"

@@ -2,6 +2,7 @@ import { ArrowDownToLine, CheckCircle2, ExternalLink, Zap } from './icons.js';
 import { useId } from 'react';
 import type { AgentState } from '../api.js';
 import { Button } from './ui/button.js';
+import { Notice } from './ui.js';
 import { useI18n } from '../i18n/context.js';
 
 /** Solana logomark in its brand gradient; used only on the link to Solana's official faucet. */
@@ -37,16 +38,16 @@ export function AgentFundingActions(props: {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {agent.rpcError ? (
-        <p className="w-full rounded-md border border-warn-line bg-warn-soft px-2.5 py-1.5 text-xs text-warn">
+        <Notice tone="warn" className="w-full">
           {agent.rpcError}
-        </p>
+        </Notice>
       ) : null}
 
       {props.state.claimedInitialFunding ? (
-        <div className="flex items-center gap-2 rounded-md border border-accent-line bg-accent-soft/70 px-3 py-2 text-xs text-accent" role="status">
+        <Notice tone="accent" role="status" className="flex items-center gap-2">
           <CheckCircle2 size={15} className="shrink-0" aria-hidden="true" />
           <span className="font-medium">{dict.funding.initialSeedClaimed}</span>
-        </div>
+        </Notice>
       ) : (
         <Button
           type="button"

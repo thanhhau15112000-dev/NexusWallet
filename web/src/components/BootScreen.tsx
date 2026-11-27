@@ -7,6 +7,7 @@ import { PolicyPlayground } from './PolicyPlayground.js';
 import { TransactionFlow } from './TransactionFlow.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
+import { Notice } from './ui.js';
 
 export function BootScreen(props: {
   needsSignIn: boolean;
@@ -76,23 +77,15 @@ export function BootScreen(props: {
           </h2>
 
           {props.offline ? (
-            <p
-              role="alert"
-              title={props.offline}
-              className="rounded-md border border-bad-line bg-bad-soft px-3.5 py-2.5 text-xs font-medium text-bad"
-            >
+            <Notice tone="bad" role="alert" title={props.offline} className="font-medium">
               {boot.connectionHint}
-            </p>
+            </Notice>
           ) : null}
 
           {props.signInError ? (
-            <p
-              role="alert"
-              title={props.signInError}
-              className="rounded-md border border-bad-line bg-bad-soft px-3.5 py-2.5 text-xs font-medium text-bad"
-            >
+            <Notice tone="bad" role="alert" title={props.signInError} className="font-medium">
               {boot.signInFailed}
-            </p>
+            </Notice>
           ) : null}
 
           {props.needsSignIn ? (

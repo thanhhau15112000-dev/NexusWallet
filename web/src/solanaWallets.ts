@@ -180,7 +180,33 @@ export async function sendSolFromWallet(params: {
     });
   }
 
-  const { wallet, account } = params.connected;
+  const from = new PublicKey(params.fromPubkey);
+  const transaction = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: from,
+      toPubkey: new PublicKey(params.toPubkey),
+      lamports: solToLamports(params.amountSol),
+    }),
+  );
+  const connection = new Connection(params.rpcUrl, 'confirmed');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
+  transaction.feePayer = from;
+  return signAndSendWithWallet(params.connected, transaction);
+}
+
+/**
+ * Signs a transaction with the connected wallet and submits it. The caller sets the blockhash and
+ * fee payer; the returned signature is not yet confirmed.
+ */
+export async function signAndSendWithWallet(connected: ConnectedWallet, transaction: Transaction): Promise<string> {
+  if (connected.kind === 'phantom') {
+    const { signature } = await connected.provider.signAndSendTransaction(transaction);
+    return signature;
+  }
+
+  const { wallet, account } = connected;
   const feature = wallet.features[SolanaSignAndSendTransaction] as
     | {
         signAndSendTransaction(...inputs: readonly {
@@ -192,25 +218,10 @@ export async function sendSolFromWallet(params: {
       }
     | undefined;
   if (!feature || !account.features.includes(SolanaSignAndSendTransaction)) {
-    throw new Error(`${wallet.name} supports sign in but cannot send SOL transactions`);
+    throw new Error(`${wallet.name} supports sign in but cannot send transactions`);
   }
   const chain = account.chains.find((candidate) => candidate === 'solana:devnet');
   if (!chain) throw new Error(`${wallet.name} account is not connected to Solana Devnet`);
-
-  const from = new PublicKey(params.fromPubkey);
-  const to = new PublicKey(params.toPubkey);
-  const transaction = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: from,
-      toPubkey: to,
-      lamports: solToLamports(params.amountSol),
-    }),
-  );
-  const connection = new Connection(params.rpcUrl, 'confirmed');
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  transaction.recentBlockhash = blockhash;
-  transaction.lastValidBlockHeight = lastValidBlockHeight;
-  transaction.feePayer = from;
 
   const [result] = await feature.signAndSendTransaction({
     account,
