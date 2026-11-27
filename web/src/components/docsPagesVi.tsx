@@ -377,13 +377,13 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 hạn của tác vụ, và số tiền phải nằm trong hạn mức mỗi lần chi cùng ngân sách còn lại.
               </li>
               <li>
-                <strong>Lấy kết quả demo.</strong> Mock Worker tạo output và ký hash của nội dung đó. Output được lưu để kiểm tra; tiền vẫn giữ trong Escrow.
+                <strong>Lấy kết quả demo.</strong> Mock Worker tạo output hợp lệ hoặc sai chuẩn và ký hash nội dung đó. Hệ thống lưu output và chạy kiểm tra tự động theo quy tắc cố định trong khi Escrow vẫn đang giữ.
               </li>
               <li>
-                <strong>Nghiệm thu và trả tiền.</strong> Đọc output đã bàn giao, xác nhận đồng ý nghiệm thu và ký bằng ví chủ sở hữu trước khi tác vụ hết hạn. Program kiểm tra chữ ký cho đúng output, Escrow và số tiền. Chất lượng do chủ ví kiểm tra; chưa có xác minh độc lập hoặc phân xử tranh chấp. Nếu không nghiệm thu, tiền giữ đến expiry rồi có thể hoàn về chủ ví. Chưa hỗ trợ thay thế output hoặc luồng sửa lại.
+                <strong>Kiểm tra, từ chối hoặc nghiệm thu.</strong> Xem báo cáo kiểm tra và nội dung bàn giao. Nếu kiểm tra thất bại, nút quyết toán bị khóa; bạn có thể từ chối kèm lý do để mở tối đa 3 lượt nộp lại trước khi hết hạn. Với output đạt chuẩn, xác nhận và ký nghiệm thu bằng ví chủ sở hữu để trả tiền. Nếu không nghiệm thu, tiền giữ đến khi hết hạn.
               </li>
               <li>
-                <strong>Đóng.</strong> <em>Thu hồi quyền chi</em> dừng các khoản thanh toán mới. <em>Hoàn tiền và đóng tác vụ</em> trả ngân sách chưa phân bổ về cho chủ ví khi không còn Escrow đang giữ. Sau expiry, Escrow còn giữ cần được hoàn riêng; màn hình hiện chưa hỗ trợ thao tác này.
+                <strong>Đóng.</strong> <em>Thu hồi quyền chi</em> dừng các khoản thanh toán mới. Khi hết hạn, hoàn từng Escrow đang giữ ngay trên bảng điều khiển trước khi đóng tác vụ. <em>Hoàn tiền và đóng tác vụ</em> trả ngân sách chưa phân bổ về cho chủ ví khi không còn Escrow đang giữ.
               </li>
             </Steps>
           ),

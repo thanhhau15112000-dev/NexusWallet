@@ -14,9 +14,11 @@ import {
   type TaskCapabilityRecord,
   type TaskPaymentRecord,
   type TaskReceiptRecord,
+  MAX_DELIVERY_ATTEMPTS,
   createAndFundTaskInstruction,
   closeReceiptInstruction,
   refundAndCloseInstruction,
+  refundExpiredEscrowInstruction,
   revokeTaskInstruction,
   deriveTaskCapabilityPda,
   deriveReceiptPda,
@@ -76,6 +78,8 @@ export function TaskVaultPanel(props: {
   const [showCreate, setShowCreate] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [reviewedOutputs, setReviewedOutputs] = useState<Set<string>>(new Set());
+  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
 
   // Create form state
   const [newBudgetSol, setNewBudgetSol] = useState('0.5');
@@ -100,6 +104,7 @@ export function TaskVaultPanel(props: {
 
   const loadTasks = async (selectId?: string) => {
     setLoading(true);
+    setNowSeconds(Math.floor(Date.now() / 1000));
     try {
       const res = await api.tasks();
       setTasks(res.tasks);
@@ -125,6 +130,11 @@ export function TaskVaultPanel(props: {
     setReviewedOutputs(new Set());
     void loadTasks();
   }, [props.owner]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 15_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // The budget comes from the owner's wallet, so read its balance of the selected asset.
   useEffect(() => {
@@ -364,9 +374,13 @@ export function TaskVaultPanel(props: {
     }
   };
 
-  const handleSubmitMockOutput = async (paymentId: string, serviceId: string) => {
+  const handleSubmitMockOutput = async (
+    paymentId: string,
+    serviceId: string,
+    scenario: 'valid' | 'invalid_schema' = 'valid',
+  ) => {
     if (!detail) return;
-    setBusyAction(`output-${paymentId}`);
+    setBusyAction(`output-${scenario}-${paymentId}`);
     try {
       // Submission saves the output for review; it does not release escrow.
       const mockResult = await api.runMockService({
@@ -374,17 +388,83 @@ export function TaskVaultPanel(props: {
         paymentId,
         serviceId,
         payload: { simulatedTask: detail.task.taskId, paymentId },
+        scenario,
       });
-      await api.submitTaskOutput(detail.task.taskId, paymentId, {
+      const res = await api.submitTaskOutput(detail.task.taskId, paymentId, {
         resultHash: mockResult.resultHash,
         resultPayload: mockResult.resultPayload,
         workerPubkey: mockResult.workerPubkey,
         workerSignature: mockResult.workerSignature,
       });
-      props.onToast({ tone: 'ok', text: dict.taskVault.toasts.outputSubmitted });
+      if (res.payment.delivery?.verification?.verdict === 'fail') {
+        props.onToast({ tone: 'warn', text: dict.taskVault.toasts.outputVerificationFailed });
+      } else {
+        props.onToast({ tone: 'ok', text: dict.taskVault.toasts.outputSubmitted });
+      }
       await selectTask(detail.task.taskId);
     } catch (err) {
       props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : dict.taskVault.toasts.outputFailed });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleRejectOutput = async (payment: TaskPaymentRecord) => {
+    if (!detail) return;
+    const paymentId = payment.paymentId;
+    setBusyAction(`reject-${paymentId}`);
+    try {
+      const reason = rejectReasons[paymentId]?.trim() || undefined;
+      await api.rejectTaskOutput(detail.task.taskId, paymentId, reason);
+      setRejectReasons((current) => {
+        const next = { ...current };
+        delete next[paymentId];
+        return next;
+      });
+      setReviewedOutputs((current) => {
+        const next = new Set(current);
+        next.delete(reviewKey(payment));
+        return next;
+      });
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.outputRejected });
+      await selectTask(detail.task.taskId);
+    } catch (err) {
+      props.onToast({ tone: 'bad', text: errorText(err, dict.taskVault.toasts.rejectFailed) });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleRefundExpiredEscrow = async (payment: TaskPaymentRecord) => {
+    if (!detail) return;
+    const paymentId = payment.paymentId;
+    setBusyAction(`refund-escrow-${paymentId}`);
+    try {
+      let txSignature: string | undefined;
+      if (detail.task.isSimulated === false) {
+        if (!props.owner) throw new Error(dict.taskVault.toasts.ownerWalletRequired);
+        const ownerPubkey = new PublicKey(props.owner);
+        const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, detail.task.taskId);
+        const [escrowPda] = deriveEscrowPda(taskPda, paymentId);
+        const ix = refundExpiredEscrowInstruction({
+          taskCapability: taskPda,
+          escrow: escrowPda,
+          owner: ownerPubkey,
+          agentSigner: new PublicKey(detail.task.agentSigner),
+          caller: ownerPubkey,
+        });
+        txSignature = await sendAsOwner(new Transaction().add(ix));
+      }
+      await api.refundExpiredEscrow(detail.task.taskId, paymentId, txSignature);
+      props.onToast({
+        tone: 'ok',
+        text: txSignature
+          ? interpolate(dict.taskVault.toasts.escrowRefundedDevnet, { sig: shorten(txSignature, 4) })
+          : dict.taskVault.toasts.escrowRefundedSimulated,
+      });
+      await selectTask(detail.task.taskId);
+    } catch (err) {
+      props.onToast({ tone: 'bad', text: errorText(err, dict.taskVault.toasts.refundExpiredFailed) });
     } finally {
       setBusyAction(null);
     }
@@ -521,7 +601,6 @@ export function TaskVaultPanel(props: {
   };
 
   // The stored status stays 'active' after expiry until someone closes the task; show what the guard enforces.
-  const nowSeconds = Math.floor(Date.now() / 1000);
   const effectiveStatus = (task: TaskCapabilityRecord) =>
     task.status === 'active' && nowSeconds >= task.expiry ? 'expired' : task.status;
 
@@ -571,58 +650,182 @@ export function TaskVaultPanel(props: {
   }
   const explorerTx = (signature: string) => `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
 
+  const checkLabel = (id: string) => {
+    switch (id) {
+      case 'status_ok':
+        return dict.taskVault.escrows.check_status_ok;
+      case 'service_match':
+        return dict.taskVault.escrows.check_service_match;
+      case 'content_present':
+        return dict.taskVault.escrows.check_content_present;
+      case 'timestamp_valid':
+        return dict.taskVault.escrows.check_timestamp_valid;
+      case 'request_binding':
+        return dict.taskVault.escrows.check_request_binding;
+      default:
+        return id;
+    }
+  };
+
   const renderPaymentAction = (p: TaskPaymentRecord) => {
     const receipt = detail?.receipts.find((r) => r.paymentId === p.paymentId);
+    const rejectedList = p.rejectedDeliveries ?? [];
+    const isExpired = Boolean(detail && nowSeconds >= detail.task.expiry);
+
+    const renderRejectedHistory = () => {
+      if (rejectedList.length === 0) return null;
+      return (
+        <details className="rounded-md border border-line bg-panel px-3 py-2 text-xs">
+          <summary className="cursor-pointer font-medium text-muted hover:text-ink">
+            {interpolate(dict.taskVault.escrows.rejectedHistory, { count: rejectedList.length })}
+          </summary>
+          <ul className="mt-2 space-y-2 border-t border-line pt-2">
+            {rejectedList.map((item) => (
+              <li key={`${item.attempt}-${item.resultHash}`} className="space-y-1 text-muted">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-ink">
+                    {interpolate(dict.taskVault.escrows.attemptLabel, {
+                      attempt: item.attempt,
+                      max: MAX_DELIVERY_ATTEMPTS,
+                    })}
+                  </span>
+                  <DateTime value={item.rejectedAt} />
+                </div>
+                <Mono title={item.resultHash} className="block">
+                  {shorten(item.resultHash, 8)}
+                </Mono>
+                {item.rejectReason ? (
+                  <p className="text-bad">{item.rejectReason}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      );
+    };
+
     if (receipt) {
       return (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-          <span className="inline-flex items-center gap-1.5">
-            <CheckCircle2 size={13} className="text-accent" />
-            <Mono title={receipt.resultHash}>
-              {dict.taskVault.escrows.proof} {shorten(receipt.resultHash, 4)}
-            </Mono>
-          </span>
-          <span className="text-muted">
-            {dict.taskVault.escrows.settledAt} <DateTime value={receipt.settledAt * 1000} />
-          </span>
-          {receipt.txSignature ? (
-            <a href={explorerTx(receipt.txSignature)} target="_blank" rel="noreferrer">
-              <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
-            </a>
-          ) : (
-            <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>
-          )}
-          {receipt.isSimulated === false && !receipt.isClosed && detail?.task.isClosed ? (
-            <span className="text-muted" title={dict.taskVault.escrows.receiptWorkerOnlyHint}>
-              {dict.taskVault.escrows.receiptWorkerOnly}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 size={13} className="text-accent" />
+              <Mono title={receipt.resultHash}>
+                {dict.taskVault.escrows.proof} {shorten(receipt.resultHash, 4)}
+              </Mono>
             </span>
-          ) : receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
-            <span className="text-muted" title={dict.taskVault.escrows.receiptLockedHint}>
-              {dict.taskVault.escrows.receiptLocked}
+            <span className="text-muted">
+              {dict.taskVault.escrows.settledAt} <DateTime value={receipt.settledAt * 1000} />
             </span>
-          ) : receipt.isSimulated === false && !receipt.isClosed ? (
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs"
-              title={dict.taskVault.escrows.closeReceiptHint}
-              disabled={Boolean(busyAction) || locked}
-              onClick={() => void handleCloseReceipt(receipt.paymentId, receipt.worker)}
-            >
-              <XCircle size={13} />
-              {busyAction === `close-receipt-${receipt.paymentId}` ? dict.taskVault.escrows.closingReceipt : dict.taskVault.escrows.closeReceipt}
-            </Button>
-          ) : receipt.isClosed ? (
-            <span className="text-muted">{dict.taskVault.escrows.receiptClosed}</span>
-          ) : null}
+            {receipt.txSignature ? (
+              <a href={explorerTx(receipt.txSignature)} target="_blank" rel="noreferrer">
+                <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
+              </a>
+            ) : (
+              <Pill tone="neutral">{dict.taskVault.escrows.simulated}</Pill>
+            )}
+            {receipt.isSimulated === false && !receipt.isClosed && detail?.task.isClosed ? (
+              <span className="text-muted" title={dict.taskVault.escrows.receiptWorkerOnlyHint}>
+                {dict.taskVault.escrows.receiptWorkerOnly}
+              </span>
+            ) : receipt.isSimulated === false && !receipt.isClosed && !receiptsClosable ? (
+              <span className="text-muted" title={dict.taskVault.escrows.receiptLockedHint}>
+                {dict.taskVault.escrows.receiptLocked}
+              </span>
+            ) : receipt.isSimulated === false && !receipt.isClosed ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                title={dict.taskVault.escrows.closeReceiptHint}
+                disabled={Boolean(busyAction) || locked}
+                onClick={() => void handleCloseReceipt(receipt.paymentId, receipt.worker)}
+              >
+                <XCircle size={13} />
+                {busyAction === `close-receipt-${receipt.paymentId}` ? dict.taskVault.escrows.closingReceipt : dict.taskVault.escrows.closeReceipt}
+              </Button>
+            ) : receipt.isClosed ? (
+              <span className="text-muted">{dict.taskVault.escrows.receiptClosed}</span>
+            ) : null}
+          </div>
+          {renderRejectedHistory()}
         </div>
       );
     }
-    if (p.status === 'held' && p.delivery) {
-      const reviewed = reviewedOutputs.has(reviewKey(p));
+
+    if (p.status === 'held' && isExpired && !detail?.task.isClosed) {
       return (
         <div className="space-y-2.5 rounded-md border border-line bg-surface-muted/40 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-muted">{dict.taskVault.escrows.expiredEscrowNote}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={Boolean(busyAction) || locked}
+              onClick={() => void handleRefundExpiredEscrow(p)}
+            >
+              {busyAction === `refund-escrow-${p.paymentId}`
+                ? dict.taskVault.escrows.refundingExpiredEscrow
+                : dict.taskVault.escrows.refundExpiredEscrow}
+            </Button>
+          </div>
+          {p.delivery ? (
+            <details>
+              <summary className="cursor-pointer font-medium text-ink">{dict.taskVault.escrows.reviewOutput}</summary>
+              <pre className="mt-2 max-h-40 overflow-auto rounded border border-line bg-panel p-2 font-mono text-[11px]">
+                {JSON.stringify(p.delivery.resultPayload, null, 2)}
+              </pre>
+            </details>
+          ) : null}
+          {renderRejectedHistory()}
+        </div>
+      );
+    }
+
+    if (p.status === 'held' && p.delivery) {
+      const reviewed = reviewedOutputs.has(reviewKey(p));
+      const verification = p.delivery.verification;
+      const verificationFailed = verification?.verdict === 'fail';
+      const attempt = p.delivery.attempt ?? (rejectedList.length + 1);
+      return (
+        <div className="space-y-2.5 rounded-md border border-line bg-surface-muted/40 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium text-ink">
+              {interpolate(dict.taskVault.escrows.attemptLabel, { attempt, max: MAX_DELIVERY_ATTEMPTS })}
+            </span>
+            {verification ? (
+              <Pill tone={verificationFailed ? 'bad' : 'ok'}>
+                {verificationFailed ? dict.taskVault.escrows.verificationFail : dict.taskVault.escrows.verificationPass}
+              </Pill>
+            ) : null}
+          </div>
+
+          {verification ? (
+            <div className="space-y-1.5 rounded-md border border-line bg-panel p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-ink">{dict.taskVault.escrows.verificationTitle}</span>
+                <DateTime value={verification.checkedAt} />
+              </div>
+              <ul className="space-y-1">
+                {verification.checks.map((check) => (
+                  <li key={check.id} className="flex items-start justify-between gap-2">
+                    <span className={cn('inline-flex items-center gap-1.5', check.passed ? 'text-ink' : 'text-bad')}>
+                      {check.passed ? (
+                        <CheckCircle2 size={12} className="shrink-0 text-accent" />
+                      ) : (
+                        <XCircle size={12} className="shrink-0 text-bad" />
+                      )}
+                      <span className="font-medium">{checkLabel(check.id)}</span>
+                    </span>
+                    <span className="text-right text-muted">{check.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <details open>
             <summary className="cursor-pointer font-medium text-ink">{dict.taskVault.escrows.reviewOutput}</summary>
             <pre className="mt-2 max-h-48 overflow-auto rounded border border-line bg-panel p-2 font-mono text-[11px]">
@@ -632,14 +835,20 @@ export function TaskVaultPanel(props: {
           <Mono title={p.delivery.resultHash} className="block text-muted">
             {shorten(p.delivery.resultHash, 8)}
           </Mono>
-          <p className="text-[11px] text-muted">{dict.taskVault.escrows.reviewLimitation}</p>
+          {verificationFailed ? (
+            <Notice tone="bad" role="status">
+              {dict.taskVault.escrows.verificationBlockedNote}
+            </Notice>
+          ) : (
+            <p className="text-[11px] text-muted">{dict.taskVault.escrows.reviewLimitation}</p>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex cursor-pointer items-center gap-2 text-ink">
+            <label className={cn('flex items-center gap-2', verificationFailed ? 'cursor-not-allowed text-muted' : 'cursor-pointer text-ink')}>
               <input
                 type="checkbox"
                 className="h-3.5 w-3.5 accent-accent"
                 checked={reviewed}
-                disabled={Boolean(busyAction) || paymentActionsLocked}
+                disabled={Boolean(busyAction) || paymentActionsLocked || verificationFailed}
                 onChange={(event) => setReviewedOutputs((current) => {
                   const next = new Set(current);
                   if (event.target.checked) next.add(reviewKey(p));
@@ -653,29 +862,90 @@ export function TaskVaultPanel(props: {
               type="button"
               variant="default"
               size="sm"
-              disabled={Boolean(busyAction) || paymentActionsLocked || !reviewed}
+              disabled={Boolean(busyAction) || paymentActionsLocked || verificationFailed || !reviewed}
               onClick={() => void handleAcceptPayment(p)}
             >
               {busyAction === `settle-${p.paymentId}` ? dict.taskVault.escrows.settling : dict.taskVault.escrows.acceptAndSettle}
             </Button>
           </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-2.5">
+            <Input
+              type="text"
+              className="h-8 flex-1 text-xs"
+              value={rejectReasons[p.paymentId] ?? ''}
+              disabled={Boolean(busyAction) || paymentActionsLocked}
+              onChange={(event) => setRejectReasons((current) => ({ ...current, [p.paymentId]: event.target.value }))}
+              placeholder={dict.taskVault.escrows.rejectReasonPlaceholder}
+            />
+            <Button
+              type="button"
+              variant="destructiveOutline"
+              size="sm"
+              disabled={Boolean(busyAction) || paymentActionsLocked}
+              onClick={() => void handleRejectOutput(p)}
+            >
+              {busyAction === `reject-${p.paymentId}`
+                ? dict.taskVault.escrows.rejectingOutput
+                : dict.taskVault.escrows.rejectOutput}
+            </Button>
+          </div>
+          {renderRejectedHistory()}
         </div>
       );
     }
+
     if (p.status === 'held') {
+      const exhausted = rejectedList.length >= MAX_DELIVERY_ATTEMPTS;
       return (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={Boolean(busyAction) || paymentActionsLocked}
-          onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId)}
-        >
-          {busyAction === `output-${p.paymentId}` ? dict.taskVault.escrows.submittingOutput : dict.taskVault.escrows.submitOutput}
-        </Button>
+        <div className="space-y-2.5">
+          {exhausted ? (
+            <Notice tone="warn" role="status">
+              {interpolate(dict.taskVault.escrows.maxAttemptsReached, { max: MAX_DELIVERY_ATTEMPTS })}
+            </Notice>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={Boolean(busyAction) || paymentActionsLocked}
+                onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId, 'valid')}
+              >
+                {busyAction === `output-valid-${p.paymentId}`
+                  ? dict.taskVault.escrows.submittingOutput
+                  : dict.taskVault.escrows.submitValidOutput}
+              </Button>
+              <Button
+                type="button"
+                variant="destructiveOutline"
+                size="sm"
+                disabled={Boolean(busyAction) || paymentActionsLocked}
+                onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId, 'invalid_schema')}
+              >
+                {busyAction === `output-invalid_schema-${p.paymentId}`
+                  ? dict.taskVault.escrows.submittingOutput
+                  : dict.taskVault.escrows.submitInvalidOutput}
+              </Button>
+            </div>
+          )}
+          {renderRejectedHistory()}
+        </div>
       );
     }
-    return <span className="text-xs text-muted">{dict.taskVault.escrows.refunded}</span>;
+
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span>{dict.taskVault.escrows.refunded}</span>
+          {p.refundTxSignature ? (
+            <a href={explorerTx(p.refundTxSignature)} target="_blank" rel="noreferrer">
+              <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
+            </a>
+          ) : null}
+        </div>
+        {renderRejectedHistory()}
+      </div>
+    );
   };
 
   return (
@@ -1048,7 +1318,7 @@ export function TaskVaultPanel(props: {
                           <div className="min-w-0 space-y-1">
                             <span className="flex flex-wrap items-center gap-2">
                               <Mono className="text-sm font-medium text-ink">{p.paymentId}</Mono>
-                              <Pill tone={p.status === 'settled' ? 'ok' : 'warn'}>{dict.taskVault.escrowStatuses[p.status]}</Pill>
+                              <Pill tone={p.status === 'settled' ? 'ok' : p.status === 'refunded' ? 'neutral' : 'warn'}>{dict.taskVault.escrowStatuses[p.status]}</Pill>
                               {p.txSignature ? (
                                 <a href={explorerTx(p.txSignature)} target="_blank" rel="noreferrer">
                                   <Pill tone="ok">{dict.taskVault.escrows.onChainDevnet}</Pill>
