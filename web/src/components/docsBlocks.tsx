@@ -71,8 +71,8 @@ export function CodeBlock(props: { code: string; label?: string }) {
 }
 
 const CALLOUT_TONE = {
-  note: 'border-l-accent bg-panel [&>svg]:text-accent',
-  warn: 'border-l-warn bg-warn-soft [&>svg]:text-warn',
+  note: 'border-accent [&>svg]:text-accent',
+  warn: 'border-warn [&>svg]:text-warn',
 } as const;
 
 export function Callout(props: { tone: 'note' | 'warn'; title: string; children: ReactNode }) {
@@ -80,7 +80,7 @@ export function Callout(props: { tone: 'note' | 'warn'; title: string; children:
   return (
     <aside
       className={cn(
-        'mb-3 flex gap-2.5 rounded-md border border-l-[3px] border-line px-3 py-2.5 text-[13px] [&>svg]:mt-0.5 [&>svg]:shrink-0',
+        'mb-3 flex gap-2.5 border-l-2 py-1 pl-3 text-[13px] [&>svg]:mt-0.5 [&>svg]:shrink-0',
         CALLOUT_TONE[props.tone],
       )}
     >

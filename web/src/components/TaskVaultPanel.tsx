@@ -28,7 +28,7 @@ import {
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { getPhantom, signPhantomMessage } from '../phantom.js';
 import { api, ApiError } from '../api.js';
-import { Card, CopyAddressButton, DateTime, Empty, Mono, Pill, shorten } from './ui.js';
+import { Card, CopyAddressButton, DateTime, Empty, Mono, Notice, Pill, shorten } from './ui.js';
 import { Button } from './ui/button.js';
 import { Input } from './ui/input.js';
 import { cn } from '../lib/utils.js';
@@ -707,9 +707,9 @@ export function TaskVaultPanel(props: {
   return (
     <div className="space-y-4">
       {locked ? (
-        <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+        <Notice tone="warn" role="status">
           {dict.taskVault.connectToOperate}
-        </p>
+        </Notice>
       ) : null}
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -958,14 +958,14 @@ export function TaskVaultPanel(props: {
                 </dl>
 
                 {detailStatus === 'expired' && !detail.task.isClosed ? (
-                  <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+                  <Notice tone="warn" role="status">
                     {dict.taskVault.detail.expiredNote}
-                  </p>
+                  </Notice>
                 ) : null}
                 {hasHeldEscrow && !detail.task.isClosed ? (
-                  <p id="refund-blocked-note" className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+                  <Notice tone="warn" id="refund-blocked-note" role="status">
                     {dict.taskVault.detail.refundBlockedPending}
-                  </p>
+                  </Notice>
                 ) : null}
 
                 <details className="text-xs">

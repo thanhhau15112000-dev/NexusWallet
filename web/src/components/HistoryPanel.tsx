@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { LAMPORTS_PER_SOL, type AuditEntryView } from '@nexus/shared';
 import { ChevronLeft, ChevronRight, Clock, ExternalLink, RefreshCw } from './icons.js';
 import { api, type AgentHistoryItem } from '../api.js';
-import { Card, DateTime, Empty, Pill } from './ui.js';
+import { Card, DateTime, Empty, Notice, Pill } from './ui.js';
 import { Button } from './ui/button.js';
 import {
   Table,
@@ -78,9 +78,9 @@ function ChainHistory(props: { active: boolean }) {
       }
     >
       {error ? (
-        <p className="rounded-md border border-bad-line bg-bad-soft px-3 py-2 text-xs text-bad">
+        <Notice tone="bad">
           {dict.history.loadFailed}: {error}
-        </p>
+        </Notice>
       ) : null}
 
       {items === null ? (

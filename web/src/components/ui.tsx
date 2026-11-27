@@ -156,3 +156,30 @@ export function Empty(props: { children: ReactNode }) {
     </p>
   );
 }
+
+const NOTICE_TONE = {
+  warn: 'border-warn text-warn',
+  bad: 'border-bad text-bad',
+  accent: 'border-accent text-accent',
+} as const;
+
+/** An inline status, warning or error line, marked by a bar on its left edge in the tone's color. */
+export function Notice(props: {
+  tone: keyof typeof NOTICE_TONE;
+  children: ReactNode;
+  className?: string;
+  id?: string;
+  role?: 'status' | 'alert';
+  title?: string;
+}) {
+  return (
+    <p
+      id={props.id}
+      role={props.role}
+      title={props.title}
+      className={cn('border-l-2 py-0.5 pl-2.5 text-xs', NOTICE_TONE[props.tone], props.className)}
+    >
+      {props.children}
+    </p>
+  );
+}
