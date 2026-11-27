@@ -27,6 +27,63 @@ export function loadOrCreateMasterFunder(params: {
   };
 }
 
+/** What one initial seed hands out: 0.1 SOL. */
+export const INITIAL_SEED_LAMPORTS = 100_000_000;
+/** Fee the Master Funder pays for one seed transfer. */
+export const SEED_FEE_LAMPORTS = 5_000;
+
+/** Whether a funder balance covers one more seed and its fee. */
+export function canFundSeed(lamports: number): boolean {
+  return lamports >= INITIAL_SEED_LAMPORTS + SEED_FEE_LAMPORTS;
+}
+
+export type FunderProbe = {
+  checkedAt: string;
+  rpcOk: boolean;
+  latencyMs: number | null;
+  lamports: number | null;
+  error: string | null;
+};
+
+const PROBE_TTL_MS = 15_000;
+
+/**
+ * Reads the Master Funder balance at most once per 15 seconds and shares the read between callers.
+ * The same read tells whether the RPC answers, so readiness and the dashboard poll cost one call per window.
+ */
+export function createFunderProbe(
+  connection: Connection,
+  funderPubkey: string,
+  now: () => number = Date.now,
+): () => Promise<FunderProbe> {
+  let cached: { at: number; value: FunderProbe } | null = null;
+  let inFlight: Promise<FunderProbe> | null = null;
+  return () => {
+    if (cached && now() - cached.at < PROBE_TTL_MS) return Promise.resolve(cached.value);
+    inFlight ??= (async () => {
+      const started = now();
+      let value: FunderProbe;
+      try {
+        const lamports = await getLamportBalance(connection, funderPubkey);
+        value = { checkedAt: new Date(started).toISOString(), rpcOk: true, latencyMs: now() - started, lamports, error: null };
+      } catch (err) {
+        value = {
+          checkedAt: new Date(started).toISOString(),
+          rpcOk: false,
+          latencyMs: null,
+          lamports: null,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+      // A failed read is cached too, so an RPC outage is not hammered by every poll.
+      cached = { at: started, value };
+      inFlight = null;
+      return value;
+    })();
+    return inFlight;
+  };
+}
+
 let funderQueue: Promise<unknown> = Promise.resolve();
 
 export class SeedTransferFailedError extends Error {
@@ -189,8 +246,7 @@ export function dispenseInitialSeed(params: {
     if (!pending) {
       const funderPubkey = params.funder.publicKey.toBase58();
       const balance = await getLamportBalance(params.connection, funderPubkey);
-      // Estimate transaction fee ~5000 lamports.
-      if (balance < params.amountLamports + 5000) {
+      if (balance < params.amountLamports + SEED_FEE_LAMPORTS) {
         throw new Error(
           `Master Funder wallet (${funderPubkey}) does not have enough Devnet SOL (${balance / 1e9} SOL available). Please fund it.`,
         );

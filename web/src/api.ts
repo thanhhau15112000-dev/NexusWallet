@@ -16,6 +16,8 @@ export type AgentState = {
   ownerPinned: boolean;
   isAdmin?: boolean;
   claimedInitialFunding?: boolean;
+  /** Whether the free seed can be claimed now, and why not. */
+  seed?: { available: boolean; reason: 'funder_unavailable' | 'funder_empty' | 'cap_reached' | null };
   masterFunder?: {
     pubkey: string;
     lamports: number | null;

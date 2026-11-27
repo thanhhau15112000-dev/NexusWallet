@@ -39,6 +39,12 @@ export class SeedLedger {
     return id;
   }
 
+  /** Whether a slot is free right now, without taking it. */
+  hasCapacity(): boolean {
+    this.prune();
+    return this.grants.length < this.cap;
+  }
+
   /** Gives a slot back after a transfer that provably did not happen. */
   release(id: number): void {
     const index = this.grants.indexOf(id);

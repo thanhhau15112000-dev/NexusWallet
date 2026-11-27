@@ -46,7 +46,9 @@ import {
 import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
 import {
+  canFundSeed,
   dispenseInitialSeed,
+  INITIAL_SEED_LAMPORTS,
   SeedTransferFailedError,
   SeedTransferOutcomeUnknownError,
 } from './funder.js';
@@ -341,6 +343,25 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? null,
   }));
 
+  // Readiness for operators: the RPC answers, and the Master Funder can still pay a seed. 503 when the RPC is down.
+  app.get('/api/health/ready', async (_req, reply) => {
+    const probe = ctx.funderProbe ? await ctx.funderProbe() : null;
+    const rpcOk = probe?.rpcOk ?? false;
+    return reply.status(rpcOk ? 200 : 503).send({
+      ok: rpcOk,
+      checkedAt: probe?.checkedAt ?? null,
+      rpc: { ok: rpcOk, latencyMs: probe?.latencyMs ?? null, error: probe ? probe.error : 'not configured' },
+      masterFunder: ctx.masterFunderPubkey
+        ? {
+            pubkey: ctx.masterFunderPubkey,
+            lamports: probe?.lamports ?? null,
+            canSeed: probe?.lamports == null ? null : canFundSeed(probe.lamports),
+          }
+        : null,
+      seedCapacity: ctx.seedLedger ? ctx.seedLedger.hasCapacity() : null,
+    });
+  });
+
   app.get('/api/actions/approve/:requestId', async (req, reply) => {
     const { requestId } = req.params as { requestId: string };
     const owner = (req.query as { owner?: string }).owner;
@@ -501,6 +522,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       }
     }
 
+    const seed = await seedAvailability(ctx);
+
     const currentPolicy = userCtx.store.getPolicy();
     const spentLamports = spentLamportsInWindow(userCtx.store.listRequests());
     const remainingLamports =
@@ -521,6 +544,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       ownerPinned: false,
       isAdmin,
       claimedInitialFunding: userCtx.store.hasClaimedInitialFunding(),
+      seed,
       masterFunder: isAdmin && ctx.masterFunderPubkey
         ? {
             pubkey: ctx.masterFunderPubkey,
@@ -556,6 +580,18 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   });
 
 const inFlightClaims = new Set<string>();
+
+  /**
+   * Whether a seed claim can succeed now, so the dashboard can say why before the owner clicks.
+   * An unreadable funder balance counts as available: the claim itself reports the real error.
+   */
+  async function seedAvailability(root: AppContext): Promise<{ available: boolean; reason: 'funder_unavailable' | 'funder_empty' | 'cap_reached' | null }> {
+    if (!root.masterFunder || !root.seedLedger) return { available: false, reason: 'funder_unavailable' };
+    if (!root.seedLedger.hasCapacity()) return { available: false, reason: 'cap_reached' };
+    const probe = root.funderProbe ? await root.funderProbe() : null;
+    if (probe?.lamports != null && !canFundSeed(probe.lamports)) return { available: false, reason: 'funder_empty' };
+    return { available: true, reason: null };
+  }
 
   app.post('/api/agent/claim-seed', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
@@ -597,6 +633,7 @@ const inFlightClaims = new Set<string>();
         reservation = ctx.seedLedger.reserve();
         if (reservation === null) {
           const retryAfterSeconds = ctx.seedLedger.retryAfterSeconds();
+          req.log.warn({ agent: userCtx.agentPubkey, retryAfterSeconds }, 'initial seed cap reached');
           return reply
             .status(429)
             .header('retry-after', String(retryAfterSeconds))
@@ -609,7 +646,7 @@ const inFlightClaims = new Set<string>();
         }
       }
 
-      const amountLamports = 100_000_000; // 0.1 SOL
+      const amountLamports = INITIAL_SEED_LAMPORTS;
       const result = await dispenseInitialSeed({
         connection: ctx.connection,
         funder: ctx.masterFunder,
@@ -640,6 +677,7 @@ const inFlightClaims = new Set<string>();
       ) {
         ctx.seedLedger.release(reservation);
       }
+      req.log.warn({ err, agent: userCtx.agentPubkey, masterFunder: ctx.masterFunderPubkey }, 'initial seed claim failed');
       if (err instanceof SeedTransferOutcomeUnknownError) {
         return reply.status(409).send({
           error: 'claim_outcome_unknown',

@@ -122,6 +122,11 @@ export type TranslationDictionary = {
     deposit: string;
     depositTitle: string;
     officialFaucet: string;
+    seedUnavailable: {
+      funder_unavailable: string;
+      funder_empty: string;
+      cap_reached: string;
+    };
   };
   policy: {
     title: string;

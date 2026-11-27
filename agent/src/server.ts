@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   const app = Fastify({
     trustProxy: trustProxySetting(config),
     logger: {
-      level: 'info',
+      level: config.LOG_LEVEL,
       // Prompts and signatures must never land in the log verbatim.
       redact: ['req.headers.authorization', 'req.headers.cookie', 'req.body'],
     },
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
-  const ctx = createContext(config);
+  const ctx = createContext(config, app.log);
 
   // Hosted only: local mode binds loopback, where every client shares one address.
   if (config.authRequired) registerRateLimit(app, ctx);
