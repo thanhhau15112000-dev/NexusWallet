@@ -94,7 +94,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               </TableHeader>
               <TableBody>
                 <TableRow><TableCell>Overview</TableCell><TableCell>See the agent wallet, connect the owner wallet, fund the agent, and connect Claude, Codex or another AI client over MCP.</TableCell></TableRow>
-                <TableRow><TableCell>Policy</TableCell><TableCell>Set the per-transaction limit and the recipient allowlist.</TableCell></TableRow>
+                <TableRow><TableCell>Policy</TableCell><TableCell>Set the per-transaction limit, 24-hour SOL threshold, recipient allowlist and allowed SPL tokens.</TableCell></TableRow>
+                <TableRow><TableCell>Notifications</TableCell><TableCell>Connect a Telegram bot for one-way alerts on approvals, blocked/failed transfers, confirmations and expirations.</TableCell></TableRow>
                 <TableRow><TableCell>Approvals</TableCell><TableCell>Review every request and approve held transfers.</TableCell></TableRow>
                 <TableRow><TableCell>Task Vault</TableCell><TableCell>Lock a task budget on-chain and pay workers through escrow.</TableCell></TableRow>
                 <TableRow><TableCell>History</TableCell><TableCell>See SOL moving in and out of the agent wallet, and the append-only audit log.</TableCell></TableRow>
@@ -230,8 +231,16 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 <strong>Max per transaction</strong> — the largest SOL amount the agent may send without asking you.
               </li>
               <li>
+                <strong>Max per 24 hours</strong> — rolling 24-hour SOL approval threshold (<code>require_approval</code>,
+                not a hard cap; you can still approve transfers above it).
+              </li>
+              <li>
                 <strong>Recipients</strong> — named addresses the agent may pay. Commands and MCP tools can refer to a
                 recipient by its name or its exact address.
+              </li>
+              <li>
+                <strong>Allowed tokens</strong> — SPL token mints the agent may transfer, each with a per-transaction cap
+                (<code>maxTokenAmountByMint</code>). There is no 24-hour aggregate cap for SPL tokens.
               </li>
               <li>
                 <strong>Use owner wallet</strong> — adds your connected wallet as <code>my-wallet</code>.
@@ -331,7 +340,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <p>
               If a command fails because the response was lost, running the same text again reuses the same
-              idempotency key, so the agent does not pay twice for one command.
+              idempotency key, so the agent avoids submitting a duplicate while the request record is retained.
             </p>
           ),
         },
@@ -364,6 +373,48 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <li>You sign a message, not a transaction. It authorises one specific request, once.</li>
               <li>The dashboard rebuilds the message locally and refuses to sign if the server copy differs.</li>
               <li>Approvals expire (5 minutes by default). After that, run the command again.</li>
+            </ul>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'notifications',
+      group: 'Guides',
+      title: 'Notifications',
+      summary: 'Optional one-way Telegram alerts for approvals and transfer events.',
+      keywords: 'telegram alerts bot silent language webhook',
+      sections: [
+        {
+          id: 'telegram',
+          title: 'Telegram alerts',
+          body: (
+            <>
+              <p>
+                Connect a personal Telegram chat on the Notifications tab using a one-time link token (expires after 10
+                minutes) to receive alerts. You can enable or disable individual triggers, toggle silent delivery
+                (<code>disable_notification</code>) and choose English (<code>en</code>) or Vietnamese (<code>vi</code>).
+              </p>
+              <ul>
+                <li><code>pendingApproval</code> — held transfer waiting for owner approval (on by default).</li>
+                <li><code>txDenied</code> — transfer blocked by spending policy (on by default).</li>
+                <li><code>txFailed</code> — transaction submission failed (on by default).</li>
+                <li><code>txConfirmed</code> — transfer confirmed on Devnet (off by default).</li>
+                <li><code>approvalExpired</code> — pending approval expired (off by default).</li>
+              </ul>
+              <TabLink tab="notifications" label="Notifications" ctx={ctx} />
+            </>
+          ),
+        },
+        {
+          id: 'notifications-limits',
+          title: 'Limits and boundaries',
+          body: (
+            <ul>
+              <li>One-way alerts only: approvals and signatures happen in the dashboard with the owner wallet, never inside Telegram.</li>
+              <li>Best-effort delivery with no retry queue; the last delivery error is shown in the Notifications tab.</li>
+              <li><code>approvalExpired</code> alerts trigger when pending requests are checked on read, not from a background scheduler.</li>
+              <li>Link tokens live in server memory and expire after 10 minutes or on server restart.</li>
             </ul>
           ),
         },
@@ -406,7 +457,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 <strong>Get demo result.</strong> The task's Worker (the demo merchant, or the server-held Mock Worker) produces valid or invalid output and signs its hash. The demo merchant works only for an Escrow it can see on Devnet. Submission saves the output and runs deterministic verification checks while the Escrow remains held.
               </li>
               <li>
-                <strong>Review, reject or accept.</strong> Inspect the verification report and submitted output. Failed checks block settlement; you can reject invalid output with a reason to open up to 3 revision attempts before task expiry. For valid output, confirm and sign acceptance with the owner wallet to release payment. Without acceptance, funds remain held until expiry.
+                <strong>Review, reject or accept.</strong> Inspect the verification report and submitted output. The verification checks five fixed structural rules only and does not verify independent work quality. Failed checks block settlement; you can reject invalid output with a reason to open up to 3 revision attempts before task expiry. For valid output, confirm and sign acceptance with the owner wallet to release payment. Without acceptance, funds remain held until expiry, and the owner can still refuse acceptance and refund held Escrow after expiry.
               </li>
               <li>
                 <strong>Close.</strong> <em>Revoke Task</em> stops new payments. After expiry, refund any remaining held Escrow on the dashboard before closing. <em>Refund and close task</em> returns the unallocated budget to the owner once no Escrow is held.
@@ -424,8 +475,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 state conditions in local records, without moving funds on Devnet, and are labelled <em>Simulated</em>.
               </p>
               <Callout tone="note" title="On-chain actions need your wallet">
-                Creating, accepting output, revoking and closing a task require the owner wallet. Phantom must be
-                available in the browser.
+                Creating, accepting output, revoking and closing a task require the owner wallet. A connected Solana
+                wallet (such as Phantom) must be available in the browser.
               </Callout>
               <TabLink tab="tasks" label="Task Vault" ctx={ctx} />
             </>
@@ -553,8 +604,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   <TabLink tab="policy" label="Policy" ctx={ctx} />.
                 </li>
                 <li>
-                  Fund the agent with Devnet SOL for fees and the SPL token, and make sure the merchant wallet already
-                  has an associated token account for that mint.
+                  Fund the agent with the Devnet SPL token (the facilitator named in the challenge pays the x402 network
+                  fee, so no SOL is needed for x402 settlement), and make sure the merchant wallet already has an
+                  associated token account for that mint.
                 </li>
                 <li>
                   Call <code>nexuspay_x402_fetch</code> (or <code>nexuspay_x402_resolve</code>) and keep the returned{' '}
@@ -589,7 +641,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                       <TableRow><TableCell>Claude Code</TableCell><TableCell>Run the <code>claude mcp add --transport http …</code> command once.</TableCell></TableRow>
                       <TableRow><TableCell>Codex</TableCell><TableCell><code>~/.codex/config.toml</code> (<code>url</code> + <code>http_headers</code>).</TableCell></TableRow>
                       <TableRow><TableCell>Antigravity</TableCell><TableCell><code>~/.gemini/config/mcp_config.json</code> (<code>serverUrl</code> + <code>headers</code>).</TableCell></TableRow>
-                      <TableRow><TableCell>Claude Desktop</TableCell><TableCell><code>claude_desktop_config.json</code>, through the <code>mcp-remote</code> bridge (needs Node.js).</TableCell></TableRow>
+                      <TableRow><TableCell>Claude Desktop</TableCell><TableCell>Configured manually in <code>claude_desktop_config.json</code> through the <code>mcp-remote</code> bridge (not a preset tab in the Overview MCP card; needs Node.js).</TableCell></TableRow>
                     </TableBody>
                   </Table>
                 </li>
@@ -765,8 +817,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               </li>
               <li>
                 Each transfer carries an idempotency key. If a call times out or the agent returns a server error, the
-                tool returns <code>outcome_unknown</code> with that key. Retrying with the same key cannot pay twice;
-                never change the amount on a retry.
+                tool returns <code>outcome_unknown</code> with that key. Retrying with the same key while the request
+                record is retained avoids duplicate execution; never change the amount on a retry. Idempotency is not
+                guaranteed after retention pruning.
               </li>
               <li>
                 Reusing a key for a different transfer returns <code>IDEMPOTENCY_CONFLICT</code>. Two calls with
@@ -873,7 +926,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <ul>
               <li>Your seed phrase stays in your wallet. The service only sees your public key and signatures.</li>
-              <li>The agent wallet holds a small Devnet budget. Compromising the service cannot reach your funds.</li>
+              <li>The agent wallet keypair is server-custodial and holds only the Devnet funds you deposit into it. Compromising the service cannot sign for your owner wallet, but it can affect funds held in the agent wallet.</li>
               <li>Never paste a private key or seed phrase into a command, an MCP client or this dashboard.</li>
             </ul>
           ),
