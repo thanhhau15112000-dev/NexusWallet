@@ -132,6 +132,7 @@ export const en: TranslationDictionary = {
     addressPlaceholder: 'Address',
     addRecipient: 'Add recipient',
     useOwnerWallet: 'Use owner wallet',
+    useMerchantWallet: 'Use demo merchant',
     invalidLabel: 'Recipient names must be 1–32 characters.',
     invalidPerTx: 'Enter a limit greater than 0 and no more than 1,000 SOL.',
     invalidPerDay: 'Enter 0–100,000 SOL, or leave blank for no daily limit.',

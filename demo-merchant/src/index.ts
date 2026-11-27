@@ -459,7 +459,7 @@ async function handleWorkerRequest(request: Request, url: URL, env: Env): Promis
     if (request.method === 'GET' && url.pathname === '/worker') {
       const keypair = workerKeypair(env);
       if (!keypair) return jsonResponse({ error: 'worker_not_configured' }, 503);
-      return jsonResponse({ pubkey: keypair.publicKey.toBase58(), network: 'solana:devnet' }, 200);
+      return jsonResponse({ pubkey: keypair.publicKey.toBase58(), wallet: env.MERCHANT_WALLET, network: 'solana:devnet' }, 200);
     }
     if (request.method === 'POST' && url.pathname === '/worker/jobs') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;

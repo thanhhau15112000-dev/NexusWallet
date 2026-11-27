@@ -209,7 +209,11 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 thể gọi người nhận bằng tên hoặc đúng địa chỉ của họ.
               </li>
               <li>
-                <strong>Dùng ví cá nhân</strong> — thêm ví bạn đang kết nối vào danh sách với tên <code>my-wallet</code>.
+                <strong>Dùng ví chủ sở hữu</strong> — thêm ví bạn đang kết nối vào danh sách với tên <code>my-wallet</code>.
+              </li>
+              <li>
+                <strong>Dùng merchant demo</strong> — thêm ví nhận tiền của các endpoint x402 bên merchant demo, với tên
+                {' '}<code>demo-merchant</code>. Chỉ hiện khi agent gọi được merchant.
               </li>
             </ul>
           ),

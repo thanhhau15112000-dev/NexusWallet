@@ -102,7 +102,7 @@ afterEach(() => {
 describe('merchant as Task Vault worker', () => {
   it('publishes its worker key, and says when it has none', async () => {
     const res = await handleRequest(new Request('https://merchant.test/worker'), ENV);
-    expect(await res.json()).toEqual({ pubkey: worker.publicKey.toBase58(), network: 'solana:devnet' });
+    expect(await res.json()).toEqual({ pubkey: worker.publicKey.toBase58(), wallet: ENV.MERCHANT_WALLET, network: 'solana:devnet' });
     const unset = await handleRequest(new Request('https://merchant.test/worker'), { ...ENV, WORKER_SECRET_KEY: undefined });
     expect(unset.status).toBe(503);
   });

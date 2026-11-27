@@ -585,7 +585,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       ownerPinned: false,
       isAdmin,
       mockWorker: userCtx.mockWorker ? { pubkey: userCtx.mockWorker.publicKey.toBase58() } : null,
-      merchantWorker: await userCtx.merchantWorker?.pubkey().then((pubkey) => (pubkey ? { pubkey } : null)) ?? null,
+      merchantWorker: (await userCtx.merchantWorker?.info()) ?? null,
       agent: {
         agentId: userCtx.config.AGENT_ID,
         pubkey: userCtx.agentPubkey,
