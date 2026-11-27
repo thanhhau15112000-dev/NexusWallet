@@ -3,7 +3,7 @@ import { Command, Send } from './icons.js';
 import type { PaymentRequest } from '@nexus/shared';
 import type { AgentState } from '../api.js';
 import { TONE, localizeError } from './RequestList.js';
-import { Card, Pill } from './ui.js';
+import { Card, Notice, Pill } from './ui.js';
 import { Button } from './ui/button.js';
 import { Textarea } from './ui/textarea.js';
 import { useI18n } from '../i18n/context.js';
@@ -64,9 +64,9 @@ export function ConsolePanel(props: {
   return (
     <Card title={dict.console.title} titleIcon={<Command size={15} />}>
       {!props.connected ? (
-        <p className="rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+        <Notice tone="warn" role="status">
           {dict.console.connectToUse}
-        </p>
+        </Notice>
       ) : null}
 
       <form
