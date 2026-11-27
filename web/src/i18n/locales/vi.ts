@@ -387,6 +387,7 @@ export const vi: TranslationDictionary = {
       onchain_payment_failed: 'Chưa xác nhận được kết quả tạo Escrow trên Devnet. Đối chiếu tác vụ và giao dịch trước khi gửi yêu cầu mới.',
       onchain_settlement_failed: 'Chưa xác nhận được kết quả quyết toán trên Devnet. Đối chiếu Escrow và giao dịch trước khi thử lại.',
       onchain_task_mismatch: 'Trạng thái tác vụ trên Devnet chưa khớp với thông tin đã gửi.',
+      invalid_mint: 'Tài sản đã chọn không phải mint SPL Token trên Devnet.',
       revoke_not_confirmed: 'Chưa xác nhận được giao dịch thu hồi trên Devnet.',
       onchain_task_not_revoked: 'Tác vụ trên Devnet chưa ở trạng thái đã thu hồi.',
       refund_not_confirmed: 'Chưa xác nhận được giao dịch hoàn tiền trên Devnet.',
@@ -402,6 +403,8 @@ export const vi: TranslationDictionary = {
     connectToOperate: 'Ví chưa được kết nối. Hãy kết nối ví để tạo tác vụ hoặc thao tác trên tác vụ.',
     create: {
       title: 'Tạo Task Vault',
+      asset: 'Tài sản thanh toán',
+      ownerBalance: 'Số dư ví chủ sở hữu',
       totalBudget: 'Tổng ngân sách',
       perPaymentCap: 'Hạn mức mỗi lần chi',
       allowedWorker: 'Worker được phép',
@@ -495,7 +498,9 @@ export const vi: TranslationDictionary = {
     },
     toasts: {
       connectOwnerFirst: 'Hãy kết nối ví chủ sở hữu trước',
-      enterValidSol: 'Nhập số lượng SOL dương hợp lệ',
+      enterValidSol: 'Nhập số lượng dương hợp lệ',
+      noOwnerTokens: 'Ví chủ sở hữu không có {unit} để nạp cho tác vụ này',
+      insufficientOwnerBalance: 'Ngân sách vượt số dư ví chủ sở hữu ({balance} {unit})',
       capExceedsBudget: 'Hạn mức mỗi lần chi không thể vượt quá tổng ngân sách',
       workerRequired: 'Tác vụ on-chain yêu cầu phải có địa chỉ Worker được phép',
       useMockWorker: 'Bản demo on-chain chỉ hỗ trợ mock Worker đã cấu hình trên server.',

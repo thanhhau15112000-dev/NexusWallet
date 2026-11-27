@@ -61,6 +61,49 @@ export function deriveReceiptPda(
   );
 }
 
+// ------------------------------------------------------- Token (SPL) helpers
+
+export const TOKEN_PROGRAM_PUBKEY = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+export const ASSOCIATED_TOKEN_PROGRAM_PUBKEY = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+
+/** Associated token account of `wallet` for `mint` under the classic Token program; `wallet` may be a PDA. */
+export function deriveAssociatedTokenAddress(wallet: PublicKey, mint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [wallet.toBuffer(), TOKEN_PROGRAM_PUBKEY.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_PUBKEY,
+  )[0];
+}
+
+/** Creates the associated token account unless it already exists (ATA program `CreateIdempotent`). */
+export function createAssociatedTokenAccountIdempotentInstruction(
+  payer: PublicKey,
+  wallet: PublicKey,
+  mint: PublicKey,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ASSOCIATED_TOKEN_PROGRAM_PUBKEY,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: deriveAssociatedTokenAddress(wallet, mint), isSigner: false, isWritable: true },
+      { pubkey: wallet, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_PUBKEY, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]),
+  });
+}
+
+type AccountMeta = { pubkey: PublicKey; isSigner: boolean; isWritable: boolean };
+
+/** Anchor reads an optional account passed as the program id as absent. */
+function optionalAccounts(programId: PublicKey, accounts: AccountMeta[] | null, count: number): AccountMeta[] {
+  return accounts ?? Array.from({ length: count }, () => ({ pubkey: programId, isSigner: false, isWritable: false }));
+}
+
+// TaskCapability account: discriminator + fields through allowed_service_id (207 bytes) + mint.
+export const TASK_CAPABILITY_ACCOUNT_SIZE = 207 + 32;
+
 // Receipt account: discriminator + 2 pubkeys + 4 x [u8; 32] + amount + settled_at + bump.
 export const TASK_RECEIPT_ACCOUNT_SIZE = 8 + 32 + 32 + 32 * 4 + 8 + 8 + 1;
 
@@ -86,6 +129,8 @@ export interface CreateAndFundTaskArgs {
   allowedServiceId?: Uint8Array | string;
   expirySeconds?: number | bigint;
   expiry?: number | bigint;
+  /** SPL mint of the budget; omit for SOL. The vault ATA must exist (see createAssociatedTokenAccountIdempotentInstruction). */
+  mint?: PublicKey;
   programId?: PublicKey;
 }
 
@@ -118,6 +163,12 @@ export function createAndFundTaskInstruction(args: CreateAndFundTaskArgs): Trans
       { pubkey: vault, isSigner: false, isWritable: true },
       { pubkey: args.owner, isSigner: true, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ...optionalAccounts(programId, args.mint ? [
+        { pubkey: args.mint, isSigner: false, isWritable: false },
+        { pubkey: deriveAssociatedTokenAddress(args.owner, args.mint), isSigner: false, isWritable: true },
+        { pubkey: deriveAssociatedTokenAddress(vault, args.mint), isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM_PUBKEY, isSigner: false, isWritable: false },
+      ] : null, 4),
     ],
     data: Buffer.from(data),
   });
@@ -177,6 +228,8 @@ export interface SettleWithReceiptArgs {
   agentSigner?: PublicKey;
   owner?: PublicKey;
   resultHash: Uint8Array | string;
+  /** SPL mint of the task; omit for SOL. The worker ATA must exist. */
+  mint?: PublicKey;
   programId?: PublicKey;
 }
 
@@ -186,9 +239,14 @@ export function computeTaskAcceptanceMessage(args: {
   requestHash: Uint8Array | string;
   resultHash: Uint8Array | string;
   amountLamports: number | bigint;
+  /** SPL mint of the task; omit for SOL. */
+  mint?: PublicKey | string;
   programId?: PublicKey;
 }): string {
-  return `NEXUS_TASK_ACCEPTANCE_V1\nProgram: ${args.programId ?? TASK_VAULT_PROGRAM_PUBKEY}\nTask: ${args.taskCapability}\nEscrow: ${args.escrow}\nRequest: ${toHex(to32ByteArray(args.requestHash))}\nOutput: ${toHex(to32ByteArray(args.resultHash))}\nAmount (lamports): ${BigInt(args.amountLamports)}`;
+  const amount = args.mint
+    ? `Amount (base units): ${BigInt(args.amountLamports)}\nMint: ${args.mint}`
+    : `Amount (lamports): ${BigInt(args.amountLamports)}`;
+  return `NEXUS_TASK_ACCEPTANCE_V1\nProgram: ${args.programId ?? TASK_VAULT_PROGRAM_PUBKEY}\nTask: ${args.taskCapability}\nEscrow: ${args.escrow}\nRequest: ${toHex(to32ByteArray(args.requestHash))}\nOutput: ${toHex(to32ByteArray(args.resultHash))}\n${amount}`;
 }
 
 export function settleAcceptedOutputInstruction(args: SettleWithReceiptArgs): TransactionInstruction {
@@ -215,9 +273,21 @@ export function settleAcceptedOutputInstruction(args: SettleWithReceiptArgs): Tr
       { pubkey: rentRecipient, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+      ...optionalAccounts(programId, args.mint ? settleTokenAccounts(args.taskCapability, args.worker, args.mint, programId) : null, 5),
     ],
     data: Buffer.from(data),
   });
+}
+
+function settleTokenAccounts(taskCapability: PublicKey, worker: PublicKey, mint: PublicKey, programId: PublicKey): AccountMeta[] {
+  const [vault] = deriveVaultPda(taskCapability, programId);
+  return [
+    { pubkey: vault, isSigner: false, isWritable: false },
+    { pubkey: deriveAssociatedTokenAddress(vault, mint), isSigner: false, isWritable: true },
+    { pubkey: deriveAssociatedTokenAddress(worker, mint), isSigner: false, isWritable: true },
+    { pubkey: mint, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_PROGRAM_PUBKEY, isSigner: false, isWritable: false },
+  ];
 }
 
 export interface RevokeTaskArgs {
@@ -245,6 +315,8 @@ export interface RefundAndCloseArgs {
   taskCapability: PublicKey;
   owner: PublicKey;
   caller: PublicKey;
+  /** SPL mint of the task; omit for SOL. The owner ATA must exist. */
+  mint?: PublicKey;
   programId?: PublicKey;
 }
 
@@ -261,6 +333,12 @@ export function refundAndCloseInstruction(args: RefundAndCloseArgs): Transaction
       { pubkey: vault, isSigner: false, isWritable: true },
       { pubkey: args.owner, isSigner: false, isWritable: true },
       { pubkey: args.caller, isSigner: true, isWritable: false },
+      ...optionalAccounts(programId, args.mint ? [
+        { pubkey: deriveAssociatedTokenAddress(vault, args.mint), isSigner: false, isWritable: true },
+        { pubkey: deriveAssociatedTokenAddress(args.owner, args.mint), isSigner: false, isWritable: true },
+        { pubkey: args.mint, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_PUBKEY, isSigner: false, isWritable: false },
+      ] : null, 4),
     ],
     data: Buffer.from(data),
   });

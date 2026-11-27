@@ -27,6 +27,10 @@ export const TaskCapabilityRecordSchema = z.object({
   status: TaskStatusSchema.default('active'),
   allowedWorker: PubkeySchema.optional(),
   allowedServiceId: z.string().trim().min(1).max(64).optional(),
+  /** SPL mint of the budget; absent means SOL. Every `*Lamports` amount is in base units of this asset. */
+  mint: PubkeySchema.optional(),
+  /** Decimals of `mint`, read from the chain when the task was recorded. */
+  mintDecimals: z.number().int().min(0).max(18).optional(),
   pda: PubkeySchema.optional(),
   vaultPda: PubkeySchema.optional(),
   txSignature: z.string().optional(),

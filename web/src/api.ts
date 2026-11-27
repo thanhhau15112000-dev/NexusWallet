@@ -265,6 +265,8 @@ export const api = {
     expiry: number;
     allowedWorker?: string;
     allowedServiceId?: string;
+    /** SPL mint of the budget; omit for SOL. */
+    mint?: string;
     txSignature?: string;
     isSimulated?: boolean;
   }) =>

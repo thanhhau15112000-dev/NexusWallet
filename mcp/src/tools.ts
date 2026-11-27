@@ -37,11 +37,11 @@ const INSTRUCTIONS = [
   'Recipients outside the allowlist are denied. Call nexuspay_get_status to see the allowlist labels.',
   'If a transfer returns outcome_unknown, call it again with the same idempotencyKey; do not change the amount.',
   'If a transfer returns AGENT_FROZEN, the owner has locked the agent; stop proposing transfers and ask the owner to unfreeze it in the dashboard.',
-  'For Task Vault, read the task first: the owner funds it and delegates a budget, payment cap, expiry, worker and service.',
+  'For Task Vault, read the task first: the owner funds it in SOL or an SPL token and delegates a budget, payment cap, expiry, worker and service.',
   'nexuspay_execute_task_payment moves funds into escrow only; the worker must sign a receipt to receive them.',
   'Task Vault limits reject payments outside the capability; they do not enter the transfer approval queue.',
   'Keep the same paymentId and all parameters after an uncertain outcome; never use a new paymentId to retry.',
-  'Tasks and payments marked simulated do not move SOL. The current on-chain demo uses a server-held mock worker.',
+  'Tasks and payments marked simulated do not move funds. The current on-chain demo uses a server-held mock worker.',
   'You cannot create or fund tasks, revoke them, run the mock worker, settle escrows or refund through MCP.',
 ].join(' ');
 
@@ -168,6 +168,8 @@ function summarizeTask(task: TaskCapabilityRecord) {
     ...task,
     status: task.status === 'active' && expired ? 'expired' : task.status,
     expired,
+    /** 'SOL' (amounts in lamports) or the SPL mint whose base units the amounts use. */
+    asset: task.mint ?? 'SOL',
     remainingBudgetLamports: Math.max(0, task.budgetLamports - task.spentLamports),
     mode: task.isSimulated === false ? 'devnet' : 'simulated',
     source: 'agent_local_record',
@@ -305,7 +307,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
     {
       title: 'List delegated Task Vault budgets',
       description:
-        'List this owner\'s Task Vault records with remaining budget in lamports, per-payment cap, expiry and allowed worker/service. Results explicitly distinguish simulated records from Devnet tasks; local records are not a fresh chain reconciliation.',
+        'List this owner\'s Task Vault records with remaining budget, per-payment cap, budget asset (`asset` is SOL, with amounts in lamports, or the SPL mint whose base units the amounts use), expiry and allowed worker/service. Results explicitly distinguish simulated records from Devnet tasks; local records are not a fresh chain reconciliation.',
       inputSchema: {
         limit: z.number().int().min(1).max(50).default(10),
         status: z.enum(TASK_STATUSES).optional(),
@@ -355,7 +357,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
           .describe('Exact worker public key allowed by the task; no labels.'),
         serviceId: z.string().trim().min(1).max(64).describe('Exact service ID allowed by the task.'),
         amountLamports: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER)
-          .describe('Integer lamports, not SOL. 1 SOL = 1000000000 lamports.'),
+          .describe('Integer base units of the task asset (read the task first): lamports for a SOL task (1 SOL = 1000000000), token base units for a token task (1 USDC = 1000000).'),
         requestHash: z.string().trim().regex(/^[0-9a-f]{64}$/)
           .describe('Lowercase SHA-256 hex digest of the service request payload.'),
       },

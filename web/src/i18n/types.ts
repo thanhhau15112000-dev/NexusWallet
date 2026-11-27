@@ -361,6 +361,8 @@ export type TranslationDictionary = {
     connectToOperate: string;
     create: {
       title: string;
+      asset: string;
+      ownerBalance: string;
       totalBudget: string;
       perPaymentCap: string;
       allowedWorker: string;
@@ -455,6 +457,8 @@ export type TranslationDictionary = {
     toasts: {
       connectOwnerFirst: string;
       enterValidSol: string;
+      noOwnerTokens: string;
+      insufficientOwnerBalance: string;
       capExceedsBudget: string;
       workerRequired: string;
       useMockWorker: string;

@@ -105,11 +105,16 @@ pub fn handle_execute_task_payment(
         TaskVaultError::ExceedsTaskBudget
     );
 
-    let vault_lamports = ctx.accounts.vault.to_account_info().lamports();
-    require!(
-        vault_lamports >= params.amount_lamports,
-        TaskVaultError::InsufficientVaultBalance
-    );
+    // A token budget stays in the vault ATA until settlement; the escrow only records the
+    // amount. The full budget was deposited at creation, so the budget check above covers it.
+    let is_token = ctx.accounts.task_capability.is_token();
+    if !is_token {
+        let vault_lamports = ctx.accounts.vault.to_account_info().lamports();
+        require!(
+            vault_lamports >= params.amount_lamports,
+            TaskVaultError::InsufficientVaultBalance
+        );
+    }
 
     // Update spent lamports and pending escrows on task capability
     ctx.accounts.task_capability.spent_lamports = new_spent;
@@ -130,6 +135,10 @@ pub fn handle_execute_task_payment(
     escrow.amount_lamports = params.amount_lamports;
     escrow.status = EscrowStatus::Held;
     escrow.bump = ctx.bumps.escrow;
+
+    if is_token {
+        return Ok(());
+    }
 
     // Direct lamport debit from vault PDA to escrow PDA
     **ctx.accounts.vault.to_account_info().try_borrow_mut_lamports()? -= params.amount_lamports;

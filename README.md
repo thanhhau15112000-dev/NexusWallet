@@ -32,7 +32,7 @@ Hai luồng có enforcement boundary khác nhau. Payment Guard là off-chain pol
 
 - **PDA (Program Derived Address):** mỗi task có capability PDA (`["capability", owner, task_id]`), vault PDA và escrow/receipt PDA. Program kiểm tra quyền trên các account này.
 - **Signer authorization:** owner create/fund và revoke task, `agent_signer` execute payment, worker settle escrow. Smart contract kiểm tra signer constraint của từng instruction.
-- **SOL và SPL Token:** Payment Guard hỗ trợ cả hai; Task Vault hiện chỉ hỗ trợ SOL. Allowlist mint giới hạn loại SPL token được chuyển.
+- **SOL và SPL Token:** Payment Guard và Task Vault đều hỗ trợ cả hai. Allowlist mint giới hạn loại SPL token agent được chuyển; ngân sách Task Vault bằng token nằm trong associated token account của vault PDA và chỉ dùng Token program (không nhận Token-2022).
 - **Rent và account lifecycle:** program đóng account ở các bước settle/refund/close tương ứng để hoàn rent. Escrow còn chờ phải được xử lý trước khi đóng task.
 - **Permissionless refund:** sau expiry, caller bất kỳ có thể gửi instruction hoàn escrow về owner; không cần server nexusPay ký thay owner.
 
@@ -62,7 +62,7 @@ Daily cap trong rolling 24-hour window là **approval threshold**, không phải
 | Chờ duyệt | Xem yêu cầu vượt hạn mức, ký duyệt bằng ví chủ sở hữu hoặc hủy yêu cầu |
 | Lịch sử ví | Xem giao dịch SOL vào/ra ví agent và liên kết Solana Explorer |
 | Chính sách chi tiêu | Cấu hình hạn mức và allowlist người nhận/mint |
-| Task Vault | Tạo ngân sách tác vụ, chuyển SOL vào Escrow, bàn giao output, nghiệm thu trước quyết toán, thu hồi quyền chi và đóng Task Vault |
+| Task Vault | Tạo ngân sách tác vụ bằng SOL hoặc SPL token (ví dụ USDC), giữ khoản chi trong Escrow, bàn giao output, nghiệm thu trước quyết toán, thu hồi quyền chi và đóng Task Vault |
 | Nhật ký kiểm toán | Xem quyết định của hệ thống và kết quả xử lý |
 | Tài liệu | Hướng dẫn sử dụng, tích hợp MCP và xử lý lỗi |
 
@@ -146,7 +146,7 @@ MCP token không có quyền sửa chính sách, ký duyệt, nạp tiền, khó
 
 Nếu kết quả là `outcome_unknown`, đối chiếu request và Explorer; retry cùng action với **cùng** `idempotencyKey`. Hai key khác nhau được xem là hai đề xuất. Nếu nhận `RATE_LIMITED`, chờ `retryAfterSeconds` rồi retry với cùng key, không đổi số tiền. Cơ chế này không bảo đảm idempotency vô thời hạn khi request record đã bị prune.
 
-**Task Vault qua MCP:** owner tạo và nạp task trên dashboard; agent gọi `nexuspay_list_tasks` rồi `nexuspay_get_task` để đọc quyền đã cấp. Tạo escrow bằng `nexuspay_execute_task_payment` với `taskId`, `paymentId`, địa chỉ `worker`, `serviceId`, `amountLamports` (số nguyên; 1 SOL = 1.000.000.000 lamports) và `requestHash` (SHA-256 hex thường, 64 ký tự). MCP không tạo/nạp task, đổi quyền, revoke, chạy mock worker, settle hay refund.
+**Task Vault qua MCP:** owner tạo và nạp task trên dashboard; agent gọi `nexuspay_list_tasks` rồi `nexuspay_get_task` để đọc quyền đã cấp. Tạo escrow bằng `nexuspay_execute_task_payment` với `taskId`, `paymentId`, địa chỉ `worker`, `serviceId`, `amountLamports` (số nguyên theo base unit của tài sản task: lamports với SOL, 1 SOL = 1.000.000.000; base unit của mint với token, 1 USDC = 1.000.000) và `requestHash` (SHA-256 hex thường, 64 ký tự). MCP không tạo/nạp task, đổi quyền, revoke, chạy mock worker, settle hay refund.
 
 Mỗi khoản dùng một `paymentId` riêng trong task. Retry khoản đã có record với cùng tham số trả record đó và `reused: true`; đổi tham số trả `IDEMPOTENCY_CONFLICT`. Nếu nhận `outcome_unknown`, đọc lại task và **giữ nguyên paymentId cùng tham số**. Nếu vẫn thiếu record, owner cần đối chiếu escrow Devnet trước khi bắt đầu khoản khác; đường này chưa tự khôi phục record khi chain đã nhận giao dịch nhưng API mất kết quả. Trường `mode: simulated` chỉ là mô phỏng, không chuyển SOL. Bản Devnet hiện chỉ hỗ trợ mock worker do server giữ key; receipt không chứng minh chất lượng công việc.
 

@@ -2,6 +2,8 @@ use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use crate::state::*;
 use crate::errors::TaskVaultError;
+use anchor_spl::token::{Mint, Token, TokenAccount};
+use crate::token;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct CreateAndFundTaskParams {
@@ -39,6 +41,15 @@ pub struct CreateAndFundTask<'info> {
     pub owner: Signer<'info>,
 
     pub system_program: Program<'info, System>,
+
+    // Token task only: the budget is moved from the owner's ATA into the vault PDA's ATA, which
+    // the client creates (idempotently) earlier in the same transaction. All four are absent for SOL.
+    pub mint: Option<Account<'info, Mint>>,
+    #[account(mut)]
+    pub owner_token: Option<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    pub vault_token: Option<Account<'info, TokenAccount>>,
+    pub token_program: Option<Program<'info, Token>>,
 }
 
 pub fn handle_create_and_fund_task(
@@ -74,10 +85,29 @@ pub fn handle_create_and_fund_task(
     task.pending_escrows = 0;
     task.allowed_worker = params.allowed_worker;
     task.allowed_service_id = params.allowed_service_id;
+    task.mint = ctx.accounts.mint.as_ref().map_or(Pubkey::default(), |mint| mint.key());
 
     let vault = &mut ctx.accounts.vault;
     vault.task_capability = task.key();
     vault.bump = ctx.bumps.vault;
+
+    if task.is_token() {
+        let task_mint = task.mint;
+        let (mint, token_program) =
+            token::require_token_program(&task_mint, &ctx.accounts.mint, &ctx.accounts.token_program)?;
+        let owner = ctx.accounts.owner.key();
+        let from = token::require_ata(&ctx.accounts.owner_token, &owner, &task_mint)?;
+        let to = token::require_ata(&ctx.accounts.vault_token, &ctx.accounts.vault.key(), &task_mint)?;
+        return token::transfer(
+            token_program,
+            mint,
+            from,
+            to,
+            ctx.accounts.owner.to_account_info(),
+            &[],
+            params.budget_lamports,
+        );
+    }
 
     // Deposit budget lamports from owner to vault PDA
     system_program::transfer(

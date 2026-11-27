@@ -344,7 +344,9 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       });
 
       expect(ix.programId.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
-      expect(ix.keys).toHaveLength(4);
+      expect(ix.keys).toHaveLength(8);
+      // A SOL task passes the program id in each optional token-account slot.
+      expect(ix.keys.slice(4).every((key) => key.pubkey.equals(TASK_VAULT_PROGRAM_PUBKEY) && !key.isWritable)).toBe(true);
       expect(ix.keys[2]!.pubkey.toBase58()).toBe(owner.toBase58());
       expect(ix.keys[2]!.isSigner).toBe(true);
       expect(ix.data.length).toBe(8 + 32 + 8 + 8 + 8 + 32 + 32 + 32);
@@ -408,7 +410,9 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       });
 
       expect(ix.programId.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
-      expect(ix.keys).toHaveLength(7);
+      expect(ix.keys).toHaveLength(12);
+      // A SOL task passes the program id in each optional token-account slot.
+      expect(ix.keys.slice(7).every((key) => key.pubkey.equals(TASK_VAULT_PROGRAM_PUBKEY) && !key.isWritable)).toBe(true);
       expect(ix.keys[3]!.pubkey.toBase58()).toBe(worker.toBase58());
       expect(ix.keys[3]!.isSigner).toBe(true);
       expect(ix.keys[4]!.pubkey.toBase58()).toBe(agent.toBase58());
@@ -440,7 +444,9 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       });
 
       expect(ix.programId.toBase58()).toBe(TASK_VAULT_PROGRAM_PUBKEY.toBase58());
-      expect(ix.keys).toHaveLength(4);
+      expect(ix.keys).toHaveLength(8);
+      // A SOL task passes the program id in each optional token-account slot.
+      expect(ix.keys.slice(4).every((key) => key.pubkey.equals(TASK_VAULT_PROGRAM_PUBKEY) && !key.isWritable)).toBe(true);
       expect(ix.keys[2]!.pubkey.toBase58()).toBe(owner.toBase58());
       expect(ix.keys[3]!.pubkey.toBase58()).toBe(caller.toBase58());
       expect(ix.keys[3]!.isSigner).toBe(true);
