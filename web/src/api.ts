@@ -90,12 +90,29 @@ export function resolveApiBase(): string {
 
 export const API_BASE = resolveApiBase();
 
+/**
+ * Reads give up after this long so a stalled connection surfaces as an error instead of an
+ * endless loading state. Writes have no deadline: abandoning one would not stop it on the
+ * agent, and the dashboard would then report an outcome it does not know.
+ */
+export const READ_TIMEOUT_MS = 20_000;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    credentials: 'same-origin',
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
-  });
+  const isRead = (init?.method ?? 'GET').toUpperCase() === 'GET';
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      ...(isRead && !init?.signal ? { signal: AbortSignal.timeout(READ_TIMEOUT_MS) } : {}),
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new Error(getCurrentDictionary().apiErrors.timeout);
+    }
+    throw err;
+  }
   const text = await response.text();
   let body: unknown = null;
   if (text) {

@@ -269,6 +269,7 @@ export const en: TranslationDictionary = {
     rateLimited: 'Too many requests. Wait {seconds} seconds and try again.',
     seedCapReached:
       'The free demo SOL for the last 24 hours has been handed out. Get Devnet SOL from https://faucet.solana.com, or try again later.',
+    timeout: 'The nexusPay service did not answer in time. Check your connection and reload the page.',
   },
   history: {
     requestsTitle: 'Agent requests',
