@@ -122,6 +122,11 @@ export const vi: TranslationDictionary = {
     deposit: 'Chuyển 0.1 SOL từ ví của tôi',
     depositTitle: 'Chuyển 0.1 SOL từ ví đã kết nối sang ví agent này',
     officialFaucet: 'Lấy thêm SOL thử nghiệm',
+    seedUnavailable: {
+      funder_unavailable: 'Bản cài đặt này không phát SOL thử nghiệm miễn phí. Hãy chuyển SOL từ ví của bạn hoặc dùng faucet của Solana.',
+      funder_empty: 'SOL thử nghiệm miễn phí tạm thời đã hết. Hãy chuyển SOL từ ví của bạn hoặc dùng faucet của Solana.',
+      cap_reached: 'SOL thử nghiệm miễn phí trong 24 giờ qua đã phát hết. Hãy chuyển SOL từ ví của bạn hoặc dùng faucet của Solana.',
+    },
   },
   policy: {
     title: 'Chính sách chi tiêu',

@@ -122,6 +122,11 @@ export const en: TranslationDictionary = {
     deposit: 'Send 0.1 SOL from my wallet',
     depositTitle: 'Send 0.1 SOL from your connected wallet to this agent wallet',
     officialFaucet: 'More test SOL',
+    seedUnavailable: {
+      funder_unavailable: 'Free test SOL is not offered on this instance. Send SOL from your wallet or use the Solana faucet.',
+      funder_empty: 'Free test SOL has run out for now. Send SOL from your wallet or use the Solana faucet.',
+      cap_reached: 'Free test SOL for the last 24 hours has been handed out. Send SOL from your wallet or use the Solana faucet.',
+    },
   },
   policy: {
     title: 'Policy',

@@ -33,6 +33,8 @@ export class AuditLog {
     private readonly path: string,
     saltPath: string,
     passphrase: string,
+    /** Called after each entry is written, with the detail before it is sealed. */
+    private readonly onRecord?: (event: string, requestId: string | null, detail: unknown) => void,
   ) {
     this.sealer = createSealer(passphrase, loadSalt(saltPath));
     this.initializeLastHash();
@@ -75,6 +77,7 @@ export class AuditLog {
     };
     mkdirSync(dirname(this.path), { recursive: true });
     appendFileSync(this.path, `${JSON.stringify(entry)}\n`);
+    this.onRecord?.(event, requestId, detail);
     return entry;
   }
 

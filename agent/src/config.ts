@@ -43,6 +43,9 @@ const EnvSchema = z.object({
    */
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(2),
 
+  /** Log level for the operations log on stdout. */
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
   /** Most initial seeds the Master Funder hands out per rolling 24 hours, across all agents. 0 turns seeding off. */
   SEED_CAP_PER_DAY: z.coerce.number().int().min(0).default(50),
 
