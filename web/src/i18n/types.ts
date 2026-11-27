@@ -378,8 +378,6 @@ export type TranslationDictionary = {
       perPaymentCap: string;
       allowedWorker: string;
       allowedWorkerPlaceholder: string;
-      useMerchantWorker: string;
-      useMockWorker: string;
       allowedService: string;
       allowedServicePlaceholder: string;
       expiryDuration: string;
