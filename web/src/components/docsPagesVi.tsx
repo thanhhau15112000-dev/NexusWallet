@@ -377,7 +377,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 hạn của tác vụ, và số tiền phải nằm trong hạn mức mỗi lần chi cùng ngân sách còn lại.
               </li>
               <li>
-                <strong>Lấy kết quả demo.</strong> Mock Worker tạo output hợp lệ hoặc sai chuẩn và ký hash nội dung đó. Hệ thống lưu output và chạy kiểm tra tự động theo quy tắc cố định trong khi Escrow vẫn đang giữ.
+                <strong>Lấy kết quả demo.</strong> Worker của task (merchant demo, hoặc Mock Worker do server giữ signer) tạo output hợp lệ hoặc sai chuẩn và ký hash nội dung đó. Merchant demo chỉ nhận việc khi thấy Escrow trên Devnet. Hệ thống lưu output và chạy kiểm tra tự động theo quy tắc cố định trong khi Escrow vẫn đang giữ.
               </li>
               <li>
                 <strong>Kiểm tra, từ chối hoặc nghiệm thu.</strong> Xem báo cáo kiểm tra và nội dung bàn giao. Nếu kiểm tra thất bại, nút quyết toán bị khóa; bạn có thể từ chối kèm lý do để mở tối đa 3 lượt nộp lại trước khi hết hạn. Với output đạt chuẩn, xác nhận và ký nghiệm thu bằng ví chủ sở hữu để trả tiền. Nếu không nghiệm thu, tiền giữ đến khi hết hạn.
@@ -493,7 +493,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               <p>
                 Task payment kiểm tra giới hạn của capability và không vào hàng chờ duyệt transfer. Khi retry kết quả
                 chưa rõ, giữ nguyên <code>paymentId</code> và các tham số. Task mô phỏng không chuyển tiền;
-                bản Devnet hiện sử dụng Mock Worker do server giữ signer.
+                trên Devnet, Worker là merchant demo (tự ký output và settlement) hoặc Mock Worker do server giữ signer.
               </p>
             </>
           ),

@@ -23,6 +23,8 @@ export type AgentState = {
     lamports: number | null;
   } | null;
   mockWorker?: { pubkey: string } | null;
+  /** The demo merchant's worker key when the agent can reach it; it works on Devnet tasks only. */
+  merchantWorker?: { pubkey: string } | null;
   agent: {
     agentId: string;
     pubkey: string;
@@ -359,6 +361,16 @@ export const api = {
       `/api/tasks/${taskId}/refund`,
       { method: 'POST', body: JSON.stringify({ txSignature }) },
     ),
+  runTaskWorker: (taskId: string, paymentId: string, scenario: 'valid' | 'invalid_schema') =>
+    request<{
+      workerPubkey: string;
+      workerSignature: string;
+      resultHash: string;
+      resultPayload: Record<string, unknown>;
+    }>(`/api/tasks/${encodeURIComponent(taskId)}/payments/${encodeURIComponent(paymentId)}/worker-run`, {
+      method: 'POST',
+      body: JSON.stringify({ scenario }),
+    }),
   runMockService: (input: {
     taskId: string;
     paymentId?: string;

@@ -41,7 +41,7 @@ const INSTRUCTIONS = [
   'nexuspay_execute_task_payment moves funds into escrow only; the worker must sign a receipt to receive them.',
   'Task Vault limits reject payments outside the capability; they do not enter the transfer approval queue.',
   'Keep the same paymentId and all parameters after an uncertain outcome; never use a new paymentId to retry.',
-  'Tasks and payments marked simulated do not move funds. The current on-chain demo uses a server-held mock worker.',
+  'Tasks and payments marked simulated do not move funds. On Devnet the worker is either the demo merchant, which signs its own output and settlement, or a server-held mock worker.',
   'You cannot create or fund tasks, revoke them, run the mock worker, settle escrows or refund through MCP.',
 ].join(' ');
 
@@ -349,7 +349,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
     {
       title: 'Create an escrow from a delegated Task Vault',
       description:
-        'Move a task budget into escrow on Devnet (or simulate for a simulated task). The task must be open, active and unexpired; the agent must be unfrozen. Budget, cap, worker and service restrictions are enforced by the API and the on-chain program for Devnet tasks. This does not settle or pay the worker. The agent wallet pays transaction fees and escrow rent. The on-chain demo currently supports only the configured mock worker.',
+        'Move a task budget into escrow on Devnet (or simulate for a simulated task). The task must be open, active and unexpired; the agent must be unfrozen. Budget, cap, worker and service restrictions are enforced by the API and the on-chain program for Devnet tasks. This does not settle or pay the worker. The agent wallet pays transaction fees and escrow rent. On-chain payments support the demo merchant worker or the configured mock worker.',
       inputSchema: {
         taskId: taskIdInput,
         paymentId: paymentIdInput,

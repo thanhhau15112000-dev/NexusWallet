@@ -12,5 +12,11 @@
   "devDependencies": {
     "vitest": "^2.1.8",
     "wrangler": "^4.16.0"
+  },
+  "dependencies": {
+    "@nexus/shared": "workspace:*",
+    "@solana/web3.js": "^1.98.0",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
   }
 }

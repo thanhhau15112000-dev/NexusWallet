@@ -61,10 +61,67 @@ import { LOCAL_ORIGIN_REGEX } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
 import { createMcpToken, hasMcpToken, loadOrCreateMcpToken, mcpOwnerFor } from './mcp-token.js';
 import { registerRemoteMcp, remoteMcpUrl } from './mcp-remote.js';
+import { MerchantWorkerError } from './merchant-worker.js';
 
 function getMockWorkerKeypair(ctx: AppContext): Keypair {
   if (!ctx.mockWorker) throw new Error('mock worker keystore is not loaded');
   return ctx.mockWorker;
+}
+
+/** Which signer can act as `worker` on-chain: the server's mock worker or the demo merchant. */
+async function onchainWorkerKind(ctx: AppContext, worker: string): Promise<'mock' | 'merchant' | null> {
+  if (ctx.mockWorker?.publicKey.toBase58() === worker) return 'mock';
+  if (ctx.merchantWorker && (await ctx.merchantWorker.pubkey()) === worker) return 'merchant';
+  return null;
+}
+
+type MockScenario = 'valid' | 'invalid_schema' | 'wrong_service';
+
+/** The server-held mock worker's output for a payment: a demo stand-in for a real worker. */
+function mockWorkerOutput(
+  workerKeypair: Keypair,
+  args: { taskId: string; paymentId: string; serviceId: string; scenario: MockScenario },
+) {
+  let resultPayload: Record<string, unknown>;
+  switch (args.scenario) {
+    case 'invalid_schema':
+      resultPayload = {
+        status: 'failed',
+        serviceId: args.serviceId,
+        evaluatedAt: 'invalid-timestamp',
+        outputSummary: '',
+        error: 'worker_output_incomplete',
+      };
+      break;
+    case 'wrong_service':
+      resultPayload = {
+        status: 'completed',
+        serviceId: args.serviceId === 'unrelated-service' ? 'mismatched-service' : 'unrelated-service',
+        evaluatedAt: new Date().toISOString(),
+        outputSummary: 'Output generated for an unrelated service instead of the requested service',
+      };
+      break;
+    case 'valid':
+    default:
+      resultPayload = {
+        status: 'completed',
+        serviceId: args.serviceId,
+        evaluatedAt: new Date().toISOString(),
+        outputSummary: `Service ${args.serviceId} executed computation successfully`,
+      };
+      break;
+  }
+  const resultHash = computeOutputHash(resultPayload);
+  const signatureBytes = nacl.sign.detached(
+    new TextEncoder().encode(`NEXUS_RECEIPT_V1:${args.taskId}:${args.paymentId}:${resultHash}`),
+    workerKeypair.secretKey,
+  );
+  return {
+    workerPubkey: workerKeypair.publicKey.toBase58(),
+    workerSignature: bs58.encode(signatureBytes),
+    resultHash,
+    resultPayload,
+  };
 }
 
 async function hasConfirmedSignature(ctx: AppContext, signature: string): Promise<boolean> {
@@ -554,6 +611,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
           }
         : null,
       mockWorker: userCtx.mockWorker ? { pubkey: userCtx.mockWorker.publicKey.toBase58() } : null,
+      merchantWorker: await userCtx.merchantWorker?.pubkey().then((pubkey) => (pubkey ? { pubkey } : null)) ?? null,
       agent: {
         agentId: userCtx.config.AGENT_ID,
         pubkey: userCtx.agentPubkey,
@@ -1092,11 +1150,10 @@ const inFlightClaims = new Set<string>();
     const isSimulated = task.isSimulated !== false;
     let txSignature: string | undefined;
     if (!isSimulated) {
-      const mockWorker = getMockWorkerKeypair(userCtx);
-      if (body.worker !== mockWorker.publicKey.toBase58()) {
+      if (!await onchainWorkerKind(userCtx, body.worker)) {
         return reply.status(400).send({
           error: 'unsupported_onchain_worker',
-          message: 'on-chain demo payments currently require the configured mock worker signer',
+          message: 'on-chain payments need a worker that can sign: the mock worker or the demo merchant',
         });
       }
       try {
@@ -1379,20 +1436,21 @@ const inFlightClaims = new Set<string>();
       const isSimulated = task.isSimulated !== false;
       let txSignature: string | undefined;
       if (!isSimulated) {
-        const workerKeypair = getMockWorkerKeypair(userCtx);
-        if (workerKeypair.publicKey.toBase58() !== payment.worker) {
+        const workerKind = await onchainWorkerKind(userCtx, payment.worker);
+        if (!workerKind) {
           return reply.status(400).send({
             error: 'unsupported_onchain_worker',
-            message: 'only the configured mock worker can sign on-chain demo settlements',
+            message: 'only the mock worker or the demo merchant can sign on-chain settlements',
           });
         }
+        const workerPubkey = new PublicKey(payment.worker);
         try {
           // The demo worker holds no funds of its own: the agent pays the fee and tops the worker
           // up so it can fund the receipt PDA and still stay rent-exempt afterwards.
           const [receiptRent, systemAccountRent, workerLamports] = await Promise.all([
             userCtx.connection.getMinimumBalanceForRentExemption(TASK_RECEIPT_ACCOUNT_SIZE),
             userCtx.connection.getMinimumBalanceForRentExemption(0),
-            userCtx.connection.getBalance(workerKeypair.publicKey, 'confirmed'),
+            userCtx.connection.getBalance(workerPubkey, 'confirmed'),
           ]);
           // Preparation runs in its own transaction: with it, a token settlement exceeds the
           // 1232-byte transaction limit. A retry after a failed settlement recomputes the top-up
@@ -1402,7 +1460,7 @@ const inFlightClaims = new Set<string>();
           if (topUp > 0) {
             preparation.push(SystemProgram.transfer({
               fromPubkey: userCtx.signer.publicKey,
-              toPubkey: workerKeypair.publicKey,
+              toPubkey: workerPubkey,
               lamports: topUp,
             }));
           }
@@ -1410,7 +1468,7 @@ const inFlightClaims = new Set<string>();
           if (taskMint) {
             // The worker is paid into its associated token account; the agent funds it if missing.
             preparation.push(createAssociatedTokenAccountIdempotentInstruction(
-              userCtx.signer.publicKey, workerKeypair.publicKey, taskMint,
+              userCtx.signer.publicKey, workerPubkey, taskMint,
             ));
           }
           if (preparation.length) {
@@ -1426,12 +1484,14 @@ const inFlightClaims = new Set<string>();
               taskCapability: taskPda,
               escrow: escrowPda,
               paymentId,
-              worker: workerKeypair.publicKey,
+              worker: workerPubkey,
               agentSigner: new PublicKey(task.agentSigner),
               resultHash: body.resultHash,
               mint: taskMint,
             }),
-          ], userCtx.signer, [workerKeypair]);
+          ], userCtx.signer, workerKind === 'mock' ? [getMockWorkerKeypair(userCtx)] : [], workerKind === 'merchant'
+            ? (transaction) => userCtx.merchantWorker!.coSignSettlement(transaction)
+            : undefined);
         } catch (error) {
           req.log.error({ err: error, taskId, paymentId }, 'Task Vault settlement transaction failed');
           return reply.status(502).send({ error: 'onchain_settlement_failed' });
@@ -1670,65 +1730,64 @@ const inFlightClaims = new Set<string>();
 
   app.post('/api/tasks/mock-service/run', async (req) => {
     const body = MockServiceBody.parse(req.body);
-    const workerKeypair = getMockWorkerKeypair(ctx);
-    const workerPubkey = workerKeypair.publicKey.toBase58();
-
+    const output = mockWorkerOutput(getMockWorkerKeypair(ctx), body);
     const requestHash = computeReceiptHash({
       taskId: body.taskId,
       paymentId: body.paymentId,
-      worker: workerPubkey,
+      worker: output.workerPubkey,
       serviceId: body.serviceId,
       requestHash: JSON.stringify(body.payload),
       resultHash: 'evaluating',
       amountLamports: 0,
     });
+    return { scenario: body.scenario, serviceId: body.serviceId, requestHash, ...output };
+  });
 
-    let resultPayload: Record<string, unknown>;
-    switch (body.scenario) {
-      case 'invalid_schema':
-        resultPayload = {
-          status: 'failed',
-          serviceId: body.serviceId,
-          evaluatedAt: 'invalid-timestamp',
-          outputSummary: '',
-          error: 'worker_output_incomplete',
-        };
-        break;
-      case 'wrong_service':
-        resultPayload = {
-          status: 'completed',
-          serviceId: body.serviceId === 'unrelated-service' ? 'mismatched-service' : 'unrelated-service',
-          evaluatedAt: new Date().toISOString(),
-          outputSummary: 'Output generated for an unrelated service instead of the requested service',
-        };
-        break;
-      case 'valid':
-      default:
-        resultPayload = {
-          status: 'completed',
-          serviceId: body.serviceId,
-          evaluatedAt: new Date().toISOString(),
-          outputSummary: `Service ${body.serviceId} executed computation successfully`,
-        };
-        break;
+  const RunWorkerBody = z.object({ scenario: z.enum(['valid', 'invalid_schema']).default('valid') });
+
+  /** Has the payment's worker produce its output: the mock worker here, or the demo merchant remotely. */
+  app.post('/api/tasks/:taskId/payments/:paymentId/worker-run', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
+    const parsed = RunWorkerBody.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_request' });
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
+    const payment = userCtx.store.getPayment(taskId, paymentId);
+    if (!payment) return reply.status(404).send({ error: 'payment_not_found' });
+    if (task.isClosed || payment.status !== 'held') return reply.status(400).send({ error: 'already_settled' });
+
+    const workerKind = await onchainWorkerKind(userCtx, payment.worker);
+    if (workerKind === 'merchant') {
+      // The merchant only works for an escrow it can see on-chain.
+      if (payment.isSimulated !== false) return reply.status(409).send({ error: 'merchant_worker_onchain_only' });
+      try {
+        return await userCtx.merchantWorker!.runJob({
+          owner: task.owner,
+          taskId,
+          paymentId,
+          serviceId: payment.serviceId,
+          requestHash: payment.requestHash,
+          scenario: parsed.data.scenario,
+        });
+      } catch (error) {
+        req.log.warn({ err: error, taskId, paymentId }, 'merchant worker job failed');
+        return reply.status(502).send({
+          error: 'merchant_worker_failed',
+          message: error instanceof MerchantWorkerError ? error.code : 'merchant worker failed',
+        });
+      }
     }
-    const resultHash = computeOutputHash(resultPayload);
-
-    const canonicalReceiptMessage = `NEXUS_RECEIPT_V1:${body.taskId}:${body.paymentId}:${resultHash}`;
-    const signatureBytes = nacl.sign.detached(
-      new TextEncoder().encode(canonicalReceiptMessage),
-      workerKeypair.secretKey,
-    );
-    const workerSignature = bs58.encode(signatureBytes);
-
-    return {
-      scenario: body.scenario,
-      serviceId: body.serviceId,
-      workerPubkey,
-      workerSignature,
-      requestHash,
-      resultHash,
-      resultPayload,
-    };
+    // A simulated payment to any other address still runs on the mock worker, as before.
+    if (workerKind === null && payment.isSimulated === false) {
+      return reply.status(400).send({ error: 'unsupported_onchain_worker' });
+    }
+    return mockWorkerOutput(getMockWorkerKeypair(userCtx), {
+      taskId,
+      paymentId,
+      serviceId: payment.serviceId,
+      scenario: parsed.data.scenario,
+    });
   });
 }

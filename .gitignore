@@ -12,3 +12,4 @@ target/
 test-ledger/
 **/*keypair*.json
 .dev.vars
+.wrangler/
