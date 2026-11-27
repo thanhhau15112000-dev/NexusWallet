@@ -45,16 +45,22 @@ function requireWorker(env: WorkerEnv): Keypair {
 }
 
 async function readEscrow(env: WorkerEnv, escrow: PublicKey): Promise<OnChainEscrow | null> {
-  const res = await fetch(env.SOLANA_RPC_URL!, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'getAccountInfo',
-      params: [escrow.toBase58(), { encoding: 'base64', commitment: 'confirmed' }],
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(env.SOLANA_RPC_URL!, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getAccountInfo',
+        params: [escrow.toBase58(), { encoding: 'base64', commitment: 'confirmed' }],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new WorkerError(502, 'rpc_failed');
+  }
   const json = (await res.json()) as {
     result?: { value: { owner: string; data: [string, string] } | null };
     error?: { message?: string };

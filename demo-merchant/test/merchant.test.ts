@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { handleRequest, type Env } from '../src/index.js';
+import { handleRequest, resetFeePayerCache, type Env } from '../src/index.js';
 
 const BASE_ENV: Env = {
   MERCHANT_WALLET: '6VPd7LHbx96D2QiSsAo5JrEdRQUdW1PGk3bUNYhVECAz',
@@ -37,6 +37,7 @@ function facilitator(answers: { verify?: unknown; settle?: unknown } = {}) {
 const paymentHeader = btoa(JSON.stringify({ x402Version: 2, accepted: {}, payload: { transaction: 'BASE64_TX' } }));
 
 afterEach(() => {
+  resetFeePayerCache();
   vi.unstubAllGlobals();
 });
 
@@ -157,5 +158,43 @@ describe('demo-merchant x402 Worker', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ result: { value: [] } }), { status: 200 })));
     const html = await (await handleRequest(new Request('https://merchant.example.com/'), BASE_ENV)).text();
     expect(html).toContain('No payments yet.');
+  });
+
+  it('caches facilitator feePayer across requests to the same facilitator', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ kinds: [{ x402Version: 2, scheme: 'exact', network: DEVNET, extra: { feePayer: FEE_PAYER } }] }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await handleRequest(new Request('https://merchant.example.com/items/coffee'), BASE_ENV);
+    const second = await handleRequest(new Request('https://merchant.example.com/items/coffee'), BASE_ENV);
+
+    expect(first.status).toBe(402);
+    expect(second.status).toBe(402);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(decode(second.headers.get('PAYMENT-REQUIRED')).accepts[0].extra.feePayer).toBe(FEE_PAYER);
+  });
+
+  it('does not cache failed facilitator /supported lookups', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('upstream error', { status: 500 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ kinds: [{ x402Version: 2, scheme: 'exact', network: DEVNET, extra: { feePayer: FEE_PAYER } }] }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await handleRequest(new Request('https://merchant.example.com/items/coffee'), BASE_ENV);
+    const second = await handleRequest(new Request('https://merchant.example.com/items/coffee'), BASE_ENV);
+
+    expect(first.status).toBe(502);
+    expect(second.status).toBe(402);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
