@@ -377,7 +377,7 @@ export const vi: TranslationDictionary = {
     scopeStatus: 'Đọc trạng thái ví, số dư và hạn mức',
     scopeRequests: 'Theo dõi yêu cầu, kết quả và ngân sách Task Vault đã được cấp',
     scopeTransfers: 'Đề xuất chuyển SOL/SPL theo chính sách; tạo Escrow trong capability Task Vault đã được cấp',
-    scopeDenied: 'Không được sửa chính sách, ký duyệt, nạp hoặc thu hồi task, settlement hay refund. Transfer qua chính sách chi tiêu; Task Vault kiểm tra capability riêng.',
+    ownerOnlyNote: 'Sửa chính sách, ký duyệt, nạp hoặc thu hồi task, settlement và refund chỉ chủ ví làm được, sau khi đăng nhập ví vào app này.',
     tokenTitle: 'MCP token của bạn',
     securityNote: 'Token là mã truy cập dành cho ứng dụng AI; hãy giữ kín. Nút Sao chép lấy đầy đủ token dù màn hình đang ẩn bớt. Ứng dụng có thể đọc trạng thái, request và task, đề xuất transfer và tạo Escrow trong capability được cấp. Đổi token sẽ ngắt các ứng dụng dùng token cũ.',
     rotateToken: 'Đổi token mới',

@@ -377,7 +377,7 @@ export const en: TranslationDictionary = {
     scopeStatus: 'Read wallet status, balance and limits',
     scopeRequests: 'Read requests, outcomes and delegated Task Vault budgets',
     scopeTransfers: 'Propose SOL/SPL transfers under the policy; create Escrows within a delegated Task Vault capability',
-    scopeDenied: 'Cannot change policy, approve requests, fund or revoke tasks, settle or refund. Transfers use the spending policy; Task Vault enforces its own capability.',
+    ownerOnlyNote: 'Changing the policy, approving requests, funding or revoking tasks, settling and refunding are done only by the owner, after signing in to this app with their wallet.',
     tokenTitle: 'Your MCP token',
     securityNote: 'The token is hidden on screen; Copy puts the full value on your clipboard. Keep it private. It allows status, request and task reads, transfer proposals, and Escrow creation within a delegated capability. Rotating it disconnects clients that use the old one.',
     rotateToken: 'Rotate token',

@@ -349,7 +349,7 @@ export type TranslationDictionary = {
     scopeStatus: string;
     scopeRequests: string;
     scopeTransfers: string;
-    scopeDenied: string;
+    ownerOnlyNote: string;
     tokenTitle: string;
     securityNote: string;
     rotateToken: string;
