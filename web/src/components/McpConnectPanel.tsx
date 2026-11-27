@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, Plug, ShieldCheck, X } from './icons.js';
+import { Check, Copy, Plug, ShieldCheck, TriangleAlert } from './icons.js';
 import { api, ApiError, type McpClientConfig, type McpTokenStatus } from '../api.js';
 import { Card } from './ui.js';
 import { Badge } from './ui/badge.js';
@@ -150,8 +150,11 @@ export function McpConnectPanel() {
             <span className="inline-flex items-center gap-1"><Check size={12} className="text-accent" />{dict.mcp.scopeStatus}</span>
             <span className="inline-flex items-center gap-1"><Check size={12} className="text-accent" />{dict.mcp.scopeRequests}</span>
             <span className="inline-flex items-center gap-1"><Check size={12} className="text-accent" />{dict.mcp.scopeTransfers}</span>
-            <span className="inline-flex items-center gap-1 text-bad"><X size={12} />{dict.mcp.scopeDenied}</span>
           </div>
+          <p className="flex items-start gap-1.5 rounded-md border border-warn-line bg-warn-soft px-2.5 py-1.5 text-[11px] text-warn">
+            <TriangleAlert size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+            {dict.mcp.ownerOnlyNote}
+          </p>
         </div>
       </Card>
     </div>
