@@ -366,7 +366,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           body: (
             <Steps>
               <li>
-                <strong>Nạp vốn.</strong> Nhập mã tác vụ, tổng ngân sách, hạn mức mỗi lần chi và thời hạn (1–168 giờ).
+                <strong>Nạp vốn.</strong> Chọn tài sản thanh toán: SOL hoặc token mà chính sách cho phép, ví dụ USDC.
+                Ngân sách chuyển từ ví của bạn vào vault, nên form kiểm tra số dư tài sản đó trong ví. Nhập tổng ngân
+                sách, hạn mức mỗi lần chi và thời hạn (1–168 giờ).
                 Chọn <em>Ghi tác vụ lên Solana Devnet bằng ví Phantom</em> để tạo trên Devnet qua ví của bạn;
                 nếu không thì tác vụ chỉ được mô phỏng.
               </li>
@@ -393,7 +395,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <>
               <p>
                 Tác vụ on-chain hiện nhãn <em>Giao dịch Devnet</em> và có liên kết Explorer. Tác vụ mô phỏng giữ cùng
-                điều kiện ngân sách và trạng thái nhưng chỉ lưu bản ghi local, không chuyển SOL trên Devnet; được gắn nhãn <em>Mô phỏng</em>.
+                điều kiện ngân sách và trạng thái nhưng chỉ lưu bản ghi local, không chuyển tiền trên Devnet; được gắn nhãn <em>Mô phỏng</em>.
               </p>
               <Callout tone="note" title="Hành động on-chain cần ví của bạn">
                 Tạo, nghiệm thu output, thu hồi và đóng tác vụ đều cần ví chủ sở hữu. Trình duyệt phải có Phantom.
@@ -489,7 +491,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </p>
               <p>
                 Task payment kiểm tra giới hạn của capability và không vào hàng chờ duyệt transfer. Khi retry kết quả
-                chưa rõ, giữ nguyên <code>paymentId</code> và các tham số. Task mô phỏng không chuyển SOL;
+                chưa rõ, giữ nguyên <code>paymentId</code> và các tham số. Task mô phỏng không chuyển tiền;
                 bản Devnet hiện sử dụng Mock Worker do server giữ signer.
               </p>
             </>

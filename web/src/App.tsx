@@ -779,6 +779,7 @@ export function App() {
             connected={Boolean(wallet)}
             agentPubkey={state.agent.pubkey}
             mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
+            allowedMints={state.policy.allowedMints}
             rpcUrl={state.rpcUrl}
             onToast={setToast}
           />,

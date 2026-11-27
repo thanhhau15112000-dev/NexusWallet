@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 use crate::state::*;
 use crate::errors::TaskVaultError;
+use anchor_spl::token::{Mint, Token, TokenAccount};
+use crate::token;
 use anchor_lang::solana_program::{ed25519_program, instruction::Instruction, sysvar::instructions::{load_current_index_checked, load_instruction_at_checked}};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -50,6 +52,15 @@ pub struct SettleWithReceipt<'info> {
     /// CHECK: Its address is constrained; only the runtime instruction sysvar is accepted.
     #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instructions: UncheckedAccount<'info>,
+
+    // Token task only: the vault PDA signs a transfer from its ATA to the worker's ATA.
+    pub vault: Option<Account<'info, VaultAccount>>,
+    #[account(mut)]
+    pub vault_token: Option<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    pub worker_token: Option<Account<'info, TokenAccount>>,
+    pub mint: Option<Account<'info, Mint>>,
+    pub token_program: Option<Program<'info, Token>>,
 }
 
 pub fn handle_settle_with_receipt(
@@ -76,11 +87,18 @@ pub fn handle_settle_with_receipt(
         TaskVaultError::InvalidResultHash
     );
 
+    let task_mint = ctx.accounts.task_capability.mint;
+    let is_token = ctx.accounts.task_capability.is_token();
+    let amount_line = if is_token {
+        format!("Amount (base units): {}\nMint: {}", ctx.accounts.escrow.amount_lamports, task_mint)
+    } else {
+        format!("Amount (lamports): {}", ctx.accounts.escrow.amount_lamports)
+    };
     let expected_message = format!(
-        "NEXUS_TASK_ACCEPTANCE_V1\nProgram: {}\nTask: {}\nEscrow: {}\nRequest: {}\nOutput: {}\nAmount (lamports): {}",
+        "NEXUS_TASK_ACCEPTANCE_V1\nProgram: {}\nTask: {}\nEscrow: {}\nRequest: {}\nOutput: {}\n{}",
         ctx.program_id, ctx.accounts.task_capability.key(), ctx.accounts.escrow.key(),
         hex(&ctx.accounts.escrow.request_hash), hex(&params.result_hash),
-        ctx.accounts.escrow.amount_lamports,
+        amount_line,
     );
     let instructions = ctx.accounts.instructions.to_account_info();
     let index = load_current_index_checked(&instructions)?;
@@ -111,13 +129,29 @@ pub fn handle_settle_with_receipt(
     receipt.settled_at = now;
     receipt.bump = ctx.bumps.receipt;
 
-    // Release escrowed payment to worker, return account rent to agent signer
     let payment_amount = ctx.accounts.escrow.amount_lamports;
+    if is_token {
+        let (mint, token_program) =
+            token::require_token_program(&task_mint, &ctx.accounts.mint, &ctx.accounts.token_program)?;
+        let Some(vault) = &ctx.accounts.vault else {
+            return err!(TaskVaultError::TokenAccountsRequired);
+        };
+        let task_key = ctx.accounts.task_capability.key();
+        require_keys_eq!(vault.task_capability, task_key, TaskVaultError::InvalidTokenAccount);
+        let from = token::require_ata(&ctx.accounts.vault_token, &vault.key(), &task_mint)?;
+        let to = token::require_ata(&ctx.accounts.worker_token, &ctx.accounts.escrow.worker, &task_mint)?;
+        let seeds: &[&[u8]] = &[b"vault", task_key.as_ref(), &[vault.bump]];
+        token::transfer(token_program, mint, from, to, vault.to_account_info(), &[seeds], payment_amount)?;
+    }
+
+    // Release escrowed payment to worker, return account rent to agent signer. A token
+    // escrow holds rent only, so all of its lamports go back to the agent signer.
+    let lamport_payment = if is_token { 0 } else { payment_amount };
     let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
-    let rent_refund = escrow_lamports.saturating_sub(payment_amount);
+    let rent_refund = escrow_lamports.saturating_sub(lamport_payment);
 
     **ctx.accounts.escrow.to_account_info().try_borrow_mut_lamports()? = 0;
-    **ctx.accounts.worker.to_account_info().try_borrow_mut_lamports()? += payment_amount;
+    **ctx.accounts.worker.to_account_info().try_borrow_mut_lamports()? += lamport_payment;
     if rent_refund > 0 {
         **ctx.accounts.agent_signer.to_account_info().try_borrow_mut_lamports()? += rent_refund;
     }
