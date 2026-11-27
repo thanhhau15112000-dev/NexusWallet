@@ -6,7 +6,7 @@ import { Button } from './ui/button.js';
 import { Tabs as UiTabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
 
 /** Dashboard tabs a docs page can link to. Kept in sync with FEATURE_TABS in App.tsx. */
-export type DocsLinkTab = 'wallet' | 'policy' | 'approvals' | 'tasks' | 'history' | 'commands';
+export type DocsLinkTab = 'wallet' | 'policy' | 'notifications' | 'approvals' | 'tasks' | 'history' | 'commands';
 
 export type DocSection = { id: string; title: string; body: ReactNode };
 

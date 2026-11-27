@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Bell,
   BookOpen,
   CheckCircle2,
   Clock,
@@ -31,6 +32,7 @@ import {
 } from './solanaWallets.js';
 import { HistoryPanel } from './components/HistoryPanel.js';
 import { McpConnectPanel } from './components/McpConnectPanel.js';
+import { NotificationsPanel } from './components/NotificationsPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
 import { DocsPanel } from './components/DocsPanel.js';
 import { OverviewPanel } from './components/OverviewPanel.js';
@@ -54,7 +56,7 @@ import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
-type FeatureTab = 'wallet' |'policy' | 'approvals' | 'tasks' | 'history' | 'commands' | 'docs';
+type FeatureTab = 'wallet' | 'policy' | 'notifications' | 'approvals' | 'tasks' | 'history' | 'commands' | 'docs';
 
 type NavGroup = 'setup' | 'activity' | 'resources';
 
@@ -63,6 +65,7 @@ type NavGroup = 'setup' | 'activity' | 'resources';
 const FEATURE_TABS: Array<{ id: FeatureTab; group: NavGroup; icon: typeof LayoutGrid }> = [
   { id: 'wallet', group: 'setup', icon: LayoutGrid },
   { id: 'policy', group: 'setup', icon: ShieldCheck },
+  { id: 'notifications', group: 'setup', icon: Bell },
   { id: 'approvals', group: 'activity', icon: CheckCircle2 },
   { id: 'tasks', group: 'activity', icon: Layers },
   { id: 'history', group: 'activity', icon: Clock },
@@ -760,6 +763,11 @@ export function App() {
         {panel(
           'policy',
           <PolicyPanel state={state} wallet={wallet} busy={Boolean(busy.policy)} onSave={savePolicy} />,
+        )}
+
+        {panel(
+          'notifications',
+          <NotificationsPanel active={activeTab === 'notifications'} onToast={setToast} />,
         )}
 
         {panel(

@@ -83,7 +83,13 @@ async function main(): Promise<void> {
     });
   }
 
+  app.addHook('onClose', async () => {
+    ctx.telegram?.stop();
+  });
+
   await app.listen({ port: config.PORT, host: config.HOST });
+
+  void ctx.telegram?.start();
 
   const models = ctx.model.describe();
   app.log.info(
