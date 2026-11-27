@@ -4,10 +4,9 @@ import { AuditLog } from './audit.js';
 import { createConnection, keypairFromSecret, type Connection, type Keypair } from './chain.js';
 import type { AppConfig } from './config.js';
 import { loadOrCreateAgentKey } from './crypto.js';
-import { createFunderProbe, loadOrCreateMasterFunder, type FunderProbe } from './funder.js';
 import { createMerchantWorker, type MerchantWorker } from './merchant-worker.js';
+import { createRpcProbe, type RpcProbe } from './rpc-probe.js';
 import { createModelPipeline, type ModelPipeline } from './model/index.js';
-import { SeedLedger } from './seed-ledger.js';
 import { SessionManager } from './sessions.js';
 import { Store } from './store.js';
 import { TelegramService } from './telegram.js';
@@ -24,18 +23,14 @@ export type AppContext = {
   /** Legacy response field; multi-tenant wallet sessions are not pinned. */
   ownerPinned: boolean;
   sessions: SessionManager;
-  masterFunder?: Keypair;
-  masterFunderPubkey?: string;
-  /** Shared by all tenants: how many seeds the Master Funder has handed out in the last 24 hours. */
-  seedLedger?: SeedLedger;
   /** Demo worker/service signer shared by all tenants; stored encrypted in the data dir, never exposed. */
   mockWorker?: Keypair;
   /** The demo merchant as a remote worker, when MERCHANT_WORKER_URL is set. */
   merchantWorker?: MerchantWorker;
   telegram?: TelegramService;
   getUserContext?: (ownerPubkey: string) => AppContext;
-  /** Cached Master Funder balance read; also tells whether the RPC answers. */
-  funderProbe?: () => Promise<FunderProbe>;
+  /** Cached RPC liveness read for the readiness check. */
+  rpcProbe?: () => Promise<RpcProbe>;
 };
 
 /** Where operational warnings go: the Fastify logger in the server, absent in tests. */
@@ -57,12 +52,6 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
   mkdirSync(config.dataDir, { recursive: true });
   mkdirSync(config.usersDir, { recursive: true });
 
-  const funder = loadOrCreateMasterFunder({
-    masterFunderPath: config.masterFunderPath,
-    legacyKeystorePath: config.legacyKeystorePath,
-    passphrase: config.AGENT_KEYSTORE_PASSPHRASE,
-  });
-
   // Per-deployment key so the demo worker cannot be derived from source.
   const mockWorkerKey = loadOrCreateAgentKey(resolve(config.dataDir, 'mock-worker-keystore.json'), config.AGENT_KEYSTORE_PASSPHRASE);
   const mockWorker = keypairFromSecret(mockWorkerKey.secretKey);
@@ -77,9 +66,8 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
     resolve(config.dataDir, 'sessions.json'),
   );
 
-  const funderProbe = createFunderProbe(connection, funder.pubkey);
+  const rpcProbe = createRpcProbe(connection);
   const merchantWorker = config.MERCHANT_WORKER_URL ? createMerchantWorker(config.MERCHANT_WORKER_URL) : undefined;
-  const seedLedger = new SeedLedger(resolve(config.dataDir, 'seed-ledger.json'), config.SEED_CAP_PER_DAY);
 
   const userContexts = new Map<string, AppContext>();
   const telegram = new TelegramService({
@@ -135,14 +123,11 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
       agentPubkey: key.publicKey,
       ownerPinned: false,
       sessions,
-      masterFunder: funder.keypair,
-      masterFunderPubkey: funder.pubkey,
-      seedLedger,
       mockWorker,
       merchantWorker,
       telegram,
       getUserContext,
-      funderProbe,
+      rpcProbe,
     };
 
     userContexts.set(ownerPubkey, userCtx);
@@ -156,11 +141,8 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
     ...defaultUserCtx,
     config,
     sessions,
-    masterFunder: funder.keypair,
-    masterFunderPubkey: funder.pubkey,
-    seedLedger,
     telegram,
     getUserContext,
-    funderProbe,
+    rpcProbe,
   };
 }

@@ -42,8 +42,6 @@ describe('Task Vault API with a token budget on the local Solana program', () =>
       AGENT_DATA_DIR: dataDir,
       dataDir,
       usersDir: join(dataDir, 'users'),
-      masterFunderPath: join(dataDir, 'master-funder.json'),
-      legacyKeystorePath: join(dataDir, 'agent-keystore.json'),
       statePath: join(dataDir, 'state.json'),
       auditPath: join(dataDir, 'audit.jsonl'),
       keystorePath: join(dataDir, 'agent-keystore.json'),

@@ -607,7 +607,6 @@ describe('nexusPay MCP tools', () => {
           cluster: 'devnet',
           rpcUrl: 'https://api.devnet.solana.com',
           isAdmin: true,
-          masterFunder: { pubkey: 'funder', lamports: 1 },
           agent: {
             agentId: 'a',
             pubkey: OWNER,
@@ -633,7 +632,7 @@ describe('nexusPay MCP tools', () => {
     expect(status.wallet.balanceSol).toBe(0.25);
     expect(status.estimatedFeeSol).toBe(0.00001);
     expect(status.policy.recipients).toEqual([{ label: 'treasury', address: OWNER }]);
-    expect(JSON.stringify(status)).not.toMatch(/masterFunder|isAdmin|rpcUrl/);
+    expect(JSON.stringify(status)).not.toMatch(/isAdmin|rpcUrl/);
   });
 
   it('exposes frozen: true on nexuspay_get_status when agent is frozen', async () => {

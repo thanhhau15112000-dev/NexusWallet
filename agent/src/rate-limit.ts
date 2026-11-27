@@ -19,10 +19,8 @@ export type RateRule = {
 };
 
 const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
 
 const authRule = (id: string): RateRule => ({ id, limit: 10, windowMs: MINUTE, by: 'ip' });
-const faucetRule = (id: string): RateRule => ({ id, limit: 5, windowMs: HOUR, by: 'ip' });
 // Transfers and task escrows share this ceiling per identity kind + verified owner.
 // Session and token buckets remain separate, matching the existing read allowances.
 const proposeRule: RateRule = { id: 'propose', limit: 30, windowMs: MINUTE, by: 'owner' };
@@ -41,7 +39,6 @@ const proposeRule: RateRule = { id: 'propose', limit: 30, windowMs: MINUTE, by: 
 export const DEFAULT_RATE_RULES: Record<string, RateRule> = {
   'POST /api/auth/challenge': authRule('auth.challenge'),
   'POST /api/auth/login': authRule('auth.login'),
-  'POST /api/agent/claim-seed': faucetRule('claim-seed'),
   'POST /api/agent/intents': proposeRule,
   'POST /api/agent/x402/resolve': proposeRule,
   'POST /api/agent/x402/fetch': proposeRule,

@@ -1,4 +1,4 @@
-import { ArrowDownToLine, CheckCircle2, ExternalLink, Zap } from './icons.js';
+import { ArrowDownToLine, ExternalLink } from './icons.js';
 import { useId } from 'react';
 import type { AgentState } from '../api.js';
 import { Button } from './ui/button.js';
@@ -25,17 +25,14 @@ function SolanaMark() {
   );
 }
 
-/** Funding actions for the agent wallet: one-time seed, deposit from the owner wallet, faucet. */
+/** Funding actions for the agent wallet: deposit from the owner wallet, or Solana's faucet. */
 export function AgentFundingActions(props: {
   state: AgentState;
   busy: boolean;
-  onClaimSeed: () => void;
   onDeposit: (amountSol: number) => void;
 }) {
   const { dict } = useI18n();
   const { agent } = props.state;
-  // Older agents omit `seed`; treat that as available and let the claim report its own error.
-  const seedBlocked = props.state.seed && !props.state.seed.available ? props.state.seed.reason : null;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -45,55 +42,28 @@ export function AgentFundingActions(props: {
         </Notice>
       ) : null}
 
-      {props.state.claimedInitialFunding ? (
-        <Notice tone="accent" role="status" className="flex items-center gap-2">
-          <CheckCircle2 size={15} className="shrink-0" aria-hidden="true" />
-          <span className="font-medium">{dict.funding.initialSeedClaimed}</span>
-        </Notice>
-      ) : (
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          disabled={props.busy || Boolean(seedBlocked)}
-          onClick={props.onClaimSeed}
-          title={dict.funding.claimSeedTitle}
-        >
-          <Zap size={13} aria-hidden="true" />
-          {dict.funding.claimSeed}
-        </Button>
-      )}
-
-      {!props.state.claimedInitialFunding && seedBlocked ? (
-        <Notice tone="warn" role="status" className="order-last w-full">
-          {dict.funding.seedUnavailable[seedBlocked]}
-        </Notice>
-      ) : null}
-
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={props.busy}
-          onClick={() => props.onDeposit(0.1)}
-          title={dict.funding.depositTitle}
-        >
-          <ArrowDownToLine size={13} aria-hidden="true" />
-          {dict.funding.deposit}
-        </Button>
-        <Button
-          size="sm"
-          asChild
-          className="border border-white/10 bg-black text-white shadow-2xs hover:bg-[#14161a]"
-        >
-          <a href={`https://faucet.solana.com/?address=${agent.pubkey}`} target="_blank" rel="noreferrer">
-            <SolanaMark />
-            {dict.funding.officialFaucet}
-            <ExternalLink size={12} className="opacity-60" aria-hidden="true" />
-          </a>
-        </Button>
-      </>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={props.busy}
+        onClick={() => props.onDeposit(0.1)}
+        title={dict.funding.depositTitle}
+      >
+        <ArrowDownToLine size={13} aria-hidden="true" />
+        {dict.funding.deposit}
+      </Button>
+      <Button
+        size="sm"
+        asChild
+        className="border border-white/10 bg-black text-white shadow-2xs hover:bg-[#14161a]"
+      >
+        <a href={`https://faucet.solana.com/?address=${agent.pubkey}`} target="_blank" rel="noreferrer">
+          <SolanaMark />
+          {dict.funding.officialFaucet}
+          <ExternalLink size={12} className="opacity-60" aria-hidden="true" />
+        </a>
+      </Button>
     </div>
   );
 }

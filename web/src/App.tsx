@@ -342,19 +342,6 @@ export function App() {
     [dict.toasts],
   );
 
-  const claimSeed = async () => {
-    setFlag('seed', true);
-    try {
-      await api.claimSeed();
-      await refresh();
-      setToast({ tone: 'ok', text: dict.toasts.seedClaimed });
-    } catch (err) {
-      setToast({ tone: 'bad', text: errorText(err) });
-    } finally {
-      setFlag('seed', false);
-    }
-  };
-
   const deposit = async (amountSol: number) => {
     if (!state) return;
     if (!wallet || !connectedWalletRef.current) {
@@ -723,8 +710,7 @@ export function App() {
               state={state}
               wallet={wallet}
               requests={requests}
-              fundingBusy={Boolean(busy.seed || busy.deposit)}
-              onClaimSeed={() => void claimSeed()}
+              fundingBusy={Boolean(busy.deposit)}
               onDeposit={(amount) => void deposit(amount)}
               onRefresh={refresh}
               onToast={setToast}

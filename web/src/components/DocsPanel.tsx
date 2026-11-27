@@ -137,7 +137,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 <TabLink tab="policy" label="Policy" ctx={ctx} />
               </li>
               <li>
-                <strong>Fund the agent.</strong> Claim the one-time 0.1 SOL seed or deposit from your wallet.{' '}
+                <strong>Fund the agent.</strong> Send 0.1 SOL from your wallet or use the Solana faucet.{' '}
                 <TabLink tab="wallet" label="Overview" ctx={ctx} />
               </li>
               <li>
@@ -170,7 +170,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
       group: 'Guides',
       title: 'Wallet and funding',
       summary: 'The agent wallet, the owner wallet, and the ways to put Devnet SOL in the agent.',
-      keywords: 'faucet seed deposit balance owner',
+      keywords: 'faucet deposit balance owner',
       sections: [
         {
           id: 'two-wallets',
@@ -201,9 +201,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow><TableCell>Get 0.1 free test SOL</TableCell><TableCell>One-time transfer from the service funder. Available once per agent.</TableCell></TableRow>
-                  <TableRow><TableCell>Send 0.1 SOL from my wallet</TableCell><TableCell>Your wallet sends 0.1 SOL to the agent. Your wallet asks you to confirm.</TableCell></TableRow>
-                  <TableRow><TableCell>More test SOL</TableCell><TableCell>Opens faucet.solana.com with the agent address filled in.</TableCell></TableRow>
+                  <TableRow><TableCell>Fund the agent wallet with 0.1 SOL</TableCell><TableCell>Your wallet sends 0.1 SOL to the agent. Your wallet asks you to confirm.</TableCell></TableRow>
+                  <TableRow><TableCell>Solana Official Faucet</TableCell><TableCell>Opens faucet.solana.com with the agent address filled in.</TableCell></TableRow>
                 </TableBody>
               </Table>
               <Callout tone="note" title="Zero balance is fine for policy checks">
