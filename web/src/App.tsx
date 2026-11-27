@@ -210,9 +210,20 @@ export function App() {
 
   useEffect(() => {
     if (!authReady || (authRequired && !authenticated)) return;
-    void refresh();
-    const timer = setInterval(() => void refresh(), 6000);
-    return () => clearInterval(timer);
+    // The next poll starts only after the previous one finished. A fixed interval would start a
+    // newer refresh while a slow one is still in flight, and the slow result would be discarded
+    // every time, leaving the dashboard on its loading screen.
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      await refresh();
+      if (active) timer = setTimeout(() => void poll(), 6000);
+    };
+    void poll();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [authReady, authRequired, authenticated, refresh]);
 
   const logoutSession = useCallback(async () => {

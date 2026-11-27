@@ -269,6 +269,7 @@ export type TranslationDictionary = {
   apiErrors: {
     rateLimited: string;
     seedCapReached: string;
+    timeout: string;
   };
   history: {
     requestsTitle: string;

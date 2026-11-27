@@ -269,6 +269,7 @@ export const vi: TranslationDictionary = {
     rateLimited: 'Quá nhiều yêu cầu. Chờ {seconds} giây rồi thử lại.',
     seedCapReached:
       'SOL demo miễn phí trong 24 giờ qua đã được phát hết. Lấy SOL Devnet tại https://faucet.solana.com, hoặc thử lại sau.',
+    timeout: 'Dịch vụ nexusPay không phản hồi kịp. Kiểm tra kết nối rồi tải lại trang.',
   },
   history: {
     requestsTitle: 'Yêu cầu của agent',
