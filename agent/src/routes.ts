@@ -47,6 +47,7 @@ import {
 } from './chain.js';
 import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
+import { requestIdentity } from './auth-hook.js';
 import { IdempotencyConflictError, agentError, runAction, runCommand, type AgentAction } from './pipeline.js';
 import { resolveX402Payment, fetchWithX402 } from './x402.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
@@ -909,7 +910,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const userCtx = resolveUserContext(ctx, req);
     const { id } = req.params as { id: string };
     try {
-      return { request: cancelRequest(userCtx, id) };
+      const by = requestIdentity(ctx, req)?.kind === 'token' ? 'agent' : 'owner';
+      return { request: cancelRequest(userCtx, id, by) };
     } catch (err) {
       if (err instanceof ApprovalError) {
         const status = err.code === 'not_found' ? 404 : 409;

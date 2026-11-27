@@ -186,18 +186,21 @@ describe('GET /api/agent/history', () => {
     explorerUrl: 'https://explorer.solana.com/tx/sig1?cluster=devnet',
   };
 
-  it('requires a wallet session: no cookie and an MCP token both get 401', async () => {
-    const { app, config } = await startApp();
+  it('refuses an unauthenticated read, and serves the MCP token the history of its own agent', async () => {
+    const { app, ctx, config } = await startApp();
     expect((await app.inject({ method: 'GET', url: '/api/agent/history' })).statusCode).toBe(401);
+    expect(getAgentHistoryMock).not.toHaveBeenCalled();
 
-    const token = loadOrCreateMcpToken(config.usersDir, Keypair.generate().publicKey.toBase58());
+    const owner = Keypair.generate().publicKey.toBase58();
+    const token = loadOrCreateMcpToken(config.usersDir, owner);
+    vi.mocked(getAgentHistoryMock).mockResolvedValue({ items: [item], nextBefore: null });
     const res = await app.inject({
       method: 'GET',
       url: '/api/agent/history',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(res.statusCode).toBe(401);
-    expect(getAgentHistoryMock).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+    expect(vi.mocked(getAgentHistoryMock).mock.calls[0]![1]).toBe(ctx.getUserContext!(owner).agentPubkey);
   });
 
   it('returns the agent wallet history for the session owner and shares reads made within a few seconds', async () => {

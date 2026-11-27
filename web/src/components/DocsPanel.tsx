@@ -554,6 +554,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   <TableRow><TableCell><code>nexuspay_get_status</code></TableCell><TableCell>Agent address, SOL balance, per-transaction limit, allowlist labels.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_list_requests</code></TableCell><TableCell>Recent requests with verdicts and outcomes. Optional status filter.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_get_request</code></TableCell><TableCell>One request, for example to see whether you approved it.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_cancel_request</code></TableCell><TableCell>Withdraw a transfer the agent proposed while it still waits for your approval. Nothing is sent.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_get_history</code></TableCell><TableCell>The agent wallet&apos;s Devnet transactions, newest first, a page at a time.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_sol</code></TableCell><TableCell>Propose a SOL transfer. The policy decides.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_spl</code></TableCell><TableCell>Propose an SPL token transfer. Recipient and mint must be allowlisted.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_x402_fetch</code></TableCell><TableCell>Fetch an HTTP 402 resource via x402 v2 (SPL on Solana devnet) and send <code>PAYMENT-SIGNATURE</code> on retry.</TableCell></TableRow>
@@ -561,6 +563,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   <TableRow><TableCell><code>nexuspay_list_tasks</code></TableCell><TableCell>Read delegated Task Vault records, remaining budgets, caps and expiry.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_get_task</code></TableCell><TableCell>Read a task, its Escrows and Receipts. Local records are not a fresh chain reconciliation.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_execute_task_payment</code></TableCell><TableCell>Create an Escrow within an existing capability. Worker settlement is a separate step.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_collect_task_output</code></TableCell><TableCell>Have the Worker of a held Escrow deliver its signed output, and run the automatic checks. The Escrow stays held until you settle or reject it.</TableCell></TableRow>
                 </TableBody>
               </Table>
               <p>
