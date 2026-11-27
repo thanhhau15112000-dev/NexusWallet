@@ -1,4 +1,6 @@
-export interface Env {
+import { WorkerError, runJob, signSettlement, workerKeypair, type JobRequest, type WorkerEnv } from './worker.js';
+
+export interface Env extends WorkerEnv {
   MERCHANT_WALLET: string;
   USDC_MINT: string;
   /** Worker secret: public Devnet RPC blocks Cloudflare egress, so this points at a keyed provider. */
@@ -177,6 +179,7 @@ function paymentRequired(resourceUrl: string, item: CatalogItem, requirements: P
 }
 
 type ChainView = { payments: RpcSignature[]; rpcError: boolean };
+type HomeView = { sales: ChainView; workerPubkey: string | null; workerActivity: ChainView };
 
 async function rpc<T>(env: Env, method: string, params: unknown[]): Promise<T> {
   const res = await fetch(env.SOLANA_RPC_URL!, {
@@ -207,11 +210,47 @@ async function fetchRecentPayments(env: Env): Promise<ChainView> {
   }
 }
 
+/** Transactions that touched the worker signer: top-ups from agents and Task Vault settlements. */
+async function fetchWorkerActivity(env: Env, workerPubkey: string | null): Promise<ChainView> {
+  if (!workerPubkey) return { payments: [], rpcError: false };
+  if (!env.SOLANA_RPC_URL) return { payments: [], rpcError: true };
+  try {
+    const payments = await rpc<RpcSignature[]>(env, 'getSignaturesForAddress', [workerPubkey, { limit: 10 }]);
+    return { payments, rpcError: false };
+  } catch {
+    return { payments: [], rpcError: true };
+  }
+}
+
+function signatureRows(view: ChainView, emptyText: string): string {
+  if (!view.payments.length) {
+    return `<tr><td colspan="3" class="muted">${view.rpcError ? 'Could not read transactions from Devnet.' : emptyText}</td></tr>`;
+  }
+  return view.payments
+    .map((sig) => {
+      const explorer = `https://explorer.solana.com/tx/${encodeURIComponent(sig.signature)}?cluster=devnet`;
+      const time = sig.blockTime ? new Date(sig.blockTime * 1000).toISOString().replace('T', ' ').slice(0, 19) : '-';
+      return `<tr>
+            <td><a href="${explorer}" target="_blank" rel="noreferrer" title="${escapeHtml(sig.signature)}">${escapeHtml(shortKey(sig.signature))}</a></td>
+            <td class="num">${escapeHtml(time)}</td>
+            <td${sig.err ? ' class="failed"' : ''}>${sig.err ? 'failed' : 'confirmed'}</td>
+          </tr>`;
+    })
+    .join('\n');
+}
+
+function copyButton(value: string, label: string): string {
+  const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  return `<button type="button" class="copy" data-copy="${escapeHtml(value)}" data-label="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">`
+    + `${icon} class="idle"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`
+    + `${icon} class="done"><path d="M20 6 9 17l-5-5"/></svg></button>`;
+}
+
 function shortKey(value: string): string {
   return `${value.slice(0, 6)}…${value.slice(-6)}`;
 }
 
-function renderHomePage(origin: string, env: Env, chain: ChainView): string {
+function renderHomePage(origin: string, env: Env, view: HomeView): string {
   const itemRows = CATALOG.filter((item) => payToForItem(item, env) !== null)
     .map((item) => {
       const path = `/items/${item.id}`;
@@ -223,20 +262,6 @@ function renderHomePage(origin: string, env: Env, chain: ChainView): string {
     })
     .join('\n');
 
-  const paymentRows = chain.payments.length
-    ? chain.payments
-        .map((sig) => {
-          const explorer = `https://explorer.solana.com/tx/${encodeURIComponent(sig.signature)}?cluster=devnet`;
-          const time = sig.blockTime ? new Date(sig.blockTime * 1000).toISOString().replace('T', ' ').slice(0, 19) : '-';
-          return `<tr>
-            <td><a href="${explorer}" target="_blank" rel="noreferrer" title="${escapeHtml(sig.signature)}">${escapeHtml(shortKey(sig.signature))}</a></td>
-            <td class="num">${escapeHtml(time)}</td>
-            <td>${sig.err ? 'failed' : 'confirmed'}</td>
-          </tr>`;
-        })
-        .join('\n')
-    : `<tr><td colspan="3" class="muted">${chain.rpcError ? 'Could not read payments from Devnet.' : 'No payments yet.'}</td></tr>`;
-
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -244,41 +269,84 @@ function renderHomePage(origin: string, env: Env, chain: ChainView): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>nexusPay demo merchant</title>
   <style>
-    :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; background: #f6f7f6; color: #111816; }
-    body { max-width: 720px; margin: 32px auto; padding: 0 16px; line-height: 1.5; }
-    .card { background: #fff; border: 1px solid #e3e7e5; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    :root {
+      color-scheme: dark;
+      --bg: #121417; --panel: #191c20; --surface-muted: #20242a; --line: #2a2f36;
+      --ink: #e6e9ec; --muted: #9aa2ab; --ok: #4fbf9c; --bad: #d8685b;
+      font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink);
+    }
+    body { max-width: 1040px; margin: 32px auto; padding: 0 16px; line-height: 1.5; background: var(--bg); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; min-width: 0; }
+    .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .columns .card { margin-bottom: 0; }
+    .stack { display: grid; gap: 16px; min-width: 0; }
+    @media (max-width: 760px) { .columns { grid-template-columns: minmax(0, 1fr); } }
+    .wallet { display: inline-flex; align-items: center; gap: 6px; }
+    button.copy { display: inline-flex; padding: 3px; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
+    button.copy:hover { background: var(--surface-muted); color: var(--ink); }
+    button.copy svg { width: 14px; height: 14px; }
+    button.copy .done, button.copy.copied .idle { display: none; }
+    button.copy.copied .done { display: inline; color: var(--ok); }
     h1 { font-size: 20px; margin: 0 0 4px; }
     h2 { font-size: 15px; margin: 0 0 8px; }
-    .muted { color: #5a6561; font-size: 13px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .failed { color: var(--bad); }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e3e7e5; }
-    th { font-size: 12px; color: #5a6561; font-weight: 600; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+    th { font-size: 12px; color: var(--muted); font-weight: 600; }
     tr:last-child td { border-bottom: 0; }
     .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
     code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; }
-    a { color: #177b65; text-decoration: none; }
+    a { color: var(--ok); text-decoration: none; }
     a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>nexusPay demo merchant</h1>
-    <div class="muted">x402 · Solana Devnet · USDC · wallet <span title="${escapeHtml(env.MERCHANT_WALLET)}">${escapeHtml(shortKey(env.MERCHANT_WALLET))}</span></div>
+    <div class="muted">x402 · Solana Devnet · USDC · wallet <span class="wallet"><span title="${escapeHtml(env.MERCHANT_WALLET)}">${escapeHtml(shortKey(env.MERCHANT_WALLET))}</span>${copyButton(env.MERCHANT_WALLET, 'Copy wallet address')}</span></div>
+    ${view.workerPubkey ? `<div class="muted">Task Vault worker <span class="wallet"><span title="${escapeHtml(view.workerPubkey)}">${escapeHtml(shortKey(view.workerPubkey))}</span>${copyButton(view.workerPubkey, 'Copy worker address')}</span></div>` : ''}
   </div>
-  <div class="card">
-    <h2>Items</h2>
-    <table>
-      <thead><tr><th>Item</th><th>Price</th><th>Endpoint</th></tr></thead>
-      <tbody>${itemRows}</tbody>
-    </table>
+  <div class="columns">
+    <div class="card">
+      <h2>Paid endpoints</h2>
+      <table>
+        <thead><tr><th>Item</th><th>Price</th><th>Endpoint</th></tr></thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <h2>Recent payments</h2>
+        <table>
+          <thead><tr><th>Transaction</th><th>Time (UTC)</th><th>Status</th></tr></thead>
+          <tbody>${signatureRows(view.sales, 'No payments yet.')}</tbody>
+        </table>
+      </div>
+      ${view.workerPubkey ? `<div class="card">
+        <h2>Task Vault work</h2>
+        <table>
+          <thead><tr><th>Transaction</th><th>Time (UTC)</th><th>Status</th></tr></thead>
+          <tbody>${signatureRows(view.workerActivity, 'No Task Vault work yet.')}</tbody>
+        </table>
+      </div>` : ''}
+    </div>
   </div>
-  <div class="card">
-    <h2>Recent payments</h2>
-    <table>
-      <thead><tr><th>Transaction</th><th>Time (UTC)</th><th>Status</th></tr></thead>
-      <tbody>${paymentRows}</tbody>
-    </table>
-  </div>
+  <script>
+    document.querySelectorAll('button.copy').forEach((button) => {
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy);
+          button.classList.add('copied');
+          button.title = 'Copied';
+        } catch {
+          button.title = 'Clipboard is not available; copy the address from the tooltip';
+          return;
+        }
+        setTimeout(() => { button.classList.remove('copied'); button.title = button.dataset.label; }, 1500);
+      });
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -287,8 +355,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   const url = new URL(request.url);
 
   if (request.method === 'GET' && url.pathname === '/') {
-    const chain = await fetchRecentPayments(env);
-    return new Response(renderHomePage(url.origin, env, chain), {
+    const workerPubkey = workerKeypair(env)?.publicKey.toBase58() ?? null;
+    const [sales, workerActivity] = await Promise.all([fetchRecentPayments(env), fetchWorkerActivity(env, workerPubkey)]);
+    return new Response(renderHomePage(url.origin, env, { sales, workerPubkey, workerActivity }), {
       status: 200,
       headers: { 'content-type': 'text/html; charset=utf-8' },
     });
@@ -297,6 +366,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   if (request.method === 'GET' && url.pathname === '/health') {
     return jsonResponse({ ok: true, network: 'solana:devnet', merchantWallet: env.MERCHANT_WALLET }, 200);
   }
+
+  if (url.pathname.startsWith('/worker')) return handleWorkerRequest(request, url, env);
 
   const itemMatch = url.pathname.match(/^\/items\/([a-z0-9_-]+)$/i);
   if (request.method === 'GET' && itemMatch) {
@@ -379,6 +450,37 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   }
 
   return jsonResponse({ error: 'Not found' }, 404);
+}
+
+const JOB_FIELDS = ['owner', 'taskId', 'paymentId', 'serviceId', 'requestHash'] as const;
+
+async function handleWorkerRequest(request: Request, url: URL, env: Env): Promise<Response> {
+  try {
+    if (request.method === 'GET' && url.pathname === '/worker') {
+      const keypair = workerKeypair(env);
+      if (!keypair) return jsonResponse({ error: 'worker_not_configured' }, 503);
+      return jsonResponse({ pubkey: keypair.publicKey.toBase58(), network: 'solana:devnet' }, 200);
+    }
+    if (request.method === 'POST' && url.pathname === '/worker/jobs') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const valid = body
+        && JOB_FIELDS.every((key) => typeof body[key] === 'string' && (body[key] as string).length > 0 && (body[key] as string).length <= 128)
+        && (body.scenario === undefined || body.scenario === 'valid' || body.scenario === 'invalid_schema');
+      if (!valid) return jsonResponse({ error: 'invalid_job' }, 400);
+      return jsonResponse(await runJob(env, body as JobRequest), 200);
+    }
+    if (request.method === 'POST' && url.pathname === '/worker/settlements') {
+      const body = (await request.json().catch(() => null)) as { transaction?: unknown } | null;
+      if (typeof body?.transaction !== 'string' || body.transaction.length > 4096) {
+        return jsonResponse({ error: 'invalid_transaction' }, 400);
+      }
+      return jsonResponse(await signSettlement(env, body.transaction), 200);
+    }
+    return jsonResponse({ error: 'Not found' }, 404);
+  } catch (error) {
+    if (error instanceof WorkerError) return jsonResponse({ error: error.code }, error.status);
+    return jsonResponse({ error: 'worker_failed' }, 500);
+  }
 }
 
 export default {

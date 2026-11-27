@@ -5,6 +5,7 @@ import { createConnection, keypairFromSecret, type Connection, type Keypair } fr
 import type { AppConfig } from './config.js';
 import { loadOrCreateAgentKey } from './crypto.js';
 import { createFunderProbe, loadOrCreateMasterFunder, type FunderProbe } from './funder.js';
+import { createMerchantWorker, type MerchantWorker } from './merchant-worker.js';
 import { createModelPipeline, type ModelPipeline } from './model/index.js';
 import { SeedLedger } from './seed-ledger.js';
 import { SessionManager } from './sessions.js';
@@ -28,6 +29,8 @@ export type AppContext = {
   seedLedger?: SeedLedger;
   /** Demo worker/service signer shared by all tenants; stored encrypted in the data dir, never exposed. */
   mockWorker?: Keypair;
+  /** The demo merchant as a remote worker, when MERCHANT_WORKER_URL is set. */
+  merchantWorker?: MerchantWorker;
   getUserContext?: (ownerPubkey: string) => AppContext;
   /** Cached Master Funder balance read; also tells whether the RPC answers. */
   funderProbe?: () => Promise<FunderProbe>;
@@ -73,6 +76,7 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
   );
 
   const funderProbe = createFunderProbe(connection, funder.pubkey);
+  const merchantWorker = config.MERCHANT_WORKER_URL ? createMerchantWorker(config.MERCHANT_WORKER_URL) : undefined;
   const seedLedger = new SeedLedger(resolve(config.dataDir, 'seed-ledger.json'), config.SEED_CAP_PER_DAY);
 
   const userContexts = new Map<string, AppContext>();
@@ -128,6 +132,7 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
       masterFunderPubkey: funder.pubkey,
       seedLedger,
       mockWorker,
+      merchantWorker,
       getUserContext,
       funderProbe,
     };

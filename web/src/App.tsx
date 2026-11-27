@@ -769,6 +769,7 @@ export function App() {
             wallet={connectedWallet}
             agentPubkey={state.agent.pubkey}
             mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
+            merchantWorkerPubkey={state.merchantWorker?.pubkey ?? null}
             allowedMints={state.policy.allowedMints}
             rpcUrl={state.rpcUrl}
             onToast={setToast}

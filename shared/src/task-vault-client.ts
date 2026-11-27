@@ -5,7 +5,7 @@ import {
   SYSVAR_INSTRUCTIONS_PUBKEY,
 } from '@solana/web3.js';
 import { Buffer } from 'buffer';
-import { TASK_VAULT_PROGRAM_ID, computeCanonicalSeed, toHex } from './task-vault.js';
+import { TASK_VAULT_PROGRAM_ID, computeCanonicalSeed, sha256Sync, toHex } from './task-vault.js';
 
 export const TASK_VAULT_PROGRAM_PUBKEY = new PublicKey(TASK_VAULT_PROGRAM_ID);
 
@@ -109,7 +109,7 @@ export const TASK_RECEIPT_ACCOUNT_SIZE = 8 + 32 + 32 + 32 * 4 + 8 + 8 + 1;
 
 // -------------------------------------------------------- Instruction Builders
 
-const DISCRIMINATORS = {
+export const DISCRIMINATORS = {
   create_and_fund_task: new Uint8Array([0, 142, 234, 27, 129, 198, 51, 254]),
   execute_task_payment: new Uint8Array([36, 128, 220, 0, 103, 204, 220, 163]),
   settle_accepted_output: new Uint8Array([92, 51, 219, 244, 161, 152, 185, 36]),
@@ -394,4 +394,38 @@ export function closeReceiptInstruction(args: CloseReceiptArgs): TransactionInst
     ],
     data: Buffer.from(data),
   });
+}
+
+// ------------------------------------------------------------- Escrow account
+
+/** Anchor discriminator(8) + task_capability, worker, service_id, payment_id, request_hash (5 x 32) + amount(8) + status(1) + bump(1). */
+export const ESCROW_ACCOUNT_SIZE = 8 + 32 * 5 + 8 + 1 + 1;
+const ESCROW_ACCOUNT_DISCRIMINATOR = sha256Sync(new TextEncoder().encode('account:Escrow')).subarray(0, 8);
+const ON_CHAIN_ESCROW_STATUSES = ['held', 'settled', 'refunded'] as const;
+
+export type OnChainEscrow = {
+  taskCapability: PublicKey;
+  worker: PublicKey;
+  serviceId: Uint8Array;
+  paymentId: Uint8Array;
+  requestHash: Uint8Array;
+  amountLamports: bigint;
+  status: (typeof ON_CHAIN_ESCROW_STATUSES)[number];
+};
+
+/** Decodes an Escrow account's data, or returns null when it is not one. */
+export function decodeEscrowAccount(data: Uint8Array): OnChainEscrow | null {
+  if (data.length < ESCROW_ACCOUNT_SIZE) return null;
+  if (!ESCROW_ACCOUNT_DISCRIMINATOR.every((byte, i) => data[i] === byte)) return null;
+  const status = ON_CHAIN_ESCROW_STATUSES[data[176]!];
+  if (!status) return null;
+  return {
+    taskCapability: new PublicKey(data.subarray(8, 40)),
+    worker: new PublicKey(data.subarray(40, 72)),
+    serviceId: data.slice(72, 104),
+    paymentId: data.slice(104, 136),
+    requestHash: data.slice(136, 168),
+    amountLamports: new DataView(data.buffer, data.byteOffset + 168, 8).getBigUint64(0, true),
+    status,
+  };
 }

@@ -337,6 +337,8 @@ export type TranslationDictionary = {
       perPaymentCap: string;
       allowedWorker: string;
       allowedWorkerPlaceholder: string;
+      useMerchantWorker: string;
+      useMockWorker: string;
       allowedService: string;
       allowedServicePlaceholder: string;
       expiryDuration: string;
@@ -445,7 +447,8 @@ export type TranslationDictionary = {
       insufficientOwnerBalance: string;
       capExceedsBudget: string;
       workerRequired: string;
-      useMockWorker: string;
+      useSigningWorker: string;
+      merchantWorkerOnchainOnly: string;
       validWorkerAddress: string;
       ownerWalletRequired: string;
       transactionFailed: string;

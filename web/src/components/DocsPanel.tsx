@@ -400,7 +400,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 match the task limits, and the amount must fit the cap and the remaining budget.
               </li>
               <li>
-                <strong>Get demo result.</strong> The mock Worker produces valid or invalid output and signs its hash. Submission saves the output and runs deterministic verification checks while the Escrow remains held.
+                <strong>Get demo result.</strong> The task's Worker (the demo merchant, or the server-held Mock Worker) produces valid or invalid output and signs its hash. The demo merchant works only for an Escrow it can see on Devnet. Submission saves the output and runs deterministic verification checks while the Escrow remains held.
               </li>
               <li>
                 <strong>Review, reject or accept.</strong> Inspect the verification report and submitted output. Failed checks block settlement; you can reject invalid output with a reason to open up to 3 revision attempts before task expiry. For valid output, confirm and sign acceptance with the owner wallet to release payment. Without acceptance, funds remain held until expiry.
@@ -517,7 +517,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <p>
                 Task payments use capability limits and do not enter the transfer approval queue. Keep the same{' '}
                 <code>paymentId</code> and parameters when retrying an uncertain outcome. Simulated tasks do not
-                move funds; the Devnet demo currently uses a server-held Mock Worker.
+                move funds. On Devnet the Worker is either the demo merchant, which signs its own output and settlement, or the server-held Mock Worker.
               </p>
             </>
           ),

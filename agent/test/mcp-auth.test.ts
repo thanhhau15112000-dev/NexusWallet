@@ -91,6 +91,7 @@ describe('MCP token authentication', () => {
         '/api/tasks', '/api/tasks/task-a/revoke', '/api/tasks/task-a/refund',
         '/api/tasks/task-a/payments/payment-a/settle', '/api/tasks/task-a/payments/payment-a/output',
         '/api/tasks/task-a/payments/payment-a/reject', '/api/tasks/task-a/payments/payment-a/refund-expired',
+        '/api/tasks/task-a/payments/payment-a/worker-run',
         '/api/tasks/mock-service/run', '/api/tasks/task-a/receipts/payment-a/close',
       ]) {
         const denied = await app.inject({ method: 'POST', url, headers: bearer(tokenA), payload: {} });
