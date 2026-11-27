@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { type Connection, PublicKey } from '@solana/web3.js';
 import { getSolanaConnection } from '../lib/solana.js';
+import { usePageVisible } from '../lib/usePageVisible.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
 import { Lock, ShieldCheck, Unlock } from './icons.js';
 import { api, type AgentState } from '../api.js';
@@ -13,18 +14,25 @@ import { useI18n } from '../i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
-/** Polls the connected owner wallet's balance straight from the RPC every 6 seconds. */
-function useOwnerBalance(rpcUrl: string, wallet: string | null) {
+/** Polls the connected owner wallet's balance straight from the RPC every 6 seconds while active and visible. */
+function useOwnerBalance(rpcUrl: string, wallet: string | null, active: boolean) {
+  const pageVisible = usePageVisible();
   const [lamports, setLamports] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
     setLamports(null);
     setError(false);
+  }, [rpcUrl, wallet]);
+
+  useEffect(() => {
+    let cancelled = false;
     if (!wallet) {
       setLoading(false);
+      return;
+    }
+    if (!active || !pageVisible) {
       return;
     }
 
@@ -63,7 +71,7 @@ function useOwnerBalance(rpcUrl: string, wallet: string | null) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [rpcUrl, wallet]);
+  }, [rpcUrl, wallet, active, pageVisible]);
 
   return { balance: lamports === null ? null : lamports / LAMPORTS_PER_SOL, loading, error };
 }
@@ -253,6 +261,7 @@ function PolicySummaryCard(props: { state: AgentState; onEdit: () => void }) {
 }
 
 export function OverviewPanel(props: {
+  active: boolean;
   state: AgentState;
   wallet: string | null;
   requests: PaymentRequest[];
@@ -268,7 +277,7 @@ export function OverviewPanel(props: {
   const { dict } = useI18n();
   const { state, wallet } = props;
   const { agent, policy } = state;
-  const owner = useOwnerBalance(state.rpcUrl, wallet);
+  const owner = useOwnerBalance(state.rpcUrl, wallet, props.active);
   const agentBalance = agent.lamports === null ? null : agent.lamports / LAMPORTS_PER_SOL;
   // Every token the policy allows, at 0 when the wallet holds none, then any other token held.
   // Unknown balances (`tokens` null) show nothing rather than a misleading 0.

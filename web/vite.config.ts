@@ -30,6 +30,14 @@ export default defineConfig({
       output: {
         manualChunks: {
           solana: ['@solana/web3.js'],
+          ui: [
+            'lucide-react',
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-slider',
+            '@radix-ui/react-slot',
+            '@radix-ui/react-tabs',
+            '@radix-ui/react-tooltip',
+          ],
         },
       },
     },

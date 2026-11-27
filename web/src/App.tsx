@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Bell,
   BookOpen,
@@ -16,11 +16,11 @@ import {
 import { getWallets } from '@wallet-standard/app';
 import {
   buildApprovalMessage,
-  type AuditEntryView,
   type PaymentRequest,
 } from '@nexus/shared';
 import { api, ApiError, type AgentState } from './api.js';
 import { errorText } from './lib/errors.js';
+import { usePageVisible } from './lib/usePageVisible.js';
 import {
   connectWallet,
   discoverWallets,
@@ -35,7 +35,6 @@ import { HistoryPanel } from './components/HistoryPanel.js';
 import { McpConnectPanel } from './components/McpConnectPanel.js';
 import { NotificationsPanel } from './components/NotificationsPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
-import { DocsPanel } from './components/DocsPanel.js';
 import { OverviewPanel } from './components/OverviewPanel.js';
 import { PolicyPanel } from './components/PolicyPanel.js';
 import { RequestList } from './components/RequestList.js';
@@ -76,6 +75,10 @@ const FEATURE_TABS: Array<{ id: FeatureTab; group: NavGroup; icon: typeof Layout
 
 const NAV_GROUPS: NavGroup[] = ['setup', 'activity', 'resources'];
 
+const DocsPanel = lazy(() =>
+  import('./components/DocsPanel.js').then((m) => ({ default: m.DocsPanel })),
+);
+
 function WalletOptions(props: {
   choices: WalletChoice[];
   busy: boolean;
@@ -114,7 +117,6 @@ export function App() {
   const { dict, interpolate } = useI18n();
   const [state, setState] = useState<AgentState | null>(null);
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
-  const [audit, setAudit] = useState<AuditEntryView[]>([]);
   const [wallet, setWallet] = useState<string | null>(null);
   const [connectedWallet, setConnectedWallet] = useState<ConnectedWallet | null>(null);
   const [walletChoices, setWalletChoices] = useState<WalletChoice[]>([]);
@@ -131,6 +133,8 @@ export function App() {
   // An agent holding a transfer links the owner to ?request=<id>; open the approvals tab for it.
   const [focusRequestId] = useState(() => new URLSearchParams(window.location.search).get('request'));
   const [activeTab, setActiveTab] = useState<FeatureTab>(focusRequestId ? 'approvals' : 'wallet');
+  const [docsMounted, setDocsMounted] = useState(() => focusRequestId === 'docs');
+  const pageVisible = usePageVisible();
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const connectedWalletRef = useRef<ConnectedWallet | null>(null);
@@ -150,15 +154,13 @@ export function App() {
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
     try {
-      const [nextState, nextRequests, nextAudit] = await Promise.all([
+      const [nextState, nextRequests] = await Promise.all([
         api.state(),
         api.requests(),
-        api.audit(),
       ]);
       if (sequence !== refreshSequence.current) return;
       setState(nextState);
       setRequests(nextRequests.requests);
-      setAudit(nextAudit.entries);
       setOffline(null);
     } catch (err) {
       if (sequence !== refreshSequence.current) return;
@@ -168,7 +170,6 @@ export function App() {
         setAuthOwner(null);
         setState(null);
         setRequests([]);
-        setAudit([]);
         setOffline(dict.walletModal.sessionExpired);
         return;
       }
@@ -205,7 +206,11 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!authReady || (authRequired && !authenticated)) return;
+    if (activeTab === 'docs') setDocsMounted(true);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!authReady || (authRequired && !authenticated) || !pageVisible) return;
     // The next poll starts only after the previous one finished. A fixed interval would start a
     // newer refresh while a slow one is still in flight, and the slow result would be discarded
     // every time, leaving the dashboard on its loading screen.
@@ -220,7 +225,7 @@ export function App() {
       active = false;
       clearTimeout(timer);
     };
-  }, [authReady, authRequired, authenticated, refresh]);
+  }, [authReady, authRequired, authenticated, pageVisible, refresh]);
 
   const logoutSession = useCallback(async () => {
     if (!authRequired) return;
@@ -234,7 +239,6 @@ export function App() {
     setAuthOwner(null);
     setState(null);
     setRequests([]);
-    setAudit([]);
   }, [authRequired]);
 
   useEffect(() => {
@@ -701,6 +705,7 @@ export function App() {
           'wallet',
           <>
             <OverviewPanel
+              active={activeTab === 'wallet'}
               state={state}
               wallet={wallet}
               requests={requests}
@@ -753,6 +758,7 @@ export function App() {
         {panel(
           'tasks',
           <TaskVaultPanel
+            active={activeTab === 'tasks'}
             owner={state.owner}
             wallet={connectedWallet}
             agentPubkey={state.agent.pubkey}
@@ -764,9 +770,16 @@ export function App() {
           />,
         )}
 
-        {panel('history', <HistoryPanel active={activeTab === 'history'} audit={audit} />)}
+        {panel('history', <HistoryPanel active={activeTab === 'history'} />)}
 
-        {panel('docs', <DocsPanel onOpenTab={setActiveTab} />)}
+        {panel(
+          'docs',
+          docsMounted ? (
+            <Suspense fallback={null}>
+              <DocsPanel onOpenTab={setActiveTab} />
+            </Suspense>
+          ) : null,
+        )}
       </main>
 
       <Dialog

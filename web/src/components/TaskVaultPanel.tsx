@@ -20,6 +20,7 @@ import { signAndSendWithWallet, signMessageWithWallet, type ConnectedWallet } fr
 import { api, ApiError } from '../api.js';
 import { errorText } from '../lib/errors.js';
 import { getSolanaConnection } from '../lib/solana.js';
+import { usePageVisible } from '../lib/usePageVisible.js';
 import { Notice, shorten } from './ui.js';
 import { useI18n } from '../i18n/context.js';
 import { CreateTaskCard } from './task-vault/CreateTaskCard.js';
@@ -30,6 +31,7 @@ import { TaskPaymentForm } from './task-vault/TaskPaymentForm.js';
 import { amountOf, assetOf, effectiveStatus, formatUnits, parseDecimalToBaseUnits } from './task-vault/units.js';
 
 export function TaskVaultPanel(props: {
+  active: boolean;
   owner: string | null;
   /** Wallet connected in this browser; on-chain owner actions sign with it when it is the owner. */
   wallet: ConnectedWallet | null;
@@ -43,6 +45,8 @@ export function TaskVaultPanel(props: {
   onToast: (toast: { tone: 'ok' | 'warn' | 'bad'; text: string }) => void;
 }) {
   const { dict, interpolate } = useI18n();
+  const pageVisible = usePageVisible();
+  const canPoll = props.active && pageVisible;
   const ownerWallet = props.wallet && props.wallet.address === props.owner ? props.wallet : null;
 
   /** Signs with the owner's wallet, submits, and waits for confirmation. */
@@ -128,20 +132,29 @@ export function TaskVaultPanel(props: {
     }
   };
 
+  const loadedForOwnerRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     setReviewedOutputs(new Set());
-    void loadTasks();
+    loadedForOwnerRef.current = undefined;
   }, [props.owner]);
 
   useEffect(() => {
+    if (!props.active || loadedForOwnerRef.current === props.owner) return;
+    loadedForOwnerRef.current = props.owner;
+    void loadTasks();
+  }, [props.active, props.owner]);
+
+  useEffect(() => {
+    if (!canPoll) return;
+    setNowSeconds(Math.floor(Date.now() / 1000));
     const timer = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 15_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [canPoll]);
 
   // The budget comes from the owner's wallet, so read its balance of the selected asset.
   useEffect(() => {
     setOwnerBalance(null);
-    if (!props.owner) return;
+    if (!props.owner || !props.active) return;
     let cancelled = false;
     const owner = new PublicKey(props.owner);
     const connection = getSolanaConnection(props.rpcUrl);
@@ -167,7 +180,7 @@ export function TaskVaultPanel(props: {
     return () => {
       cancelled = true;
     };
-  }, [props.owner, props.rpcUrl, newAsset]);
+  }, [props.owner, props.rpcUrl, props.active, newAsset]);
 
   // Follow the selected task's allowlist so the payment form does not start out mismatched.
   const selectedWorker = detail?.task.allowedWorker;
