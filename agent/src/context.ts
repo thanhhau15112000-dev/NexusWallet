@@ -4,7 +4,7 @@ import { AuditLog } from './audit.js';
 import { createConnection, keypairFromSecret, type Connection, type Keypair } from './chain.js';
 import type { AppConfig } from './config.js';
 import { loadOrCreateAgentKey } from './crypto.js';
-import { loadOrCreateMasterFunder } from './funder.js';
+import { createFunderProbe, loadOrCreateMasterFunder, type FunderProbe } from './funder.js';
 import { createModelPipeline, type ModelPipeline } from './model/index.js';
 import { SeedLedger } from './seed-ledger.js';
 import { SessionManager } from './sessions.js';
@@ -29,9 +29,26 @@ export type AppContext = {
   /** Demo worker/service signer shared by all tenants; stored encrypted in the data dir, never exposed. */
   mockWorker?: Keypair;
   getUserContext?: (ownerPubkey: string) => AppContext;
+  /** Cached Master Funder balance read; also tells whether the RPC answers. */
+  funderProbe?: () => Promise<FunderProbe>;
 };
 
-export function createContext(config: AppConfig): AppContext {
+/** Where operational warnings go: the Fastify logger in the server, absent in tests. */
+export type OpsLogger = { warn(fields: Record<string, unknown>, message: string): void };
+
+// Audit events that mean an action failed. They are mirrored to the operations log with the owner and
+// error message only; the full sealed detail stays in the owner's audit file.
+const FAILURE_EVENTS = new Set(['tx.failed', 'tx.simulation_failed', 'model.failed']);
+
+function errorOf(detail: unknown): string | undefined {
+  if (detail && typeof detail === 'object' && 'error' in detail) {
+    const error = (detail as { error: unknown }).error;
+    return typeof error === 'string' ? error : JSON.stringify(error);
+  }
+  return undefined;
+}
+
+export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
   mkdirSync(config.dataDir, { recursive: true });
   mkdirSync(config.usersDir, { recursive: true });
 
@@ -55,6 +72,7 @@ export function createContext(config: AppConfig): AppContext {
     resolve(config.dataDir, 'sessions.json'),
   );
 
+  const funderProbe = createFunderProbe(connection, funder.pubkey);
   const seedLedger = new SeedLedger(resolve(config.dataDir, 'seed-ledger.json'), config.SEED_CAP_PER_DAY);
 
   const userContexts = new Map<string, AppContext>();
@@ -86,7 +104,9 @@ export function createContext(config: AppConfig): AppContext {
     }
 
     const key = loadOrCreateAgentKey(userKeystorePath, config.AGENT_KEYSTORE_PASSPHRASE);
-    const audit = new AuditLog(userAuditPath, userSaltPath, config.AUDIT_ENCRYPTION_PASSPHRASE);
+    const audit = new AuditLog(userAuditPath, userSaltPath, config.AUDIT_ENCRYPTION_PASSPHRASE, (event, requestId, detail) => {
+      if (log && FAILURE_EVENTS.has(event)) log.warn({ event, requestId, owner: ownerPubkey, error: errorOf(detail) }, event);
+    });
     const store = new Store(userStatePath, config.AGENT_ID, config.MAX_REQUESTS_KEPT, ownerPubkey);
 
     if (key.created) {
@@ -109,6 +129,7 @@ export function createContext(config: AppConfig): AppContext {
       seedLedger,
       mockWorker,
       getUserContext,
+      funderProbe,
     };
 
     userContexts.set(ownerPubkey, userCtx);
@@ -126,5 +147,6 @@ export function createContext(config: AppConfig): AppContext {
     masterFunderPubkey: funder.pubkey,
     seedLedger,
     getUserContext,
+    funderProbe,
   };
 }

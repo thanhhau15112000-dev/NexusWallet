@@ -34,6 +34,8 @@ export function AgentFundingActions(props: {
 }) {
   const { dict } = useI18n();
   const { agent } = props.state;
+  // Older agents omit `seed`; treat that as available and let the claim report its own error.
+  const seedBlocked = props.state.seed && !props.state.seed.available ? props.state.seed.reason : null;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -53,7 +55,7 @@ export function AgentFundingActions(props: {
           type="button"
           variant="default"
           size="sm"
-          disabled={props.busy}
+          disabled={props.busy || Boolean(seedBlocked)}
           onClick={props.onClaimSeed}
           title={dict.funding.claimSeedTitle}
         >
@@ -61,6 +63,12 @@ export function AgentFundingActions(props: {
           {dict.funding.claimSeed}
         </Button>
       )}
+
+      {!props.state.claimedInitialFunding && seedBlocked ? (
+        <Notice tone="warn" role="status" className="order-last w-full">
+          {dict.funding.seedUnavailable[seedBlocked]}
+        </Notice>
+      ) : null}
 
       <>
         <Button

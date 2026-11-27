@@ -122,6 +122,11 @@ export type TranslationDictionary = {
     deposit: string;
     depositTitle: string;
     officialFaucet: string;
+    seedUnavailable: {
+      funder_unavailable: string;
+      funder_empty: string;
+      cap_reached: string;
+    };
   };
   policy: {
     title: string;
@@ -404,8 +409,28 @@ export type TranslationDictionary = {
       closingReceipt: string;
       acceptAndSettle: string;
       submitOutput: string;
+      submitValidOutput: string;
+      submitInvalidOutput: string;
       submittingOutput: string;
       reviewOutput: string;
+      verificationTitle: string;
+      verificationPass: string;
+      verificationFail: string;
+      verificationBlockedNote: string;
+      attemptLabel: string;
+      rejectReasonPlaceholder: string;
+      rejectOutput: string;
+      rejectingOutput: string;
+      rejectedHistory: string;
+      maxAttemptsReached: string;
+      refundExpiredEscrow: string;
+      refundingExpiredEscrow: string;
+      expiredEscrowNote: string;
+      check_status_ok: string;
+      check_service_match: string;
+      check_content_present: string;
+      check_timestamp_valid: string;
+      check_request_binding: string;
       reviewedConfirmation: string;
       reviewLimitation: string;
       settling: string;
@@ -438,6 +463,12 @@ export type TranslationDictionary = {
       simulatedSettlement: string;
       settleFailed: string;
       outputSubmitted: string;
+      outputVerificationFailed: string;
+      outputRejected: string;
+      rejectFailed: string;
+      escrowRefundedDevnet: string;
+      escrowRefundedSimulated: string;
+      refundExpiredFailed: string;
       outputFailed: string;
       receiptClosedRentReturned: string;
       closeReceiptFailed: string;

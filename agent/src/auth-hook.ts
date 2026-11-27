@@ -6,6 +6,7 @@ import { SESSION_COOKIE_NAME } from './sessions.js';
 
 export const PUBLIC_AUTH_PATHS = new Set([
   '/api/health',
+  '/api/health/ready',
   '/api/auth/challenge',
   '/api/auth/login',
   '/api/auth/session',

@@ -15,6 +15,7 @@ import {
   computeReceiptHash,
   computeCanonicalSeed,
   validateTaskTransition,
+  verifyTaskOutput,
   deriveTaskCapabilityPda,
   deriveVaultPda,
   deriveEscrowPda,
@@ -591,6 +592,62 @@ describe('Phase 0: Task Capability Vault - Domain & State Machine', () => {
       const reorderRes = audit.verifyIntegrity();
       expect(reorderRes.valid).toBe(false);
       expect(reorderRes.reason).toBe('broken_hash_chain');
+    });
+  });
+
+  describe('Deterministic Output Verification Gate', () => {
+    const payment = { serviceId: 'service-data-enrichment', requestHash: 'a'.repeat(64) };
+
+    it('passes valid structured output and minimal legacy payloads', () => {
+      const structured = verifyTaskOutput(payment, {
+        status: 'completed',
+        serviceId: 'service-data-enrichment',
+        evaluatedAt: '2026-11-27T10:00:00.000Z',
+        outputSummary: 'Enriched 12 Solana addresses with risk metadata',
+      });
+      expect(structured.verdict).toBe('pass');
+      expect(structured.checks.every((c) => c.passed)).toBe(true);
+
+      const legacy = verifyTaskOutput(payment, { output: 'completed' });
+      expect(legacy.verdict).toBe('pass');
+    });
+
+    it('fails on failed status, error field, service mismatch, empty summary, invalid timestamp, or requestHash mismatch', () => {
+      const failedStatus = verifyTaskOutput(payment, { status: 'failed', outputSummary: 'Something went wrong here' });
+      expect(failedStatus.verdict).toBe('fail');
+      expect(failedStatus.checks.find((c) => c.id === 'status_ok')?.passed).toBe(false);
+
+      const withError = verifyTaskOutput(payment, { status: 'completed', error: 'timeout', outputSummary: 'Valid length text' });
+      expect(withError.verdict).toBe('fail');
+      expect(withError.checks.find((c) => c.id === 'status_ok')?.passed).toBe(false);
+
+      const wrongService = verifyTaskOutput(payment, {
+        status: 'completed',
+        serviceId: 'other-service',
+        outputSummary: 'Valid length summary here',
+      });
+      expect(wrongService.verdict).toBe('fail');
+      expect(wrongService.checks.find((c) => c.id === 'service_match')?.passed).toBe(false);
+
+      const emptySummary = verifyTaskOutput(payment, { status: 'completed', outputSummary: 'todo' });
+      expect(emptySummary.verdict).toBe('fail');
+      expect(emptySummary.checks.find((c) => c.id === 'content_present')?.passed).toBe(false);
+
+      const badTime = verifyTaskOutput(payment, {
+        status: 'completed',
+        evaluatedAt: 'not-a-date',
+        outputSummary: 'Valid length summary here',
+      });
+      expect(badTime.verdict).toBe('fail');
+      expect(badTime.checks.find((c) => c.id === 'timestamp_valid')?.passed).toBe(false);
+
+      const badBinding = verifyTaskOutput(payment, {
+        status: 'completed',
+        requestHash: 'b'.repeat(64),
+        outputSummary: 'Valid length summary here',
+      });
+      expect(badBinding.verdict).toBe('fail');
+      expect(badBinding.checks.find((c) => c.id === 'request_binding')?.passed).toBe(false);
     });
   });
 });

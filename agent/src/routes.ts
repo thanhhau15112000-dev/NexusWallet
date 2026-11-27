@@ -11,7 +11,9 @@ import {
   solToLamports,
   spentLamportsInWindow,
   type Policy,
+  MAX_DELIVERY_ATTEMPTS,
   validateTaskTransition,
+  verifyTaskOutput,
   computeReceiptHash,
   computeOutputHash,
   computeTaskAcceptanceMessage,
@@ -46,7 +48,9 @@ import {
 import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
 import {
+  canFundSeed,
   dispenseInitialSeed,
+  INITIAL_SEED_LAMPORTS,
   SeedTransferFailedError,
   SeedTransferOutcomeUnknownError,
 } from './funder.js';
@@ -341,6 +345,25 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? null,
   }));
 
+  // Readiness for operators: the RPC answers, and the Master Funder can still pay a seed. 503 when the RPC is down.
+  app.get('/api/health/ready', async (_req, reply) => {
+    const probe = ctx.funderProbe ? await ctx.funderProbe() : null;
+    const rpcOk = probe?.rpcOk ?? false;
+    return reply.status(rpcOk ? 200 : 503).send({
+      ok: rpcOk,
+      checkedAt: probe?.checkedAt ?? null,
+      rpc: { ok: rpcOk, latencyMs: probe?.latencyMs ?? null, error: probe ? probe.error : 'not configured' },
+      masterFunder: ctx.masterFunderPubkey
+        ? {
+            pubkey: ctx.masterFunderPubkey,
+            lamports: probe?.lamports ?? null,
+            canSeed: probe?.lamports == null ? null : canFundSeed(probe.lamports),
+          }
+        : null,
+      seedCapacity: ctx.seedLedger ? ctx.seedLedger.hasCapacity() : null,
+    });
+  });
+
   app.get('/api/actions/approve/:requestId', async (req, reply) => {
     const { requestId } = req.params as { requestId: string };
     const owner = (req.query as { owner?: string }).owner;
@@ -501,6 +524,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       }
     }
 
+    const seed = await seedAvailability(ctx);
+
     const currentPolicy = userCtx.store.getPolicy();
     const spentLamports = spentLamportsInWindow(userCtx.store.listRequests());
     const remainingLamports =
@@ -521,6 +546,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       ownerPinned: false,
       isAdmin,
       claimedInitialFunding: userCtx.store.hasClaimedInitialFunding(),
+      seed,
       masterFunder: isAdmin && ctx.masterFunderPubkey
         ? {
             pubkey: ctx.masterFunderPubkey,
@@ -556,6 +582,18 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   });
 
 const inFlightClaims = new Set<string>();
+
+  /**
+   * Whether a seed claim can succeed now, so the dashboard can say why before the owner clicks.
+   * An unreadable funder balance counts as available: the claim itself reports the real error.
+   */
+  async function seedAvailability(root: AppContext): Promise<{ available: boolean; reason: 'funder_unavailable' | 'funder_empty' | 'cap_reached' | null }> {
+    if (!root.masterFunder || !root.seedLedger) return { available: false, reason: 'funder_unavailable' };
+    if (!root.seedLedger.hasCapacity()) return { available: false, reason: 'cap_reached' };
+    const probe = root.funderProbe ? await root.funderProbe() : null;
+    if (probe?.lamports != null && !canFundSeed(probe.lamports)) return { available: false, reason: 'funder_empty' };
+    return { available: true, reason: null };
+  }
 
   app.post('/api/agent/claim-seed', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
@@ -597,6 +635,7 @@ const inFlightClaims = new Set<string>();
         reservation = ctx.seedLedger.reserve();
         if (reservation === null) {
           const retryAfterSeconds = ctx.seedLedger.retryAfterSeconds();
+          req.log.warn({ agent: userCtx.agentPubkey, retryAfterSeconds }, 'initial seed cap reached');
           return reply
             .status(429)
             .header('retry-after', String(retryAfterSeconds))
@@ -609,7 +648,7 @@ const inFlightClaims = new Set<string>();
         }
       }
 
-      const amountLamports = 100_000_000; // 0.1 SOL
+      const amountLamports = INITIAL_SEED_LAMPORTS;
       const result = await dispenseInitialSeed({
         connection: ctx.connection,
         funder: ctx.masterFunder,
@@ -640,6 +679,7 @@ const inFlightClaims = new Set<string>();
       ) {
         ctx.seedLedger.release(reservation);
       }
+      req.log.warn({ err, agent: userCtx.agentPubkey, masterFunder: ctx.masterFunderPubkey }, 'initial seed claim failed');
       if (err instanceof SeedTransferOutcomeUnknownError) {
         return reply.status(409).send({
           error: 'claim_outcome_unknown',
@@ -1148,16 +1188,104 @@ const inFlightClaims = new Set<string>();
       if (payment.delivery.resultHash !== body.resultHash) return reply.status(409).send({ error: 'output_already_submitted' });
       return { payment, reused: true };
     }
+    const rejected = payment.rejectedDeliveries ?? [];
+    if (rejected.some((item) => item.resultHash === body.resultHash)) {
+      return reply.status(409).send({ error: 'output_already_rejected' });
+    }
+    if (rejected.length >= MAX_DELIVERY_ATTEMPTS) {
+      return reply.status(409).send({ error: 'max_delivery_attempts_reached' });
+    }
+    const attempt = rejected.length + 1;
+    const verification = verifyTaskOutput(payment, body.resultPayload);
     const updatedPayment = { ...payment, delivery: {
+      attempt,
       resultHash: body.resultHash, resultPayload: body.resultPayload,
       workerSignature: body.workerSignature, submittedAt: new Date().toISOString(),
+      verification,
     } };
     userCtx.store.setPayment(updatedPayment, { allowOverwrite: true });
-    userCtx.audit.record('task_output_submitted', null, { taskId, paymentId, resultHash: body.resultHash });
+    userCtx.audit.record('task_output_submitted', null, {
+      taskId,
+      paymentId,
+      resultHash: body.resultHash,
+      attempt,
+      verificationVerdict: verification.verdict,
+    });
     return { payment: updatedPayment, reused: false };
   });
 
   const settlementInFlight = new Set<string>();
+  const RejectOutputBody = z.object({
+    reason: z.string().trim().max(240).optional(),
+  });
+
+  app.post('/api/tasks/:taskId/payments/:paymentId/reject', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
+    if (userCtx.store.isFrozen()) {
+      userCtx.audit.record('tx.blocked', null, { reason: 'agent_frozen', taskId, paymentId });
+      return reply.status(409).send({
+        error: 'AGENT_FROZEN',
+        code: 'AGENT_FROZEN',
+        message: 'agent is frozen by owner',
+        remediation: AGENT_ERROR_REMEDIATION.AGENT_FROZEN,
+      });
+    }
+    const parsed = RejectOutputBody.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'invalid_request' });
+    const body = parsed.data;
+
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
+    if (task.isClosed) return reply.status(400).send({ error: 'reject_not_allowed' });
+
+    const payment = userCtx.store.getPayment(taskId, paymentId);
+    if (!payment) return reply.status(404).send({ error: 'payment_not_found' });
+    if (payment.status !== 'held') {
+      return reply.status(400).send({ error: 'already_settled', message: `payment is ${payment.status}` });
+    }
+    const check = validateTaskTransition(task, { type: 'settle_payment', paymentId }, Math.floor(Date.now() / 1000));
+    if (!check.valid) return reply.status(400).send({ error: 'settle_rejected', message: check.error });
+    if (!payment.delivery) return reply.status(409).send({ error: 'output_not_submitted' });
+
+    const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+    const [escrowPda] = deriveEscrowPda(taskPda, paymentId);
+    if (settlementInFlight.has(escrowPda.toBase58())) {
+      return reply.status(409).send({ error: 'settlement_in_progress' });
+    }
+
+    const rejected = payment.rejectedDeliveries ?? [];
+    const rejectedEntry = {
+      attempt: payment.delivery.attempt ?? (rejected.length + 1),
+      resultHash: payment.delivery.resultHash,
+      resultPayload: payment.delivery.resultPayload,
+      workerSignature: payment.delivery.workerSignature,
+      submittedAt: payment.delivery.submittedAt,
+      verification: payment.delivery.verification,
+      rejectReason: body.reason || undefined,
+      rejectedAt: new Date().toISOString(),
+    };
+    const updatedPayment = {
+      ...payment,
+      delivery: undefined,
+      rejectedDeliveries: [...rejected, rejectedEntry],
+    };
+    userCtx.store.setPayment(updatedPayment, { allowOverwrite: true });
+    userCtx.audit.record('task_output_rejected', null, {
+      taskId,
+      paymentId,
+      resultHash: rejectedEntry.resultHash,
+      attempt: rejectedEntry.attempt,
+      reason: rejectedEntry.rejectReason ?? null,
+    });
+    return {
+      payment: updatedPayment,
+      rejected: rejectedEntry,
+      attemptsRemaining: Math.max(0, MAX_DELIVERY_ATTEMPTS - updatedPayment.rejectedDeliveries.length),
+    };
+  });
+
   const SettlePaymentBody = z.object({
     resultHash: z.string().trim().min(1),
     workerPubkey: PubkeySchema,
@@ -1215,6 +1343,10 @@ const inFlightClaims = new Set<string>();
     if (!payment.delivery) return reply.status(409).send({ error: 'output_not_submitted' });
     if (payment.delivery.resultHash !== body.resultHash || computeOutputHash(payment.delivery.resultPayload) !== body.resultHash) {
       return reply.status(409).send({ error: 'output_hash_mismatch' });
+    }
+    const verification = payment.delivery.verification ?? verifyTaskOutput(payment, payment.delivery.resultPayload);
+    if (verification.verdict !== 'pass') {
+      return reply.status(409).send({ error: 'output_verification_failed', verification });
     }
     if (!body.ownerSignature) return reply.status(403).send({ error: 'owner_acceptance_required' });
 
@@ -1423,6 +1555,55 @@ const inFlightClaims = new Set<string>();
     return { receipt: updatedReceipt };
   });
 
+  app.post('/api/tasks/:taskId/payments/:paymentId/refund-expired', async (req, reply) => {
+    const userCtx = resolveUserContext(ctx, req);
+    const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
+    const body = z.object({ txSignature: z.string().trim().min(32).optional() }).parse(req.body ?? {});
+    const task = userCtx.store.getTask(taskId);
+    if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
+    if (task.isClosed) return reply.status(400).send({ error: 'refund_rejected', message: 'task is closed' });
+
+    const payment = userCtx.store.getPayment(taskId, paymentId);
+    if (!payment) return reply.status(404).send({ error: 'payment_not_found' });
+    if (payment.status === 'refunded') return { payment };
+    if (payment.status !== 'held') {
+      return reply.status(400).send({ error: 'already_settled', message: `payment is ${payment.status}` });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (now < task.expiry) {
+      return reply.status(409).send({ error: 'task_not_expired' });
+    }
+
+    const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+    const [escrowPda] = deriveEscrowPda(taskPda, paymentId);
+    if (settlementInFlight.has(escrowPda.toBase58())) {
+      return reply.status(409).send({ error: 'settlement_in_progress' });
+    }
+
+    if (task.isSimulated === false) {
+      if (!body.txSignature || !await hasConfirmedSignature(userCtx, body.txSignature)) {
+        return reply.status(409).send({ error: 'refund_not_confirmed' });
+      }
+      if (await userCtx.connection.getAccountInfo(escrowPda, 'confirmed')) {
+        return reply.status(409).send({ error: 'onchain_escrow_not_closed' });
+      }
+    }
+
+    const updatedPayment = { ...payment, status: 'refunded' as const, refundTxSignature: body.txSignature };
+    userCtx.store.setPayment(updatedPayment, { allowOverwrite: true });
+    userCtx.audit.record('task_escrow_refunded_expired', null, {
+      taskId,
+      paymentId,
+      escrowPda: escrowPda.toBase58(),
+      amountLamports: payment.amountLamports,
+      txSignature: body.txSignature,
+      isSimulated: task.isSimulated !== false,
+    });
+    return { payment: updatedPayment };
+  });
+
   app.post('/api/tasks/:taskId/refund', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const { taskId } = req.params as { taskId: string };
@@ -1464,7 +1645,10 @@ const inFlightClaims = new Set<string>();
     }
 
     const latestTask = userCtx.store.getTask(taskId)!;
-    const remainingLamports = Math.max(0, latestTask.budgetLamports - latestTask.spentLamports);
+    const refundedEscrowTokens = latestTask.mint
+      ? userCtx.store.getPayments(taskId).filter((p) => p.status === 'refunded').reduce((sum, p) => sum + p.amountLamports, 0)
+      : 0;
+    const remainingLamports = Math.max(0, latestTask.budgetLamports - latestTask.spentLamports + refundedEscrowTokens);
     const updated = { ...latestTask, status: 'completed' as const, isClosed: true };
     userCtx.store.setTask(updated, { allowOverwrite: true });
 
@@ -1481,6 +1665,7 @@ const inFlightClaims = new Set<string>();
     paymentId: z.string().trim().min(1).max(64).default('payment-0'),
     serviceId: z.string().trim().min(1).max(64),
     payload: z.record(z.unknown()).default({}),
+    scenario: z.enum(['valid', 'invalid_schema', 'wrong_service']).default('valid'),
   });
 
   app.post('/api/tasks/mock-service/run', async (req) => {
@@ -1497,12 +1682,36 @@ const inFlightClaims = new Set<string>();
       resultHash: 'evaluating',
       amountLamports: 0,
     });
-    const resultPayload = {
-      status: 'completed',
-      serviceId: body.serviceId,
-      evaluatedAt: new Date().toISOString(),
-      outputSummary: `Service ${body.serviceId} executed computation successfully`,
-    };
+
+    let resultPayload: Record<string, unknown>;
+    switch (body.scenario) {
+      case 'invalid_schema':
+        resultPayload = {
+          status: 'failed',
+          serviceId: body.serviceId,
+          evaluatedAt: 'invalid-timestamp',
+          outputSummary: '',
+          error: 'worker_output_incomplete',
+        };
+        break;
+      case 'wrong_service':
+        resultPayload = {
+          status: 'completed',
+          serviceId: body.serviceId === 'unrelated-service' ? 'mismatched-service' : 'unrelated-service',
+          evaluatedAt: new Date().toISOString(),
+          outputSummary: 'Output generated for an unrelated service instead of the requested service',
+        };
+        break;
+      case 'valid':
+      default:
+        resultPayload = {
+          status: 'completed',
+          serviceId: body.serviceId,
+          evaluatedAt: new Date().toISOString(),
+          outputSummary: `Service ${body.serviceId} executed computation successfully`,
+        };
+        break;
+    }
     const resultHash = computeOutputHash(resultPayload);
 
     const canonicalReceiptMessage = `NEXUS_RECEIPT_V1:${body.taskId}:${body.paymentId}:${resultHash}`;
@@ -1513,6 +1722,7 @@ const inFlightClaims = new Set<string>();
     const workerSignature = bs58.encode(signatureBytes);
 
     return {
+      scenario: body.scenario,
       serviceId: body.serviceId,
       workerPubkey,
       workerSignature,

@@ -40,12 +40,45 @@ export const TaskCapabilityRecordSchema = z.object({
 
 export type TaskCapabilityRecord = z.infer<typeof TaskCapabilityRecordSchema>;
 
+export const MAX_DELIVERY_ATTEMPTS = 3;
+
+export const OutputVerificationCheckSchema = z.object({
+  id: z.string().min(1),
+  passed: z.boolean(),
+  detail: z.string().min(1),
+});
+
+export type OutputVerificationCheck = z.infer<typeof OutputVerificationCheckSchema>;
+
+export const OutputVerificationSchema = z.object({
+  verdict: z.enum(['pass', 'fail']),
+  checks: z.array(OutputVerificationCheckSchema).min(1),
+  checkedAt: z.string().datetime(),
+});
+
+export type OutputVerification = z.infer<typeof OutputVerificationSchema>;
+
 export const TaskDeliverySchema = z.object({
+  attempt: z.number().int().positive().optional(),
   resultHash: z.string().regex(/^[0-9a-f]{64}$/),
   resultPayload: z.record(z.unknown()),
   workerSignature: z.string().min(1),
   submittedAt: z.string().datetime(),
+  verification: OutputVerificationSchema.optional(),
 });
+
+export const RejectedDeliverySchema = z.object({
+  attempt: z.number().int().positive(),
+  resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+  resultPayload: z.record(z.unknown()),
+  workerSignature: z.string().min(1),
+  submittedAt: z.string().datetime(),
+  verification: OutputVerificationSchema.optional(),
+  rejectReason: z.string().max(240).optional(),
+  rejectedAt: z.string().datetime(),
+});
+
+export type RejectedDelivery = z.infer<typeof RejectedDeliverySchema>;
 
 export const TaskPaymentRecordSchema = z.object({
   taskId: z.string().trim().min(1).max(64),
@@ -60,6 +93,8 @@ export const TaskPaymentRecordSchema = z.object({
   isSimulated: z.boolean().optional(),
   createdAt: z.string().datetime().optional(),
   delivery: TaskDeliverySchema.optional(),
+  rejectedDeliveries: z.array(RejectedDeliverySchema).optional(),
+  refundTxSignature: z.string().optional(),
 });
 
 export type TaskPaymentRecord = z.infer<typeof TaskPaymentRecordSchema>;
@@ -87,6 +122,147 @@ export type TaskReceiptRecord = z.infer<typeof TaskReceiptRecordSchema>;
 /** Bind the receipt to the actual JSON output presented for owner review. */
 export function computeOutputHash(resultPayload: Record<string, unknown>): string {
   return toHex(sha256Sync(new TextEncoder().encode(`NEXUS_TASK_OUTPUT_V1:${JSON.stringify(resultPayload)}`)));
+}
+
+const VERIFIER_META_KEYS = new Set(['status', 'serviceId', 'evaluatedAt', 'error', 'requestHash']);
+const VALID_COMPLETION_STATUSES = new Set(['completed', 'ok', 'success']);
+const PLACEHOLDER_OUTPUT_PATTERN = /^(todo|tbd|n\/a|null|undefined|error|failed)$/i;
+
+function isNonEmptyContentValue(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === 'object') return Object.keys(value).length > 0;
+  return false;
+}
+
+/**
+ * Deterministic verification gate for submitted task output.
+ * Evaluates structural/contractual invariants without subjective LLM judgment.
+ */
+export function verifyTaskOutput(
+  payment: Pick<TaskPaymentRecord, 'serviceId' | 'requestHash'>,
+  resultPayload: Record<string, unknown>,
+  checkedAt = new Date().toISOString(),
+): OutputVerification {
+  const checks: OutputVerificationCheck[] = [];
+
+  const hasErrorField =
+    'error' in resultPayload
+    && resultPayload.error !== undefined
+    && resultPayload.error !== null
+    && resultPayload.error !== ''
+    && resultPayload.error !== false;
+  if (hasErrorField) {
+    checks.push({
+      id: 'status_ok',
+      passed: false,
+      detail: `Payload reported error: ${String(resultPayload.error)}`,
+    });
+  } else if ('status' in resultPayload) {
+    const statusOk =
+      typeof resultPayload.status === 'string'
+      && VALID_COMPLETION_STATUSES.has(resultPayload.status.trim().toLowerCase());
+    checks.push({
+      id: 'status_ok',
+      passed: statusOk,
+      detail: statusOk
+        ? `Status "${String(resultPayload.status)}" indicates completion`
+        : `Expected completed/ok/success status, got "${String(resultPayload.status)}"`,
+    });
+  } else {
+    checks.push({
+      id: 'status_ok',
+      passed: true,
+      detail: 'No failure status or error reported',
+    });
+  }
+
+  if ('serviceId' in resultPayload) {
+    const serviceOk =
+      typeof resultPayload.serviceId === 'string' && resultPayload.serviceId === payment.serviceId;
+    checks.push({
+      id: 'service_match',
+      passed: serviceOk,
+      detail: serviceOk
+        ? `Matched service "${payment.serviceId}"`
+        : `Expected service "${payment.serviceId}", got "${String(resultPayload.serviceId)}"`,
+    });
+  } else {
+    checks.push({
+      id: 'service_match',
+      passed: true,
+      detail: `No conflicting serviceId field; bound to "${payment.serviceId}"`,
+    });
+  }
+
+  if ('outputSummary' in resultPayload) {
+    const summary = typeof resultPayload.outputSummary === 'string' ? resultPayload.outputSummary.trim() : '';
+    const summaryOk = summary.length >= 8 && !PLACEHOLDER_OUTPUT_PATTERN.test(summary);
+    checks.push({
+      id: 'content_present',
+      passed: summaryOk,
+      detail: summaryOk
+        ? `Valid outputSummary (${summary.length} chars)`
+        : 'outputSummary must be at least 8 non-placeholder characters',
+    });
+  } else {
+    const hasContent = Object.entries(resultPayload).some(
+      ([key, value]) => !VERIFIER_META_KEYS.has(key) && isNonEmptyContentValue(value),
+    );
+    checks.push({
+      id: 'content_present',
+      passed: hasContent,
+      detail: hasContent
+        ? 'Non-empty result payload content present'
+        : 'Payload contains no non-empty result content',
+    });
+  }
+
+  if ('evaluatedAt' in resultPayload) {
+    const timestampOk =
+      typeof resultPayload.evaluatedAt === 'string'
+      && resultPayload.evaluatedAt.trim().length > 0
+      && !Number.isNaN(Date.parse(resultPayload.evaluatedAt));
+    checks.push({
+      id: 'timestamp_valid',
+      passed: timestampOk,
+      detail: timestampOk
+        ? `Valid ISO timestamp (${resultPayload.evaluatedAt})`
+        : `Invalid evaluatedAt timestamp "${String(resultPayload.evaluatedAt)}"`,
+    });
+  } else {
+    checks.push({
+      id: 'timestamp_valid',
+      passed: true,
+      detail: 'No evaluatedAt timestamp supplied to validate',
+    });
+  }
+
+  if ('requestHash' in resultPayload) {
+    const bindingOk =
+      typeof resultPayload.requestHash === 'string' && resultPayload.requestHash === payment.requestHash;
+    checks.push({
+      id: 'request_binding',
+      passed: bindingOk,
+      detail: bindingOk
+        ? 'Payload requestHash matches escrow requestHash'
+        : 'Payload requestHash does not match escrow requestHash',
+    });
+  } else {
+    checks.push({
+      id: 'request_binding',
+      passed: true,
+      detail: 'Escrow requestHash bound via owner acceptance signature',
+    });
+  }
+
+  return {
+    verdict: checks.every((check) => check.passed) ? 'pass' : 'fail',
+    checks,
+    checkedAt,
+  };
 }
 
 // ----------------------------------------------------------- state machine
