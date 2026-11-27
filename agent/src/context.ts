@@ -89,7 +89,7 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
     const userSaltPath = resolve(userDir, 'audit-salt');
 
     // If this is the admin and legacy state exists, migrate legacy files to admin directory
-    const isAdmin = ownerPubkey === config.adminPubkey;
+    const isAdmin = Boolean(config.adminPubkey) && ownerPubkey === config.adminPubkey;
     if (isAdmin) {
       if (!existsSync(userStatePath) && existsSync(config.statePath)) {
         copyFileSync(config.statePath, userStatePath);
@@ -134,8 +134,42 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
     return userCtx;
   }
 
-  const defaultOwner = config.adminPubkey;
-  const defaultUserCtx = getUserContext(defaultOwner);
+  function createDefaultContext(): AppContext {
+    if (config.adminPubkey) return getUserContext(config.adminPubkey);
+    const defaultDir = resolve(config.dataDir, '_default');
+    mkdirSync(defaultDir, { recursive: true });
+    const key = loadOrCreateAgentKey(resolve(defaultDir, 'agent-keystore.json'), config.AGENT_KEYSTORE_PASSPHRASE);
+    const audit = new AuditLog(
+      resolve(defaultDir, 'audit.jsonl'),
+      resolve(defaultDir, 'audit-salt'),
+      config.AUDIT_ENCRYPTION_PASSPHRASE,
+      (event, requestId, detail) => {
+        if (log && FAILURE_EVENTS.has(event)) log.warn({ event, requestId, owner: null, error: errorOf(detail) }, event);
+      },
+    );
+    const store = new Store(resolve(defaultDir, 'state.json'), config.AGENT_ID, config.MAX_REQUESTS_KEPT);
+    if (key.created) {
+      audit.record('agent.keypair_created', null, { publicKey: key.publicKey, owner: null });
+    }
+    return {
+      config,
+      store,
+      audit,
+      model,
+      connection,
+      signer: keypairFromSecret(key.secretKey),
+      agentPubkey: key.publicKey,
+      ownerPinned: false,
+      sessions,
+      mockWorker,
+      merchantWorker,
+      telegram,
+      getUserContext,
+      rpcProbe,
+    };
+  }
+
+  const defaultUserCtx = createDefaultContext();
 
   return {
     ...defaultUserCtx,

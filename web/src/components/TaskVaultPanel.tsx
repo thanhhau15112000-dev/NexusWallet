@@ -143,11 +143,6 @@ export function TaskVaultPanel(props: {
     void loadTasks();
   }, [props.owner]);
 
-  // A task bound to one worker pays only that worker, so the payment form starts from it.
-  useEffect(() => {
-    if (detail?.task.allowedWorker) setPaymentWorker(detail.task.allowedWorker);
-  }, [detail?.task.taskId, detail?.task.allowedWorker]);
-
   useEffect(() => {
     const timer = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 15_000);
     return () => clearInterval(timer);
@@ -198,15 +193,9 @@ export function TaskVaultPanel(props: {
       props.onToast({ tone: 'warn', text: dict.taskVault.toasts.connectOwnerFirst });
       return;
     }
-    const budgetSol = Number(newBudgetSol);
-    const capSol = Number(newCapSol);
     const hours = Number(newHours);
-    if (!budgetSol || budgetSol <= 0 || !capSol || capSol <= 0) {
-      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.enterValidSol });
-      return;
-    }
-    if (capSol > budgetSol) {
-      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.capExceedsBudget });
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 168) {
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.invalidExpiry });
       return;
     }
     const mint = newAsset ? new PublicKey(newAsset) : undefined;
@@ -216,8 +205,16 @@ export function TaskVaultPanel(props: {
       return;
     }
     const decimals = mint ? balance!.decimals : 9;
-    const budgetUnits = Math.round(budgetSol * 10 ** decimals);
-    const capUnits = Math.round(capSol * 10 ** decimals);
+    const budgetUnits = parseDecimalToBaseUnits(newBudgetSol, decimals);
+    const capUnits = parseDecimalToBaseUnits(newCapSol, decimals);
+    if (budgetUnits === null || capUnits === null) {
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.enterValidSol });
+      return;
+    }
+    if (capUnits > budgetUnits) {
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.capExceedsBudget });
+      return;
+    }
     if (submitOnchain && balance && BigInt(budgetUnits) > balance.baseUnits) {
       props.onToast({
         tone: 'warn',
@@ -334,8 +331,8 @@ export function TaskVaultPanel(props: {
   const handleExecutePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!detail) return;
-    const amountSol = Number(paymentAmountSol);
-    if (!amountSol || amountSol <= 0) {
+    const amountUnits = parseDecimalToBaseUnits(paymentAmountSol, assetOf(detail.task).decimals);
+    if (amountUnits === null) {
       props.onToast({ tone: 'warn', text: dict.taskVault.toasts.enterValidAmount });
       return;
     }
@@ -379,7 +376,7 @@ export function TaskVaultPanel(props: {
         paymentId,
         worker,
         serviceId: paymentService.trim(),
-        amountLamports: Math.round(amountSol * 10 ** assetOf(detail.task).decimals),
+        amountLamports: amountUnits,
         requestHash,
       });
       props.onToast({
@@ -645,7 +642,13 @@ export function TaskVaultPanel(props: {
   const hasHeldEscrow = Boolean(detail?.payments.some((p) => p.status === 'held'));
 
   // A closed task's vault is drained back to the owner, so nothing remains in it.
-  const unspentLamports = detail ? Math.max(0, detail.task.budgetLamports - detail.task.spentLamports) : 0;
+  // For SPL tasks, refunded expired escrows never left the vault ATA and return on close.
+  const refundedEscrowTokens = detail?.task.mint
+    ? detail.payments.filter((p) => p.status === 'refunded').reduce((sum, p) => sum + p.amountLamports, 0)
+    : 0;
+  const unspentLamports = detail
+    ? Math.max(0, detail.task.budgetLamports - detail.task.spentLamports + refundedEscrowTokens)
+    : 0;
   const vaultRemainingLamports = detail?.task.isClosed ? 0 : unspentLamports;
   const refundedLamports = detail?.task.isClosed ? unspentLamports : 0;
 
@@ -1373,6 +1376,17 @@ export function TaskVaultPanel(props: {
       </div>
     </div>
   );
+}
+
+/** Parse a positive decimal string into exact integer base units without float rounding drift. */
+function parseDecimalToBaseUnits(raw: string, decimals: number): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) return null;
+  const [whole = '0', frac = ''] = trimmed.split('.');
+  if (frac.length > decimals) return null;
+  const baseUnits = BigInt(whole) * 10n ** BigInt(decimals) + BigInt(frac.padEnd(decimals, '0'));
+  if (baseUnits <= 0n || baseUnits > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return Number(baseUnits);
 }
 
 /** Base units as an exact decimal string, trailing zeros dropped. */

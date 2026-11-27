@@ -5,13 +5,12 @@ import Fastify from 'fastify';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ZodError } from 'zod';
-import { loadConfig, trustProxySetting } from './config.js';
+import { isOriginAllowed, loadConfig, trustProxySetting } from './config.js';
 import { createContext } from './context.js';
 import { registerAuthHook } from './auth-hook.js';
 import { registerRateLimit } from './rate-limit.js';
 import { registerRoutes } from './routes.js';
 
-const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 const CHROME_EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/i;
 
 async function main(): Promise<void> {
@@ -30,12 +29,18 @@ async function main(): Promise<void> {
   await app.register(cors, {
     origin(origin, cb) {
       if (!origin) return cb(null, true);
-      const allowed = config.authRequired
-        ? config.allowedOrigins.includes(origin) || CHROME_EXTENSION_ORIGIN.test(origin)
-        : LOCAL_ORIGIN.test(origin) || config.allowedOrigins.includes(origin);
+      const allowed = isOriginAllowed(origin, config) || (config.authRequired && CHROME_EXTENSION_ORIGIN.test(origin));
       cb(null, allowed);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  });
+
+  app.addHook('onSend', async (_req, reply, payload) => {
+    if (!reply.hasHeader('x-content-type-options')) reply.header('x-content-type-options', 'nosniff');
+    if (!reply.hasHeader('x-frame-options')) reply.header('x-frame-options', 'DENY');
+    if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'no-referrer');
+    if (!reply.hasHeader('permissions-policy')) reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+    return payload;
   });
 
   const ctx = createContext(config, app.log);
@@ -49,7 +54,11 @@ async function main(): Promise<void> {
       return reply.status(400).send({ error: 'invalid_request', issues: error.issues });
     }
     app.log.error({ err: error }, 'unhandled error');
-    const message = error instanceof Error ? error.message : 'unexpected error';
+    const message = config.authRequired
+      ? 'internal server error'
+      : error instanceof Error
+        ? error.message
+        : 'unexpected error';
     return reply.status(500).send({ error: 'internal_error', message });
   });
 

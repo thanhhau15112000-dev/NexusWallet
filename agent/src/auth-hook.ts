@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { LOCAL_ORIGIN_REGEX } from './config.js';
+import { isOriginAllowed } from './config.js';
 import type { AppContext } from './context.js';
 import { mcpOwnerFor } from './mcp-token.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
@@ -39,13 +39,7 @@ export function registerAuthHook(app: FastifyInstance, ctx: AppContext): void {
     const pathname = req.url.split('?', 1)[0] ?? req.url;
     const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     const isPublicAction = pathname.startsWith(PUBLIC_ACTION_PATH_PREFIX);
-    if (
-      mutating &&
-      !isPublicAction &&
-      req.headers.origin &&
-      !config.allowedOrigins.includes(req.headers.origin) &&
-      !LOCAL_ORIGIN_REGEX.test(req.headers.origin)
-    ) {
+    if (mutating && !isPublicAction && !isOriginAllowed(req.headers.origin, config)) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
     if (PUBLIC_AUTH_PATHS.has(pathname) || isPublicAction) return;

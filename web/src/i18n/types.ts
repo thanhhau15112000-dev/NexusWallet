@@ -499,6 +499,7 @@ export type TranslationDictionary = {
     toasts: {
       connectOwnerFirst: string;
       enterValidSol: string;
+      invalidExpiry: string;
       noOwnerTokens: string;
       insufficientOwnerBalance: string;
       capExceedsBudget: string;

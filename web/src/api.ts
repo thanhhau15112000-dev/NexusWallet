@@ -254,7 +254,7 @@ export const api = {
   requests: () => request<{ requests: PaymentRequest[] }>('/api/requests'),
 
   approve: (id: string, signature: string, signerPubkey: string) =>
-    request<{ request: PaymentRequest }>(`/api/requests/${id}/approve`, {
+    request<{ request: PaymentRequest }>(`/api/requests/${encodeURIComponent(id)}/approve`, {
       method: 'POST',
       body: JSON.stringify({ signature, signerPubkey }),
     }),
@@ -270,7 +270,10 @@ export const api = {
   },
 
   cancelRequest: (id: string) =>
-    request<{ request: PaymentRequest }>(`/api/requests/${id}/cancel`, { method: 'POST', body: JSON.stringify({}) }),
+    request<{ request: PaymentRequest }>(`/api/requests/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 
   audit: (limit = 60) => request<{ entries: AuditEntryView[] }>(`/api/audit?limit=${limit}`),
   tasks: () => request<{ tasks: TaskCapabilityRecord[] }>('/api/tasks'),
@@ -279,7 +282,7 @@ export const api = {
       task: TaskCapabilityRecord;
       payments: TaskPaymentRecord[];
       receipts: TaskReceiptRecord[];
-    }>(`/api/tasks/${taskId}`),
+    }>(`/api/tasks/${encodeURIComponent(taskId)}`),
   createTask: (input: {
     taskId: string;
     budgetLamports: number;
@@ -309,7 +312,7 @@ export const api = {
     },
   ) =>
     request<{ task: TaskCapabilityRecord; payment: TaskPaymentRecord }>(
-      `/api/tasks/${taskId}/payments`,
+      `/api/tasks/${encodeURIComponent(taskId)}/payments`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
   settleTaskPayment: (
@@ -325,7 +328,7 @@ export const api = {
     },
   ) =>
     request<{ payment: TaskPaymentRecord; receipt: TaskReceiptRecord }>(
-      `/api/tasks/${taskId}/payments/${paymentId}/settle`,
+      `/api/tasks/${encodeURIComponent(taskId)}/payments/${encodeURIComponent(paymentId)}/settle`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
   submitTaskOutput: (taskId: string, paymentId: string, input: {
@@ -334,32 +337,32 @@ export const api = {
     workerPubkey: string;
     workerSignature: string;
   }) => request<{ payment: TaskPaymentRecord; reused: boolean }>(
-    `/api/tasks/${taskId}/payments/${paymentId}/output`,
+    `/api/tasks/${encodeURIComponent(taskId)}/payments/${encodeURIComponent(paymentId)}/output`,
     { method: 'POST', body: JSON.stringify(input) },
   ),
   rejectTaskOutput: (taskId: string, paymentId: string, reason?: string) =>
     request<{ payment: TaskPaymentRecord; attemptsRemaining: number }>(
-      `/api/tasks/${taskId}/payments/${paymentId}/reject`,
+      `/api/tasks/${encodeURIComponent(taskId)}/payments/${encodeURIComponent(paymentId)}/reject`,
       { method: 'POST', body: JSON.stringify({ reason }) },
     ),
   refundExpiredEscrow: (taskId: string, paymentId: string, txSignature?: string) =>
     request<{ payment: TaskPaymentRecord }>(
-      `/api/tasks/${taskId}/payments/${paymentId}/refund-expired`,
+      `/api/tasks/${encodeURIComponent(taskId)}/payments/${encodeURIComponent(paymentId)}/refund-expired`,
       { method: 'POST', body: JSON.stringify({ txSignature }) },
     ),
   closeTaskReceipt: (taskId: string, paymentId: string, txSignature: string) =>
     request<{ receipt: TaskReceiptRecord }>(
-      `/api/tasks/${taskId}/receipts/${paymentId}/close`,
+      `/api/tasks/${encodeURIComponent(taskId)}/receipts/${encodeURIComponent(paymentId)}/close`,
       { method: 'POST', body: JSON.stringify({ txSignature }) },
     ),
   revokeTask: (taskId: string, txSignature?: string) =>
-    request<{ task: TaskCapabilityRecord }>(`/api/tasks/${taskId}/revoke`, {
+    request<{ task: TaskCapabilityRecord }>(`/api/tasks/${encodeURIComponent(taskId)}/revoke`, {
       method: 'POST',
       body: JSON.stringify({ txSignature }),
     }),
   refundTask: (taskId: string, txSignature?: string) =>
     request<{ task: TaskCapabilityRecord; refundedLamports: number }>(
-      `/api/tasks/${taskId}/refund`,
+      `/api/tasks/${encodeURIComponent(taskId)}/refund`,
       { method: 'POST', body: JSON.stringify({ txSignature }) },
     ),
   runTaskWorker: (taskId: string, paymentId: string, scenario: 'valid' | 'invalid_schema') =>

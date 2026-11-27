@@ -580,6 +580,7 @@ export const en: TranslationDictionary = {
     toasts: {
       connectOwnerFirst: 'Connect your owner wallet first',
       enterValidSol: 'Enter valid positive amounts',
+      invalidExpiry: 'Enter an expiry between 0.05 and 168 hours',
       noOwnerTokens: 'The owner wallet holds no {unit} to fund this task',
       insufficientOwnerBalance: 'The budget exceeds the owner wallet balance of {balance} {unit}',
       capExceedsBudget: 'Per-payment cap cannot exceed budget',

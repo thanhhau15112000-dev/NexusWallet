@@ -580,6 +580,7 @@ export const vi: TranslationDictionary = {
     toasts: {
       connectOwnerFirst: 'Hãy kết nối ví chủ sở hữu trước',
       enterValidSol: 'Nhập số lượng dương hợp lệ',
+      invalidExpiry: 'Nhập thời hạn hiệu lực từ 0.05 đến 168 giờ',
       noOwnerTokens: 'Ví chủ sở hữu không có {unit} để nạp cho tác vụ này',
       insufficientOwnerBalance: 'Ngân sách vượt số dư ví chủ sở hữu ({balance} {unit})',
       capExceedsBudget: 'Hạn mức mỗi lần chi không thể vượt quá tổng ngân sách',

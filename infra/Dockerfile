@@ -29,10 +29,13 @@ ENV HOST=0.0.0.0
 ENV PORT=8787
 ENV AGENT_DATA_DIR=/data
 
+RUN mkdir -p /data && chown -R node:node /app /data
+
 # Keystore, audit log and request state live on a volume, so a restart resumes
 # with the same agent wallet.
 VOLUME ["/data"]
 EXPOSE 8787
 
+USER node
 WORKDIR /app/agent
 CMD ["pnpm", "start"]

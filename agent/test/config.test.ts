@@ -115,4 +115,17 @@ describe('loadConfig - loopback and local runtime', () => {
     process.env.ADMIN_PUBKEY = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
     expect(loadConfig().adminPubkey).toBe('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin');
   });
+
+  it('does not fall back to a hardcoded adminPubkey in hosted mode', () => {
+    delete process.env.ADMIN_PUBKEY;
+    delete process.env.OWNER_PUBKEY;
+    process.env.DEPLOYMENT_MODE = 'hosted';
+    process.env.HOST = '0.0.0.0';
+    process.env.WEB_ORIGIN = 'https://app.example.com';
+    process.env.SESSION_COOKIE_SECRET = 'a'.repeat(32);
+    process.env.AGENT_KEYSTORE_PASSPHRASE = 'b'.repeat(32);
+    process.env.AUDIT_ENCRYPTION_PASSPHRASE = 'c'.repeat(32);
+
+    expect(loadConfig().adminPubkey).toBe('');
+  });
 });

@@ -9,6 +9,7 @@
  * longer land.
  */
 import { randomUUID } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import {
   X402_PAYMENT_HEADER,
@@ -315,7 +316,7 @@ function paymentHeaderFor(request: PaymentRequest): string {
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-  const [a, b] = parts as [number, number, number, number];
+  const [a, b, c] = parts as [number, number, number, number];
   return (
     a === 0 ||
     a === 10 ||
@@ -323,9 +324,40 @@ function isPrivateIpv4(ip: string): boolean {
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0 && c === 0) ||
     (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
     a >= 224
   );
+}
+
+function isPrivateIp(rawIp: string): boolean {
+  const ip = rawIp.trim().toLowerCase().replace(/^\[|\]$/g, '').split('%')[0] ?? '';
+  const ipVersion = isIP(ip);
+  if (ipVersion === 4) return isPrivateIpv4(ip);
+  if (ipVersion === 6) {
+    if (ip === '::' || ip === '::1') return true;
+    if (ip.startsWith('::ffff:')) {
+      const mapped = ip.slice('::ffff:'.length);
+      if (isIP(mapped) === 4) return isPrivateIpv4(mapped);
+      const hexParts = mapped.split(':');
+      if (hexParts.length === 2) {
+        const hi = Number.parseInt(hexParts[0]!, 16);
+        const lo = Number.parseInt(hexParts[1]!, 16);
+        if (Number.isInteger(hi) && Number.isInteger(lo)) {
+          return isPrivateIpv4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
+        }
+      }
+      return true;
+    }
+    const firstHextet = Number.parseInt(ip.split(':')[0] || '0', 16);
+    if ((firstHextet & 0xfe00) === 0xfc00) return true;
+    if ((firstHextet & 0xffc0) === 0xfe80) return true;
+    if ((firstHextet & 0xffc0) === 0xfec0) return true;
+    if ((firstHextet & 0xff00) === 0xff00) return true;
+    return false;
+  }
+  return true;
 }
 
 function isPrivateOrLocalHostname(rawHost: string): boolean {
@@ -339,27 +371,7 @@ function isPrivateOrLocalHostname(rawHost: string): boolean {
   ) {
     return true;
   }
-  const ipVersion = isIP(host);
-  if (ipVersion === 4) return isPrivateIpv4(host);
-  if (ipVersion === 6) {
-    if (host === '::' || host === '::1') return true;
-    if (host.startsWith('::ffff:')) {
-      const mapped = host.slice('::ffff:'.length);
-      if (isIP(mapped) === 4) return isPrivateIpv4(mapped);
-      const hexParts = mapped.split(':');
-      if (hexParts.length === 2) {
-        const hi = Number.parseInt(hexParts[0]!, 16);
-        const lo = Number.parseInt(hexParts[1]!, 16);
-        if (Number.isInteger(hi) && Number.isInteger(lo)) {
-          return isPrivateIpv4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
-        }
-      }
-      return true;
-    }
-    const firstHextet = Number.parseInt(host.split(':')[0] || '0', 16);
-    if ((firstHextet & 0xfe00) === 0xfc00) return true;
-    if ((firstHextet & 0xffc0) === 0xfe80) return true;
-  }
+  if (isIP(host) !== 0) return isPrivateIp(host);
   return false;
 }
 
@@ -375,6 +387,33 @@ export function assertSafeExternalHttpUrl(rawUrl: string): URL {
   }
   if (isPrivateOrLocalHostname(parsed.hostname)) {
     throw new Error(`Refusing request to local or private host: ${parsed.hostname}`);
+  }
+  return parsed;
+}
+
+export const X402_FETCH_TIMEOUT_MS = 15_000;
+export const X402_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Resolve DNS before connecting so hostnames resolving to loopback, link-local, or private IP
+ * ranges cannot bypass the string-level SSRF guard.
+ */
+export async function assertSafeExternalHttpUrlResolved(
+  rawUrl: string,
+  lookupFn: typeof lookup = lookup,
+): Promise<URL> {
+  const parsed = assertSafeExternalHttpUrl(rawUrl);
+  const host = parsed.hostname.trim().replace(/^\[|\]$/g, '');
+  if (isIP(host) === 0) {
+    let records: Array<{ address: string }>;
+    try {
+      records = await lookupFn(host, { all: true, verbatim: true });
+    } catch {
+      throw new Error(`Could not resolve target host: ${parsed.hostname}`);
+    }
+    if (!records.length || records.some((record) => isPrivateIp(record.address))) {
+      throw new Error(`Refusing request to local or private host: ${parsed.hostname}`);
+    }
   }
   return parsed;
 }
@@ -396,8 +435,45 @@ export type X402FetchResult = {
   error?: X402Error;
 };
 
+async function readResponseTextCapped(res: Response, maxBytes = X402_MAX_RESPONSE_BYTES): Promise<string> {
+  const contentLength = res.headers.get('content-length');
+  if (contentLength !== null) {
+    const parsedLength = Number(contentLength);
+    if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
+      await res.body?.cancel().catch(() => undefined);
+      throw new Error(`response body exceeds maximum allowed size of ${maxBytes} bytes`);
+    }
+  }
+  if (!res.body) {
+    const text = await res.text();
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+      throw new Error(`response body exceeds maximum allowed size of ${maxBytes} bytes`);
+    }
+    return text;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error(`response body exceeds maximum allowed size of ${maxBytes} bytes`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, totalBytes).toString('utf8');
+}
+
 async function readResponse(res: Response): Promise<{ headers: Record<string, string>; data: unknown }> {
-  const text = await res.text();
+  const text = await readResponseTextCapped(res);
   let data: unknown = text;
   try {
     data = JSON.parse(text);
@@ -422,7 +498,7 @@ export async function fetchWithX402(
   idempotencyKey?: string,
 ): Promise<X402FetchResult> {
   try {
-    assertSafeExternalHttpUrl(url);
+    await assertSafeExternalHttpUrlResolved(url);
   } catch (err) {
     return {
       status: 400,
@@ -432,20 +508,45 @@ export async function fetchWithX402(
     };
   }
 
-  const fetchInit: RequestInit = { ...init, redirect: 'manual' };
-  const first = await fetch(url, fetchInit);
+  const fetchInit: RequestInit = {
+    ...init,
+    redirect: 'manual',
+    signal: init?.signal ?? AbortSignal.timeout(X402_FETCH_TIMEOUT_MS),
+  };
+  let first: Response;
+  try {
+    first = await fetch(url, fetchInit);
+  } catch (err) {
+    return {
+      status: 502,
+      headers: {},
+      data: null,
+      error: { code: 'X402_FETCH_FAILED', message: errorText(err) },
+    };
+  }
   if (first.status !== 402) {
-    return { status: first.status, ...(await readResponse(first)), payment: { status: 'not_required' } };
+    try {
+      return { status: first.status, ...(await readResponse(first)), payment: { status: 'not_required' } };
+    } catch (err) {
+      return {
+        status: 502,
+        headers: {},
+        data: null,
+        error: { code: 'X402_FETCH_FAILED', message: errorText(err) },
+      };
+    }
   }
 
   // v2 carries the challenge in the PAYMENT-REQUIRED header; a JSON body is accepted as a fallback.
   let challenge: unknown = first.headers.get(X402_PAYMENT_REQUIRED_HEADER);
   if (!challenge) {
     try {
-      challenge = await first.json();
+      challenge = JSON.parse(await readResponseTextCapped(first));
     } catch {
       challenge = null;
     }
+  } else {
+    await first.body?.cancel().catch(() => undefined);
   }
   if (!challenge) {
     return {
@@ -493,8 +594,24 @@ export async function fetchWithX402(
 
   const headers = new Headers(init?.headers);
   headers.set(X402_PAYMENT_HEADER, resolution.paymentHeader);
-  const final = await fetch(url, { ...fetchInit, headers });
-  const body = await readResponse(final);
+  let final: Response;
+  let body: { headers: Record<string, string>; data: unknown };
+  try {
+    final = await fetch(url, {
+      ...fetchInit,
+      headers,
+      signal: init?.signal ?? AbortSignal.timeout(X402_FETCH_TIMEOUT_MS),
+    });
+    body = await readResponse(final);
+  } catch (err) {
+    return {
+      status: 502,
+      headers: {},
+      data: null,
+      payment: { idempotencyKey: resolution.idempotencyKey, requestId: resolution.request.id, status: 'not_settled' },
+      error: { code: 'X402_FETCH_FAILED', message: errorText(err) },
+    };
+  }
   const settlement = decodeX402PaymentResponse(final.headers.get(X402_PAYMENT_RESPONSE_HEADER));
   const { payerSignature, idempotencyKey: key } = resolution;
   let request = resolution.request;

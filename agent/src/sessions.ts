@@ -18,6 +18,7 @@ const CHALLENGE_TTL_MS = 2 * 60 * 1000;
 // Pending challenges live two minutes and are small. The cap only bounds memory; it is high enough
 // that a per-address rate limit cannot be outrun by a few clients evicting real users' challenges.
 const MAX_CHALLENGES = 4096;
+const MAX_SESSIONS = 10_000;
 export const SESSION_COOKIE_NAME = 'nexus_session';
 
 function tokenHash(token: string): string {
@@ -94,6 +95,11 @@ export class SessionManager {
 
     const token = randomBytes(32).toString('base64url');
     const expiresAt = Date.now() + this.ttlSeconds * 1000;
+    while (this.sessions.size >= MAX_SESSIONS) {
+      const oldest = this.sessions.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.sessions.delete(oldest);
+    }
     this.sessions.set(tokenHash(token), { owner: input.pubkey, expiresAt });
     this.persist();
     return { token, expiresAt: new Date(expiresAt).toISOString(), owner: input.pubkey };

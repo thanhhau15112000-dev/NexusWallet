@@ -50,7 +50,7 @@ import type { AppContext } from './context.js';
 import { IdempotencyConflictError, agentError, runAction, runCommand, type AgentAction } from './pipeline.js';
 import { resolveX402Payment, fetchWithX402 } from './x402.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
-import { LOCAL_ORIGIN_REGEX } from './config.js';
+import { isOriginAllowed } from './config.js';
 import { submitTaskVaultInstruction } from './task-vault-chain.js';
 import { createMcpToken, hasMcpToken, loadOrCreateMcpToken, mcpOwnerFor } from './mcp-token.js';
 import { registerRemoteMcp, remoteMcpUrl } from './mcp-remote.js';
@@ -211,9 +211,9 @@ const X402ResolveBody = z.object({
 
 const X402FetchBody = z.object({
   url: z.string().url(),
-  method: z.string().optional().default('GET'),
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD']).optional().default('GET'),
   headers: z.record(z.string(), z.string()).optional(),
-  body: z.string().optional(),
+  body: z.string().max(262_144).optional(),
   idempotencyKey: x402IdempotencyKeySchema,
 });
 
@@ -323,13 +323,6 @@ function publicPolicy(policy: Policy) {
     maxSolPerTx: policy.maxSolLamportsPerTx / 1_000_000_000,
     maxSolPerDay: policy.maxSolLamportsPerDay === null ? null : policy.maxSolLamportsPerDay / 1_000_000_000,
   };
-}
-
-function isOriginAllowed(origin: string | undefined, ctx: AppContext): boolean {
-  if (!origin) return true;
-  if (ctx.config.allowedOrigins.includes(origin)) return true;
-  if (LOCAL_ORIGIN_REGEX.test(origin)) return true;
-  return false;
 }
 
 function actionOrigin(ctx: AppContext): string {
@@ -491,7 +484,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   app.post('/api/auth/challenge', async (req, reply) => {
     const { pubkey } = ChallengeBody.parse(req.body);
     const origin = req.headers.origin;
-    if (origin && !isOriginAllowed(origin, ctx)) {
+    if (origin && !isOriginAllowed(origin, ctx.config)) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
     const fallbackOrigin = ctx.config.allowedOrigins[0] ?? 'http://localhost:5173';
@@ -503,7 +496,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   app.post('/api/auth/login', async (req, reply) => {
     const { challengeId, pubkey, signature } = LoginBody.parse(req.body);
     const origin = req.headers.origin;
-    if (origin && !isOriginAllowed(origin, ctx)) {
+    if (origin && !isOriginAllowed(origin, ctx.config)) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
     const session = ctx.sessions.verifyChallenge({ challengeId, pubkey, signature });
@@ -563,7 +556,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     }
     const tokens: TokenBalance[] | null = await tokensRead;
 
-    const isAdmin = Boolean(session?.isAdmin || (session?.owner && session.owner === ctx.config.adminPubkey));
+    const isAdmin = Boolean(session?.isAdmin);
 
     const currentPolicy = userCtx.store.getPolicy();
     const spentLamports = spentLamportsInWindow(userCtx.store.listRequests());
@@ -604,13 +597,23 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   });
 
   app.post('/api/owner', async (req, reply) => {
+    const session = getSession(ctx, req);
+    if (!session?.owner) {
+      return reply.status(401).send({ error: 'authentication_required' });
+    }
     const body = OwnerBody.parse(req.body);
     if (!isValidAddress(body.pubkey)) {
       return reply.status(400).send({ error: 'invalid_pubkey', message: 'not a Solana address' });
     }
-    const userCtx = ctx.getUserContext ? ctx.getUserContext(body.pubkey) : ctx;
-    userCtx.store.setOwner(body.pubkey);
-    return { owner: body.pubkey };
+    if (!safeEqual(session.owner, body.pubkey)) {
+      return reply.status(403).send({
+        error: 'owner_mismatch',
+        message: 'cannot bind a different owner wallet than the signed-in session',
+      });
+    }
+    const userCtx = ctx.getUserContext ? ctx.getUserContext(session.owner) : ctx;
+    userCtx.store.setOwner(session.owner);
+    return { owner: session.owner };
   });
 
   const TelegramSettingsBody = z.object({
@@ -848,6 +851,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   });
 
   // Public devnet RPC rate-limits, so repeated polls of the same page share one read for a few seconds.
+  const HISTORY_CACHE_TTL_MS = 8_000;
+  const HISTORY_CACHE_MAX = 256;
   const historyCache = new Map<string, { at: number; page: Awaited<ReturnType<typeof getAgentHistory>> }>();
   const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,90}$/;
   app.get('/api/agent/history', async (req, reply) => {
@@ -859,11 +864,21 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       return reply.status(400).send({ error: 'invalid_query', message: 'before must be a transaction signature and limit 1-50' });
     }
     const key = `${userCtx.agentPubkey}:${before ?? ''}:${limit}`;
+    const now = Date.now();
     const cached = historyCache.get(key);
-    if (cached && Date.now() - cached.at < 8_000) return cached.page;
+    if (cached && now - cached.at < HISTORY_CACHE_TTL_MS) return cached.page;
     try {
       const page = await getAgentHistory(userCtx.connection, userCtx.agentPubkey, ctx.config.SOLANA_CLUSTER, { limit, before });
-      historyCache.set(key, { at: Date.now(), page });
+      const writeAt = Date.now();
+      for (const [entryKey, entry] of historyCache) {
+        if (writeAt - entry.at >= HISTORY_CACHE_TTL_MS) historyCache.delete(entryKey);
+      }
+      while (historyCache.size >= HISTORY_CACHE_MAX) {
+        const oldestKey = historyCache.keys().next().value as string | undefined;
+        if (!oldestKey) break;
+        historyCache.delete(oldestKey);
+      }
+      historyCache.set(key, { at: writeAt, page });
       return page;
     } catch (err) {
       return reply.status(502).send({ error: 'rpc_error', message: err instanceof Error ? err.message : String(err) });
@@ -943,8 +958,15 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     return { task, payments, receipts };
   });
 
+  const SafeSegmentSchema = z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^(?!\.{1,2}$)[^/\\]+$/, 'must be a single URL-safe path segment');
+
   const CreateTaskBody = z.object({
-    taskId: z.string().trim().min(1).max(64),
+    taskId: SafeSegmentSchema,
     budgetLamports: z.number().int().positive(),
     perPaymentCapLamports: z.number().int().positive(),
     expiry: z.number().int().positive(),
@@ -1054,7 +1076,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   });
 
   const ExecutePaymentBody = z.object({
-    paymentId: z.string().trim().min(1).max(64),
+    paymentId: SafeSegmentSchema,
     worker: PubkeySchema,
     serviceId: z.string().trim().min(1).max(64),
     amountLamports: z.number().int().positive().safe(),
@@ -1062,6 +1084,21 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     txSignature: z.string().trim().optional(),
     isSimulated: z.boolean().optional(),
   });
+
+  const taskPaymentQueues = new Map<string, Promise<unknown>>();
+  async function withTaskPaymentLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const previous = taskPaymentQueues.get(key) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(fn);
+    const tail = run.catch(() => undefined);
+    taskPaymentQueues.set(key, tail);
+    try {
+      return await run;
+    } finally {
+      if (taskPaymentQueues.get(key) === tail) {
+        taskPaymentQueues.delete(key);
+      }
+    }
+  }
 
   app.post('/api/tasks/:taskId/payments', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
@@ -1077,121 +1114,133 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     }
     const body = ExecutePaymentBody.parse(req.body);
 
-    const task = userCtx.store.getTask(taskId);
-    if (!task) return reply.status(404).send({ error: 'task_not_found' });
-
-    // Simulation does not bypass delegation: records must belong to this owner
-    // and the current agent signer, just as a Devnet capability must.
-    if (task.owner !== userCtx.store.getOwner()) {
-      return reply.status(403).send({ error: 'task_owner_mismatch' });
-    }
-    if (task.agentSigner !== userCtx.agentPubkey) {
-      return reply.status(409).send({ error: 'agent_signer_mismatch' });
-    }
-    if (task.isClosed) {
-      return reply.status(400).send({ error: 'payment_rejected', message: 'task is closed' });
-    }
-
-    if (userCtx.store.getPayment(taskId, body.paymentId)) {
-      return reply.status(409).send({ error: 'payment_exists', message: `Payment ${body.paymentId} already exists` });
-    }
-
-    if (task.allowedWorker && body.worker !== task.allowedWorker) {
-      return reply.status(403).send({
-        error: 'unauthorized_worker',
-        message: `worker ${body.worker} is not allowed for this task (expected ${task.allowedWorker})`,
-      });
-    }
-
-    if (task.allowedServiceId && body.serviceId !== task.allowedServiceId) {
-      return reply.status(403).send({
-        error: 'unauthorized_service',
-        message: `service ${body.serviceId} is not allowed for this task (expected ${task.allowedServiceId})`,
-      });
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    const check = validateTaskTransition(
-      task,
-      {
-        type: 'execute_payment',
-        amountLamports: body.amountLamports,
-        worker: body.worker,
-        serviceId: body.serviceId,
-      },
-      now,
-    );
-    if (!check.valid) {
-      return reply.status(400).send({ error: 'payment_rejected', message: check.error });
-    }
-
-    const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
-    const [escrowPda] = deriveEscrowPda(taskPda, body.paymentId);
-    const isSimulated = task.isSimulated !== false;
-    let txSignature: string | undefined;
-    if (!isSimulated) {
-      const workerKind = await onchainWorkerKind(userCtx, body.worker);
-      if (workerKind === 'unreachable') return reply.status(503).send(MERCHANT_UNREACHABLE);
-      if (!workerKind) {
-        return reply.status(400).send({
-          error: 'unsupported_onchain_worker',
-          message: 'on-chain payments need a worker that can sign: the mock worker or the demo merchant',
+    return withTaskPaymentLock(`${userCtx.agentPubkey}:${taskId}`, async () => {
+      if (userCtx.store.isFrozen()) {
+        userCtx.audit.record('tx.blocked', null, { reason: 'agent_frozen', taskId });
+        return reply.status(409).send({
+          error: 'AGENT_FROZEN',
+          code: 'AGENT_FROZEN',
+          message: 'agent is frozen by owner',
+          remediation: AGENT_ERROR_REMEDIATION.AGENT_FROZEN,
         });
       }
-      try {
-        txSignature = await submitTaskVaultInstruction(
-          userCtx.connection,
-          executeTaskPaymentInstruction({
-            taskCapability: taskPda,
-            agentSigner: userCtx.signer.publicKey,
-            worker: new PublicKey(body.worker),
-            paymentId: body.paymentId,
-            amountLamports: body.amountLamports,
-            serviceId: body.serviceId,
-            requestHash: body.requestHash,
-          }),
-          userCtx.signer,
-        );
-      } catch (error) {
-        req.log.error({ err: error, taskId, paymentId: body.paymentId }, 'Task Vault payment transaction failed');
-        return reply.status(502).send({ error: 'onchain_payment_failed' });
+
+      const task = userCtx.store.getTask(taskId);
+      if (!task) return reply.status(404).send({ error: 'task_not_found' });
+
+      // Simulation does not bypass delegation: records must belong to this owner
+      // and the current agent signer, just as a Devnet capability must.
+      if (task.owner !== userCtx.store.getOwner()) {
+        return reply.status(403).send({ error: 'task_owner_mismatch' });
       }
-    }
+      if (task.agentSigner !== userCtx.agentPubkey) {
+        return reply.status(409).send({ error: 'agent_signer_mismatch' });
+      }
+      if (task.isClosed) {
+        return reply.status(400).send({ error: 'payment_rejected', message: 'task is closed' });
+      }
 
-    // Re-read after the on-chain await so concurrent payments do not overwrite each other.
-    const latestTask = userCtx.store.getTask(taskId)!;
-    const updatedTask = {
-      ...latestTask,
-      spentLamports: latestTask.spentLamports + body.amountLamports,
-    };
-    userCtx.store.setTask(updatedTask, { allowOverwrite: true });
+      if (userCtx.store.getPayment(taskId, body.paymentId)) {
+        return reply.status(409).send({ error: 'payment_exists', message: `Payment ${body.paymentId} already exists` });
+      }
 
-    const paymentRecord = {
-      taskId,
-      paymentId: body.paymentId,
-      worker: body.worker,
-      serviceId: body.serviceId,
-      amountLamports: body.amountLamports,
-      requestHash: body.requestHash,
-      status: 'held' as const,
-      escrowPda: escrowPda.toBase58(),
-      txSignature,
-      isSimulated,
-      createdAt: new Date().toISOString(),
-    };
-    userCtx.store.setPayment(paymentRecord, { allowOverwrite: false });
+      if (task.allowedWorker && body.worker !== task.allowedWorker) {
+        return reply.status(403).send({
+          error: 'unauthorized_worker',
+          message: `worker ${body.worker} is not allowed for this task (expected ${task.allowedWorker})`,
+        });
+      }
 
-    userCtx.audit.record('task_payment_executed', null, {
-      taskId,
-      paymentId: body.paymentId,
-      worker: body.worker,
-      amountLamports: body.amountLamports,
-      escrowPda: paymentRecord.escrowPda,
-      txSignature: paymentRecord.txSignature,
-      isSimulated: paymentRecord.isSimulated,
+      if (task.allowedServiceId && body.serviceId !== task.allowedServiceId) {
+        return reply.status(403).send({
+          error: 'unauthorized_service',
+          message: `service ${body.serviceId} is not allowed for this task (expected ${task.allowedServiceId})`,
+        });
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const check = validateTaskTransition(
+        task,
+        {
+          type: 'execute_payment',
+          amountLamports: body.amountLamports,
+          worker: body.worker,
+          serviceId: body.serviceId,
+        },
+        now,
+      );
+      if (!check.valid) {
+        return reply.status(400).send({ error: 'payment_rejected', message: check.error });
+      }
+
+      const [taskPda] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
+      const [escrowPda] = deriveEscrowPda(taskPda, body.paymentId);
+      const isSimulated = task.isSimulated !== false;
+      let txSignature: string | undefined;
+      if (!isSimulated) {
+        const workerKind = await onchainWorkerKind(userCtx, body.worker);
+        if (workerKind === 'unreachable') return reply.status(503).send(MERCHANT_UNREACHABLE);
+        if (!workerKind) {
+          return reply.status(400).send({
+            error: 'unsupported_onchain_worker',
+            message: 'on-chain payments need a worker that can sign: the mock worker or the demo merchant',
+          });
+        }
+        try {
+          txSignature = await submitTaskVaultInstruction(
+            userCtx.connection,
+            executeTaskPaymentInstruction({
+              taskCapability: taskPda,
+              agentSigner: userCtx.signer.publicKey,
+              worker: new PublicKey(body.worker),
+              paymentId: body.paymentId,
+              amountLamports: body.amountLamports,
+              serviceId: body.serviceId,
+              requestHash: body.requestHash,
+            }),
+            userCtx.signer,
+          );
+        } catch (error) {
+          req.log.error({ err: error, taskId, paymentId: body.paymentId }, 'Task Vault payment transaction failed');
+          return reply.status(502).send({ error: 'onchain_payment_failed' });
+        }
+      }
+
+      // Re-read after the on-chain await so concurrent payments do not overwrite each other.
+      const latestTask = userCtx.store.getTask(taskId)!;
+      const updatedTask = {
+        ...latestTask,
+        spentLamports: latestTask.spentLamports + body.amountLamports,
+      };
+      userCtx.store.setTask(updatedTask, { allowOverwrite: true });
+
+      const paymentRecord = {
+        taskId,
+        paymentId: body.paymentId,
+        worker: body.worker,
+        serviceId: body.serviceId,
+        amountLamports: body.amountLamports,
+        requestHash: body.requestHash,
+        status: 'held' as const,
+        escrowPda: escrowPda.toBase58(),
+        txSignature,
+        isSimulated,
+        createdAt: new Date().toISOString(),
+      };
+      userCtx.store.setPayment(paymentRecord, { allowOverwrite: false });
+
+      userCtx.audit.record('task_payment_executed', null, {
+        taskId,
+        paymentId: body.paymentId,
+        worker: body.worker,
+        amountLamports: body.amountLamports,
+        escrowPda: paymentRecord.escrowPda,
+        txSignature: paymentRecord.txSignature,
+        isSimulated: paymentRecord.isSimulated,
+      });
+
+      return { task: updatedTask, payment: paymentRecord };
     });
-
-    return { task: updatedTask, payment: paymentRecord };
   });
 
   const DeliveryBody = z.object({
@@ -1204,7 +1253,15 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
   app.post('/api/tasks/:taskId/payments/:paymentId/output', async (req, reply) => {
     const userCtx = resolveUserContext(ctx, req);
     const { taskId, paymentId } = req.params as { taskId: string; paymentId: string };
-    if (userCtx.store.isFrozen()) return reply.status(409).send({ error: 'AGENT_FROZEN' });
+    if (userCtx.store.isFrozen()) {
+      userCtx.audit.record('tx.blocked', null, { reason: 'agent_frozen', taskId, paymentId });
+      return reply.status(409).send({
+        error: 'AGENT_FROZEN',
+        code: 'AGENT_FROZEN',
+        message: 'agent is frozen by owner',
+        remediation: AGENT_ERROR_REMEDIATION.AGENT_FROZEN,
+      });
+    }
     const parsed = DeliveryBody.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ error: 'invalid_output' });
     const body = parsed.data;
@@ -1535,6 +1592,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const body = z.object({ txSignature: z.string().trim().min(32).optional() }).parse(req.body ?? {});
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
     if (task.status === 'revoked') return { task };
 
     if (task.isSimulated === false) {
@@ -1572,6 +1630,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const body = z.object({ txSignature: z.string().trim().min(32) }).parse(req.body ?? {});
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
     if (task.isSimulated !== false) return reply.status(409).send({ error: 'task_is_simulated' });
 
     const receipt = userCtx.store.getReceipt(taskId, paymentId);
@@ -1653,6 +1712,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const body = z.object({ txSignature: z.string().trim().min(32).optional() }).parse(req.body ?? {});
     const task = userCtx.store.getTask(taskId);
     if (!task) return reply.status(404).send({ error: 'task_not_found' });
+    if (task.owner !== userCtx.store.getOwner()) return reply.status(403).send({ error: 'task_owner_mismatch' });
     if (task.isClosed) return { task, refundedLamports: Math.max(0, task.budgetLamports - task.spentLamports) };
 
     // Invariant: Reject refund and close if pending escrows exist
