@@ -24,8 +24,6 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
       AGENT_DATA_DIR: dir,
       dataDir: dir,
       usersDir: join(dir, 'users'),
-      masterFunderPath: join(dir, 'master-funder.json'),
-      legacyKeystorePath: join(dir, 'agent-keystore.json'),
       statePath: join(dir, 'state.json'),
       auditPath: join(dir, 'audit.jsonl'),
       keystorePath: join(dir, 'agent-keystore.json'),

@@ -57,8 +57,6 @@ describe('Agent Kill Switch (Freeze / Unfreeze)', () => {
       AGENT_DATA_DIR: dataDir,
       dataDir,
       usersDir: join(dataDir, 'users'),
-      masterFunderPath: join(dataDir, 'master-funder.json'),
-      legacyKeystorePath: join(dataDir, 'agent-keystore.json'),
       statePath: join(dataDir, 'state.json'),
       auditPath: join(dataDir, 'audit.jsonl'),
       keystorePath: join(dataDir, 'agent-keystore.json'),

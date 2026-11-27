@@ -16,13 +16,6 @@ export type AgentState = {
   owner: string | null;
   ownerPinned: boolean;
   isAdmin?: boolean;
-  claimedInitialFunding?: boolean;
-  /** Whether the free seed can be claimed now, and why not. */
-  seed?: { available: boolean; reason: 'funder_unavailable' | 'funder_empty' | 'cap_reached' | null };
-  masterFunder?: {
-    pubkey: string;
-    lamports: number | null;
-  } | null;
   mockWorker?: { pubkey: string } | null;
   /** The demo merchant's worker key when the agent can reach it; it works on Devnet tasks only. */
   merchantWorker?: { pubkey: string } | null;
@@ -161,9 +154,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const template = getCurrentDictionary().apiErrors.rateLimited;
       throw new ApiError(template.replace('{seconds}', String(seconds)), response.status, code);
     }
-    if (response.status === 429 && code === 'seed_cap_reached') {
-      throw new ApiError(getCurrentDictionary().apiErrors.seedCapReached, response.status, code);
-    }
     if (path === '/api/tasks' || path.startsWith('/api/tasks/')) {
       const messages = getCurrentDictionary().taskVault.errors;
       const localized = messages[message ?? ''] ?? messages[code];
@@ -240,12 +230,6 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
-
-  claimSeed: () =>
-    request<{ signature: string; lamports: number; claimedInitialFunding: boolean }>(
-      '/api/agent/claim-seed',
-      { method: 'POST', body: JSON.stringify({}) },
-    ),
 
   freeze: () =>
     request<{ frozen: boolean; frozenAt: string | null }>('/api/agent/freeze', {

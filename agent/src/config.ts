@@ -49,8 +49,6 @@ const EnvSchema = z.object({
   /** Demo merchant base URL; when set, the merchant can be a Task Vault worker for on-chain tasks. */
   MERCHANT_WORKER_URL: z.union([z.literal(''), z.string().trim().url()]).default(''),
 
-  /** Most initial seeds the Master Funder hands out per rolling 24 hours, across all agents. 0 turns seeding off. */
-  SEED_CAP_PER_DAY: z.coerce.number().int().min(0).default(50),
 
   APPROVAL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   MAX_REQUESTS_KEPT: z.coerce.number().int().positive().default(200),
@@ -206,8 +204,6 @@ export function loadConfig() {
     authRequired: hosted,
     dataDir,
     usersDir: resolve(dataDir, 'users'),
-    masterFunderPath: resolve(dataDir, 'master-funder.json'),
-    legacyKeystorePath: resolve(dataDir, 'agent-keystore.json'),
     statePath: resolve(dataDir, 'state.json'),
     auditPath: resolve(dataDir, 'audit.jsonl'),
     keystorePath: resolve(dataDir, 'agent-keystore.json'),

@@ -105,8 +105,8 @@ describe('createMerchantWorker', () => {
 async function setup() {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-merchant-worker-'));
   dirs.push(dir);
-  const config = { ...loadConfig(), dataDir: dir, usersDir: join(dir, 'users'), masterFunderPath: join(dir, 'master-funder.json'),
-    legacyKeystorePath: join(dir, 'agent-keystore.json'), keystorePath: join(dir, 'agent-keystore.json'),
+  const config = { ...loadConfig(), dataDir: dir, usersDir: join(dir, 'users'),
+    keystorePath: join(dir, 'agent-keystore.json'),
     statePath: join(dir, 'state.json'), auditPath: join(dir, 'audit.jsonl'), saltPath: join(dir, 'audit-salt') };
   const ctx = createContext(config);
   const app = Fastify();
