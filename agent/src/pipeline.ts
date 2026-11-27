@@ -171,6 +171,7 @@ function dispatchDecision(
         error: agentError('AGENT_FROZEN', 'agent is frozen by owner'),
       });
       ctx.audit.record('tx.blocked', request.id, { reason: 'agent_frozen' });
+      void ctx.telegram?.notifyRequestDenied(ctx, request);
       return request;
     }
   }
@@ -183,11 +184,13 @@ function dispatchDecision(
   });
 
   if (decision.verdict === 'deny' || !decision.resolved) {
-    return ctx.store.putRequest({
+    const deniedReq = ctx.store.putRequest({
       ...request,
       status: 'denied',
       error: agentError(decision.code ?? 'NO_EXECUTABLE_ACTION', decision.reasons.join('; '), decision.details),
     });
+    void ctx.telegram?.notifyRequestDenied(ctx, deniedReq);
+    return deniedReq;
   }
 
   if (decision.verdict === 'require_approval') {
@@ -458,11 +461,13 @@ export function blockIfNotExecutable(ctx: AppContext, request: PaymentRequest): 
   ctx.audit.record('tx.blocked', request.id, {
     reason: error.code === 'policy_changed' ? 'policy_changed' : 'agent_frozen',
   });
-  return ctx.store.putRequest({
+  const blockedReq = ctx.store.putRequest({
     ...request,
     status: 'denied',
     error,
   });
+  void ctx.telegram?.notifyRequestDenied(ctx, blockedReq);
+  return blockedReq;
 }
 
 /**
@@ -520,11 +525,13 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
     };
     ctx.audit.record('tx.confirmed', request.id, { action, ...execution });
 
-    return ctx.store.putRequest({ ...request, status: 'confirmed', execution });
+    const confirmed = ctx.store.putRequest({ ...request, status: 'confirmed', execution });
+    void ctx.telegram?.notifyTransactionConfirmed(ctx, confirmed);
+    return confirmed;
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
       ctx.audit.record('tx.failed', request.id, { error: err.message });
-      return ctx.store.putRequest({
+      const failed = ctx.store.putRequest({
         ...request,
         status: 'failed',
         error: agentError(
@@ -542,6 +549,8 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
           },
         ),
       });
+      void ctx.telegram?.notifyTransactionFailed(ctx, failed);
+      return failed;
     }
     if (err instanceof TransactionSimulationError) {
       ctx.audit.record('tx.simulation_failed', request.id, {
@@ -550,10 +559,12 @@ export async function execute(ctx: AppContext, request: PaymentRequest): Promise
       });
     }
     ctx.audit.record('tx.failed', request.id, { error: errorMessage(err) });
-    return ctx.store.putRequest({
+    const failed = ctx.store.putRequest({
       ...request,
       status: 'failed',
       error: { code: 'execution_failed', message: errorMessage(err) },
     });
+    void ctx.telegram?.notifyTransactionFailed(ctx, failed);
+    return failed;
   }
 }
