@@ -17,7 +17,8 @@ import { SESSION_COOKIE_NAME } from '../src/sessions.js';
 
 const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
-const secretOf = (token: string) => token.split('_')[2]!;
+// The secret is base64url and may itself contain '_', so take everything after the owner segment.
+const secretOf = (token: string) => token.split('_').slice(2).join('_');
 
 async function startApp(authRequired: boolean) {
   const dataDir = mkdtempSync(join(tmpdir(), 'nexus-mcp-hash-'));
