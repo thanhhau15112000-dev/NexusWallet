@@ -19,8 +19,8 @@ export type AgentState = {
   ownerPinned: boolean;
   isAdmin?: boolean;
   mockWorker?: { pubkey: string } | null;
-  /** The demo merchant's worker key when the agent can reach it; it works on Devnet tasks only. */
-  merchantWorker?: { pubkey: string } | null;
+  /** The demo merchant's worker key and x402 payee wallet when the agent can reach it; it works on Devnet tasks only. */
+  merchantWorker?: { pubkey: string; wallet: string | null } | null;
   agent: {
     agentId: string;
     pubkey: string;
