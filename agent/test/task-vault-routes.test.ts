@@ -543,4 +543,86 @@ describe('Phase 2: Task Capability Vault API & Multi-step Workflow', () => {
       await app.close();
     }
   });
+
+  it('refunds expired held escrows and unblocks refund_and_close', async () => {
+    const { app, masterCtx, ownerPubkey, cookieHeader } = await setupApp();
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const taskId = 'task-expired-escrow-001';
+      const workerKey = nacl.sign.keyPair();
+      const workerPubkey = bs58.encode(workerKey.publicKey);
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/tasks',
+        headers: { cookie: cookieHeader },
+        payload: {
+          taskId,
+          budgetLamports: 500_000_000,
+          perPaymentCapLamports: 200_000_000,
+          expiry: now + 3600,
+          isSimulated: true,
+        },
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments`,
+        headers: { cookie: cookieHeader },
+        payload: {
+          paymentId: 'pay-exp-1',
+          worker: workerPubkey,
+          serviceId: 'svc-exp',
+          amountLamports: 200_000_000,
+          requestHash: 'req-exp-1',
+        },
+      });
+
+      // Cannot refund before expiry
+      const tooEarly = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-exp-1/refund-expired`,
+        headers: { cookie: cookieHeader },
+        payload: {},
+      });
+      expect(tooEarly.statusCode).toBe(409);
+      expect(tooEarly.json().error).toBe('task_not_expired');
+
+      // Expire the task and freeze agent -> refund-expired must still succeed
+      const userCtx = masterCtx.getUserContext!(ownerPubkey);
+      const task = userCtx.store.getTask(taskId)!;
+      userCtx.store.setTask({ ...task, expiry: now - 5 }, { allowOverwrite: true });
+      await app.inject({ method: 'POST', url: '/api/agent/freeze', headers: { cookie: cookieHeader } });
+
+      const refundedRes = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-exp-1/refund-expired`,
+        headers: { cookie: cookieHeader },
+        payload: {},
+      });
+      expect(refundedRes.statusCode).toBe(200);
+      expect(refundedRes.json().payment.status).toBe('refunded');
+
+      // Idempotent on retry
+      const retryRes = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-exp-1/refund-expired`,
+        headers: { cookie: cookieHeader },
+        payload: {},
+      });
+      expect(retryRes.statusCode).toBe(200);
+      expect(retryRes.json().payment.status).toBe('refunded');
+
+      // Task can now be refunded & closed because no held escrows remain
+      const closeRes = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/refund`,
+        headers: { cookie: cookieHeader },
+        payload: {},
+      });
+      expect(closeRes.statusCode).toBe(200);
+      expect(closeRes.json().task.isClosed).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
 });

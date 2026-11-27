@@ -334,6 +334,16 @@ export const api = {
     `/api/tasks/${taskId}/payments/${paymentId}/output`,
     { method: 'POST', body: JSON.stringify(input) },
   ),
+  rejectTaskOutput: (taskId: string, paymentId: string, reason?: string) =>
+    request<{ payment: TaskPaymentRecord; attemptsRemaining: number }>(
+      `/api/tasks/${taskId}/payments/${paymentId}/reject`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    ),
+  refundExpiredEscrow: (taskId: string, paymentId: string, txSignature?: string) =>
+    request<{ payment: TaskPaymentRecord }>(
+      `/api/tasks/${taskId}/payments/${paymentId}/refund-expired`,
+      { method: 'POST', body: JSON.stringify({ txSignature }) },
+    ),
   closeTaskReceipt: (taskId: string, paymentId: string, txSignature: string) =>
     request<{ receipt: TaskReceiptRecord }>(
       `/api/tasks/${taskId}/receipts/${paymentId}/close`,
@@ -349,8 +359,15 @@ export const api = {
       `/api/tasks/${taskId}/refund`,
       { method: 'POST', body: JSON.stringify({ txSignature }) },
     ),
-  runMockService: (input: { taskId: string; paymentId?: string; serviceId: string; payload?: Record<string, unknown> }) =>
+  runMockService: (input: {
+    taskId: string;
+    paymentId?: string;
+    serviceId: string;
+    payload?: Record<string, unknown>;
+    scenario?: 'valid' | 'invalid_schema' | 'wrong_service';
+  }) =>
     request<{
+      scenario?: 'valid' | 'invalid_schema' | 'wrong_service';
       serviceId: string;
       workerPubkey: string;
       workerSignature: string;

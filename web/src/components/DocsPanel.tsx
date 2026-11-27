@@ -400,14 +400,13 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 match the task limits, and the amount must fit the cap and the remaining budget.
               </li>
               <li>
-                <strong>Get demo result.</strong> The mock Worker produces output and signs its hash. Submission saves the output for review while the Escrow remains held.
+                <strong>Get demo result.</strong> The mock Worker produces valid or invalid output and signs its hash. Submission saves the output and runs deterministic verification checks while the Escrow remains held.
               </li>
               <li>
-                <strong>Review and accept.</strong> Read the submitted output, confirm that you accept it, and sign acceptance with the owner wallet to release payment before task expiry. The program verifies acceptance of the exact output, Escrow and amount. Quality is checked by the owner; there is no independent quality verification or dispute resolution. Without acceptance, funds remain held until expiry, when they can be refunded to the owner. Output replacement and revision workflows are not supported yet.
+                <strong>Review, reject or accept.</strong> Inspect the verification report and submitted output. Failed checks block settlement; you can reject invalid output with a reason to open up to 3 revision attempts before task expiry. For valid output, confirm and sign acceptance with the owner wallet to release payment. Without acceptance, funds remain held until expiry.
               </li>
               <li>
-                <strong>Close.</strong> <em>Revoke Task</em> stops new payments. <em>Refund and close task</em> returns the
-                unallocated budget to the owner once no Escrow is held. After expiry, held Escrows must be refunded separately; this screen does not support that action yet.
+                <strong>Close.</strong> <em>Revoke Task</em> stops new payments. After expiry, refund any remaining held Escrow on the dashboard before closing. <em>Refund and close task</em> returns the unallocated budget to the owner once no Escrow is held.
               </li>
             </Steps>
           ),

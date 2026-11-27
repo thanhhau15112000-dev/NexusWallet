@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import { computeOutputHash } from '@nexus/shared';
+import { MAX_DELIVERY_ATTEMPTS, computeOutputHash } from '@nexus/shared';
 import { createContext } from '../src/context.js';
 import { loadConfig } from '../src/config.js';
 import { registerRoutes } from '../src/routes.js';
@@ -122,6 +122,164 @@ describe('Output review before settlement', () => {
       expect((await submit(deliveryRequest)).json().error).toBe('AGENT_FROZEN');
       expect(userCtx.store.getPayment(taskId, 'pay-1')).toEqual(original);
       expect(userCtx.store.getReceipts(taskId)).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('supports mock valid/invalid scenarios, blocks settling invalid output, and enforces reject & revision loop', async () => {
+    const { app, userCtx, headers, owner, worker, taskId } = await setup();
+    try {
+      // 1. Mock service scenarios produce valid worker signatures but distinct verification verdicts
+      for (const scenario of ['valid', 'invalid_schema', 'wrong_service'] as const) {
+        const mockRes = await app.inject({
+          method: 'POST',
+          url: '/api/tasks/mock-service/run',
+          headers,
+          payload: { taskId, paymentId: 'pay-1', serviceId: 'service', scenario },
+        });
+        expect(mockRes.statusCode).toBe(200);
+        const body = mockRes.json();
+        expect(body.scenario).toBe(scenario);
+        expect(body.workerSignature).toBeTruthy();
+      }
+
+      // 2. Rejecting before any submission fails
+      const rejectEmpty = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-1/reject`,
+        headers,
+        payload: { reason: 'no output yet' },
+      });
+      expect(rejectEmpty.statusCode).toBe(409);
+      expect(rejectEmpty.json().error).toBe('output_not_submitted');
+
+      // 3. Submit invalid output (signed validly by worker) -> verification fails -> settle blocked even with ownerSignature
+      const invalidPayload = {
+        status: 'failed',
+        serviceId: 'service',
+        evaluatedAt: 'invalid-date',
+        outputSummary: '',
+        error: 'worker_failed',
+      };
+      const invalidAttempt = await submitOutput(app, headers.cookie, taskId, 'pay-1', worker.secretKey, owner.secretKey, invalidPayload);
+      const afterInvalid = userCtx.store.getPayment(taskId, 'pay-1')!;
+      expect(afterInvalid.delivery?.attempt).toBe(1);
+      expect(afterInvalid.delivery?.verification?.verdict).toBe('fail');
+
+      const blockedSettle = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-1/settle`,
+        headers,
+        payload: invalidAttempt,
+      });
+      expect(blockedSettle.statusCode).toBe(409);
+      expect(blockedSettle.json().error).toBe('output_verification_failed');
+      expect(blockedSettle.json().verification.verdict).toBe('fail');
+
+      // 4. Owner rejects invalid output -> moves to rejectedDeliveries and opens attempt 2
+      const rejectRes = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-1/reject`,
+        headers,
+        payload: { reason: 'Failed deterministic checks' },
+      });
+      expect(rejectRes.statusCode).toBe(200);
+      expect(rejectRes.json().attemptsRemaining).toBe(MAX_DELIVERY_ATTEMPTS - 1);
+      const afterReject = userCtx.store.getPayment(taskId, 'pay-1')!;
+      expect(afterReject.delivery).toBeUndefined();
+      expect(afterReject.rejectedDeliveries).toHaveLength(1);
+      expect(afterReject.rejectedDeliveries![0]!.rejectReason).toBe('Failed deterministic checks');
+
+      // 5. Resubmitting the exact rejected hash is blocked
+      const replayRejected = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-1/output`,
+        headers,
+        payload: {
+          resultHash: invalidAttempt.resultHash,
+          resultPayload: invalidPayload,
+          workerPubkey: invalidAttempt.workerPubkey,
+          workerSignature: invalidAttempt.workerSignature,
+        },
+      });
+      expect(replayRejected.statusCode).toBe(409);
+      expect(replayRejected.json().error).toBe('output_already_rejected');
+
+      // 6. Worker submits revised valid output (attempt 2) -> passes verification -> settles cleanly
+      const validPayload = {
+        status: 'completed',
+        serviceId: 'service',
+        evaluatedAt: new Date().toISOString(),
+        outputSummary: 'Revised valid output after rejection',
+      };
+      const validAttempt = await submitOutput(app, headers.cookie, taskId, 'pay-1', worker.secretKey, owner.secretKey, validPayload);
+      expect(userCtx.store.getPayment(taskId, 'pay-1')?.delivery?.attempt).toBe(2);
+      expect(userCtx.store.getPayment(taskId, 'pay-1')?.delivery?.verification?.verdict).toBe('pass');
+      const settleOk = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-1/settle`,
+        headers,
+        payload: validAttempt,
+      });
+      expect(settleOk.statusCode).toBe(200);
+      expect(settleOk.json().payment.status).toBe('settled');
+
+      // 7. Exhausting MAX_DELIVERY_ATTEMPTS (3 rejections) on pay-2 blocks further submissions
+      for (let i = 1; i <= MAX_DELIVERY_ATTEMPTS; i++) {
+        await submitOutput(app, headers.cookie, taskId, 'pay-2', worker.secretKey, owner.secretKey, {
+          status: 'failed',
+          outputSummary: `bad-${i}`,
+        });
+        const r = await app.inject({
+          method: 'POST',
+          url: `/api/tasks/${taskId}/payments/pay-2/reject`,
+          headers,
+          payload: { reason: `reject-${i}` },
+        });
+        expect(r.statusCode).toBe(200);
+      }
+      const fourthHash = computeOutputHash({ status: 'completed', outputSummary: 'Fourth attempt after cap' });
+      const fourthSig = bs58.encode(nacl.sign.detached(new TextEncoder().encode(`NEXUS_RECEIPT_V1:${taskId}:pay-2:${fourthHash}`), worker.secretKey));
+      const overLimit = await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${taskId}/payments/pay-2/output`,
+        headers,
+        payload: {
+          resultHash: fourthHash,
+          resultPayload: { status: 'completed', outputSummary: 'Fourth attempt after cap' },
+          workerPubkey: bs58.encode(worker.publicKey),
+          workerSignature: fourthSig,
+        },
+      });
+      expect(overLimit.statusCode).toBe(409);
+      expect(overLimit.json().error).toBe('max_delivery_attempts_reached');
+
+      // 8. Reject guards: frozen and expired
+      const guardTaskId = 'reject-guards';
+      await app.inject({
+        method: 'POST',
+        url: '/api/tasks',
+        headers,
+        payload: { taskId: guardTaskId, budgetLamports: 100, perPaymentCapLamports: 50, expiry: Math.floor(Date.now() / 1000) + 3600, isSimulated: true },
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${guardTaskId}/payments`,
+        headers,
+        payload: { paymentId: 'pay-g', worker: bs58.encode(worker.publicKey), serviceId: 'service', amountLamports: 50, requestHash: 'req-g' },
+      });
+      await submitOutput(app, headers.cookie, guardTaskId, 'pay-g', worker.secretKey, owner.secretKey, { output: 'guard test' });
+
+      await app.inject({ method: 'POST', url: '/api/agent/freeze', headers });
+      const frozenReject = await app.inject({ method: 'POST', url: `/api/tasks/${guardTaskId}/payments/pay-g/reject`, headers, payload: {} });
+      expect(frozenReject.statusCode).toBe(409);
+      expect(frozenReject.json().error).toBe('AGENT_FROZEN');
+      await app.inject({ method: 'POST', url: '/api/agent/unfreeze', headers });
+
+      const guardTask = userCtx.store.getTask(guardTaskId)!;
+      userCtx.store.setTask({ ...guardTask, expiry: Math.floor(Date.now() / 1000) - 1 }, { allowOverwrite: true });
+      const expiredReject = await app.inject({ method: 'POST', url: `/api/tasks/${guardTaskId}/payments/pay-g/reject`, headers, payload: {} });
+      expect(expiredReject.statusCode).toBe(400);
+      expect(expiredReject.json().error).toBe('settle_rejected');
     } finally { await app.close(); }
   });
 });
