@@ -68,7 +68,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </TableHeader>
               <TableBody>
                 <TableRow><TableCell>Tổng quan</TableCell><TableCell>Xem ví agent, kết nối ví chủ sở hữu, nạp vốn cho agent, và kết nối Claude, Codex hoặc ứng dụng AI khác qua MCP.</TableCell></TableRow>
-                <TableRow><TableCell>Chính sách chi tiêu</TableCell><TableCell>Đặt hạn mức mỗi giao dịch và danh sách người nhận được phép.</TableCell></TableRow>
+                <TableRow><TableCell>Chính sách chi tiêu</TableCell><TableCell>Đặt hạn mức mỗi giao dịch, ngưỡng SOL 24 giờ, danh sách người nhận được phép và token SPL được phép.</TableCell></TableRow>
+                <TableRow><TableCell>Thông báo</TableCell><TableCell>Kết nối bot Telegram để nhận cảnh báo một chiều khi cần duyệt, giao dịch bị chặn/thất bại, thành công hoặc hết hạn.</TableCell></TableRow>
                 <TableRow><TableCell>Duyệt yêu cầu</TableCell><TableCell>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</TableCell></TableRow>
                 <TableRow><TableCell>Task Vault</TableCell><TableCell>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</TableCell></TableRow>
                 <TableRow><TableCell>Lịch sử</TableCell><TableCell>Xem SOL vào/ra ví agent và nhật ký kiểm toán chỉ ghi thêm.</TableCell></TableRow>
@@ -205,8 +206,16 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 <strong>Hạn mức mỗi giao dịch</strong> — số SOL lớn nhất agent được gửi mà không cần hỏi bạn.
               </li>
               <li>
+                <strong>Hạn mức 24 giờ</strong> — ngưỡng SOL trong cửa sổ trượt 24 giờ (<code>require_approval</code>,
+                không phải trần cứng; bạn vẫn có thể duyệt giao dịch vượt ngưỡng).
+              </li>
+              <li>
                 <strong>Người nhận</strong> — các địa chỉ có tên mà agent được phép trả tiền. Lệnh và công cụ MCP có
                 thể gọi người nhận bằng tên hoặc đúng địa chỉ của họ.
+              </li>
+              <li>
+                <strong>Token được phép</strong> — các SPL token mint agent được phép chuyển, mỗi mint có hạn mức riêng cho
+                từng giao dịch (<code>maxTokenAmountByMint</code>). Token SPL chưa có hạn mức tổng theo 24 giờ.
               </li>
               <li>
                 <strong>Dùng ví chủ sở hữu</strong> — thêm ví bạn đang kết nối vào danh sách với tên <code>my-wallet</code>.
@@ -306,8 +315,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Thử lại',
           body: (
             <p>
-              Nếu một lệnh thất bại vì phản hồi bị mất, chạy lại đúng văn bản đó sẽ dùng lại cùng khóa idempotency, nên
-              agent không trả tiền hai lần cho một lệnh.
+              Nếu một lệnh thất bại vì phản hồi bị mất, chạy lại đúng văn bản đó sẽ dùng lại cùng khóa idempotency, giúp
+              tránh gửi trùng giao dịch khi bản ghi yêu cầu vẫn còn trong lưu trữ.
             </p>
           ),
         },
@@ -340,6 +349,48 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               <li>Bạn ký một thông điệp, không phải một giao dịch. Chữ ký chỉ cho phép đúng một yêu cầu, đúng một lần.</li>
               <li>Dashboard dựng lại thông điệp ngay trên máy bạn và từ chối ký nếu bản từ server khác.</li>
               <li>Lần duyệt hết hạn sau 5 phút theo mặc định. Quá thời gian đó, hãy chạy lại lệnh.</li>
+            </ul>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'notifications',
+      group: 'Hướng dẫn',
+      title: 'Thông báo',
+      summary: 'Cảnh báo một chiều tùy chọn qua Telegram cho yêu cầu duyệt và sự kiện giao dịch.',
+      keywords: 'telegram alerts bot silent language webhook thông báo cảnh báo',
+      sections: [
+        {
+          id: 'telegram',
+          title: 'Cảnh báo Telegram',
+          body: (
+            <>
+              <p>
+                Liên kết cuộc trò chuyện Telegram cá nhân trên tab Thông báo bằng link token dùng một lần (hết hạn sau 10
+                phút) để nhận cảnh báo. Bạn có thể bật/tắt từng loại sự kiện, bật chế độ gửi im lặng
+                (<code>disable_notification</code>) và chọn tiếng Anh (<code>en</code>) hoặc tiếng Việt (<code>vi</code>).
+              </p>
+              <ul>
+                <li><code>pendingApproval</code> — giao dịch đang giữ chờ chủ ví duyệt (bật mặc định).</li>
+                <li><code>txDenied</code> — giao dịch bị chính sách chi tiêu chặn (bật mặc định).</li>
+                <li><code>txFailed</code> — gửi giao dịch thất bại (bật mặc định).</li>
+                <li><code>txConfirmed</code> — giao dịch đã xác nhận trên Devnet (tắt mặc định).</li>
+                <li><code>approvalExpired</code> — yêu cầu duyệt đã hết hạn (tắt mặc định).</li>
+              </ul>
+              <TabLink tab="notifications" label="Thông báo" ctx={ctx} />
+            </>
+          ),
+        },
+        {
+          id: 'notifications-limits',
+          title: 'Giới hạn và phạm vi',
+          body: (
+            <ul>
+              <li>Chỉ cảnh báo một chiều: việc duyệt và ký luôn thực hiện trên dashboard bằng ví chủ sở hữu, không thực hiện trong Telegram.</li>
+              <li>Gửi theo cơ chế best-effort, không có hàng đợi thử lại; lỗi gửi gần nhất hiển thị trong tab Thông báo.</li>
+              <li>Cảnh báo <code>approvalExpired</code> chỉ phát khi yêu cầu chờ duyệt được kiểm tra lúc đọc, không có scheduler chạy nền.</li>
+              <li>Link token lưu trong bộ nhớ server và hết hạn sau 10 phút hoặc khi server khởi động lại.</li>
             </ul>
           ),
         },
@@ -383,7 +434,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 <strong>Lấy kết quả demo.</strong> Worker của task (merchant demo, hoặc Mock Worker do server giữ signer) tạo output hợp lệ hoặc sai chuẩn và ký hash nội dung đó. Merchant demo chỉ nhận việc khi thấy Escrow trên Devnet. Hệ thống lưu output và chạy kiểm tra tự động theo quy tắc cố định trong khi Escrow vẫn đang giữ.
               </li>
               <li>
-                <strong>Kiểm tra, từ chối hoặc nghiệm thu.</strong> Xem báo cáo kiểm tra và nội dung bàn giao. Nếu kiểm tra thất bại, nút quyết toán bị khóa; bạn có thể từ chối kèm lý do để mở tối đa 3 lượt nộp lại trước khi hết hạn. Với output đạt chuẩn, xác nhận và ký nghiệm thu bằng ví chủ sở hữu để trả tiền. Nếu không nghiệm thu, tiền giữ đến khi hết hạn.
+                <strong>Kiểm tra, từ chối hoặc nghiệm thu.</strong> Xem báo cáo kiểm tra và nội dung bàn giao. Bước kiểm tra tự động chỉ đối chiếu năm quy tắc cấu trúc cố định và không đánh giá độc lập chất lượng công việc. Nếu kiểm tra thất bại, nút quyết toán bị khóa; bạn có thể từ chối kèm lý do để mở tối đa 3 lượt nộp lại trước khi hết hạn. Với output đạt chuẩn, xác nhận và ký nghiệm thu bằng ví chủ sở hữu để trả tiền. Nếu không nghiệm thu, tiền giữ đến khi hết hạn và chủ ví vẫn có thể từ chối nghiệm thu rồi hoàn Escrow đang giữ sau khi hết hạn.
               </li>
               <li>
                 <strong>Đóng.</strong> <em>Thu hồi quyền chi</em> dừng các khoản thanh toán mới. Khi hết hạn, hoàn từng Escrow đang giữ ngay trên bảng điều khiển trước khi đóng tác vụ. <em>Hoàn tiền và đóng tác vụ</em> trả ngân sách chưa phân bổ về cho chủ ví khi không còn Escrow đang giữ.
@@ -401,7 +452,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 điều kiện ngân sách và trạng thái nhưng chỉ lưu bản ghi local, không chuyển tiền trên Devnet; được gắn nhãn <em>Mô phỏng</em>.
               </p>
               <Callout tone="note" title="Hành động on-chain cần ví của bạn">
-                Tạo, nghiệm thu output, thu hồi và đóng tác vụ đều cần ví chủ sở hữu. Trình duyệt phải có Phantom.
+                Tạo, nghiệm thu output, thu hồi và đóng tác vụ đều cần ví chủ sở hữu. Trình duyệt phải có ví Solana đã
+                kết nối (ví dụ Phantom).
               </Callout>
               <TabLink tab="tasks" label="Task Vault" ctx={ctx} />
             </>
@@ -525,8 +577,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   <TabLink tab="policy" label="Chính sách chi tiêu" ctx={ctx} />.
                 </li>
                 <li>
-                  Nạp Devnet SOL (trả phí) và SPL token cho ví agent, đồng thời đảm bảo ví merchant đã có sẵn tài khoản
-                  token (ATA) cho mint đó.
+                  Nạp token SPL Devnet cho ví agent (facilitator ghi trong challenge trả phí mạng cho giao dịch x402 nên
+                  không cần SOL để settle x402), đồng thời đảm bảo ví merchant đã có sẵn tài khoản token (ATA) cho mint đó.
                 </li>
                 <li>
                   Gọi <code>nexuspay_x402_fetch</code> (hoặc <code>nexuspay_x402_resolve</code>) và giữ nguyên{' '}
@@ -561,7 +613,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                       <TableRow><TableCell>Claude Code</TableCell><TableCell>Chạy một lần lệnh <code>claude mcp add --transport http …</code>.</TableCell></TableRow>
                       <TableRow><TableCell>Codex</TableCell><TableCell><code>~/.codex/config.toml</code> (<code>url</code> + <code>http_headers</code>).</TableCell></TableRow>
                       <TableRow><TableCell>Antigravity</TableCell><TableCell><code>~/.gemini/config/mcp_config.json</code> (<code>serverUrl</code> + <code>headers</code>).</TableCell></TableRow>
-                      <TableRow><TableCell>Claude Desktop</TableCell><TableCell><code>claude_desktop_config.json</code>, qua cầu nối <code>mcp-remote</code> (cần Node.js).</TableCell></TableRow>
+                      <TableRow><TableCell>Claude Desktop</TableCell><TableCell>Cấu hình thủ công trong <code>claude_desktop_config.json</code> qua cầu nối <code>mcp-remote</code> (không có tab sẵn trong card MCP ở Tổng quan; cần Node.js).</TableCell></TableRow>
                     </TableBody>
                   </Table>
                 </li>
@@ -738,8 +790,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </li>
               <li>
                 Mỗi giao dịch mang một khóa idempotency. Nếu một lệnh gọi bị timeout hoặc agent trả lỗi server, công cụ
-                trả về <code>outcome_unknown</code> kèm khóa đó. Thử lại với cùng khóa thì không thể trả tiền hai lần;
-                không bao giờ đổi số tiền khi thử lại.
+                trả về <code>outcome_unknown</code> kèm khóa đó. Thử lại với cùng khóa khi bản ghi yêu cầu vẫn còn trong
+                lưu trữ giúp tránh thực thi trùng; không bao giờ đổi số tiền khi thử lại. Idempotency không được bảo
+                đảm sau khi bản ghi bị prune.
               </li>
               <li>
                 Dùng lại một khóa cho giao dịch khác trả về <code>IDEMPOTENCY_CONFLICT</code>. Hai lệnh gọi với hai khóa
@@ -846,7 +899,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           body: (
             <ul>
               <li>Seed phrase của bạn nằm lại trong ví. Dịch vụ chỉ thấy public key và chữ ký của bạn.</li>
-              <li>Ví agent giữ một ngân sách Devnet nhỏ. Dù dịch vụ bị xâm nhập cũng không chạm được vào tiền của bạn.</li>
+              <li>Cặp khóa ví agent do server giữ (server-custodial) và chỉ giữ phần vốn Devnet bạn nạp vào đó. Xâm nhập dịch vụ không thể ký thay ví chủ sở hữu của bạn, nhưng có thể ảnh hưởng đến số tiền đang giữ trong ví agent.</li>
               <li>Không bao giờ dán khóa riêng hay seed phrase vào một lệnh, một MCP client hay dashboard này.</li>
             </ul>
           ),
