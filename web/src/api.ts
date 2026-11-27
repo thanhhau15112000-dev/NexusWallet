@@ -371,23 +371,4 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ scenario }),
     }),
-  runMockService: (input: {
-    taskId: string;
-    paymentId?: string;
-    serviceId: string;
-    payload?: Record<string, unknown>;
-    scenario?: 'valid' | 'invalid_schema' | 'wrong_service';
-  }) =>
-    request<{
-      scenario?: 'valid' | 'invalid_schema' | 'wrong_service';
-      serviceId: string;
-      workerPubkey: string;
-      workerSignature: string;
-      requestHash: string;
-      resultHash: string;
-      resultPayload: Record<string, unknown>;
-    }>('/api/tasks/mock-service/run', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
 };

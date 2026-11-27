@@ -1101,22 +1101,26 @@ export function TaskVaultPanel(props: {
                         {props.merchantWorkerPubkey || props.mockWorkerPubkey ? (
                           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs">
                             {props.merchantWorkerPubkey ? (
-                              <button
+                              <Button
                                 type="button"
-                                className="text-accent hover:underline"
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0 text-xs"
                                 onClick={() => setNewAllowedWorker(props.merchantWorkerPubkey!)}
                               >
                                 {dict.taskVault.create.useMerchantWorker}
-                              </button>
+                              </Button>
                             ) : null}
                             {props.mockWorkerPubkey ? (
-                              <button
+                              <Button
                                 type="button"
-                                className="text-accent hover:underline"
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0 text-xs"
                                 onClick={() => setNewAllowedWorker(props.mockWorkerPubkey!)}
                               >
                                 {dict.taskVault.create.useMockWorker}
-                              </button>
+                              </Button>
                             ) : null}
                           </div>
                         ) : null}
@@ -1135,7 +1139,13 @@ export function TaskVaultPanel(props: {
                         type="checkbox"
                         className="h-3.5 w-3.5 accent-accent"
                         checked={submitOnchain}
-                        onChange={(e) => setSubmitOnchain(e.target.checked)}
+                        onChange={(e) => {
+                          setSubmitOnchain(e.target.checked);
+                          // The merchant works only on Devnet, so a simulated task falls back to the mock worker.
+                          if (!e.target.checked && newAllowedWorker === props.merchantWorkerPubkey && props.mockWorkerPubkey) {
+                            setNewAllowedWorker(props.mockWorkerPubkey);
+                          }
+                        }}
                       />
                       <span>{dict.taskVault.create.broadcastOnChain}</span>
                     </label>

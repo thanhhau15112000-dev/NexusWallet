@@ -68,12 +68,19 @@ function getMockWorkerKeypair(ctx: AppContext): Keypair {
   return ctx.mockWorker;
 }
 
-/** Which signer can act as `worker` on-chain: the server's mock worker or the demo merchant. */
-async function onchainWorkerKind(ctx: AppContext, worker: string): Promise<'mock' | 'merchant' | null> {
+/**
+ * Which signer can act as `worker` on-chain: the server's mock worker or the demo merchant.
+ * `unreachable` means the merchant is configured but not answering, so it cannot be told apart.
+ */
+async function onchainWorkerKind(ctx: AppContext, worker: string): Promise<'mock' | 'merchant' | 'unreachable' | null> {
   if (ctx.mockWorker?.publicKey.toBase58() === worker) return 'mock';
-  if (ctx.merchantWorker && (await ctx.merchantWorker.pubkey()) === worker) return 'merchant';
-  return null;
+  if (!ctx.merchantWorker) return null;
+  const merchantPubkey = await ctx.merchantWorker.pubkey();
+  if (merchantPubkey === null) return 'unreachable';
+  return merchantPubkey === worker ? 'merchant' : null;
 }
+
+const MERCHANT_UNREACHABLE = { error: 'merchant_worker_unreachable', message: 'the demo merchant worker does not answer' };
 
 type MockScenario = 'valid' | 'invalid_schema' | 'wrong_service';
 
@@ -1150,7 +1157,9 @@ const inFlightClaims = new Set<string>();
     const isSimulated = task.isSimulated !== false;
     let txSignature: string | undefined;
     if (!isSimulated) {
-      if (!await onchainWorkerKind(userCtx, body.worker)) {
+      const workerKind = await onchainWorkerKind(userCtx, body.worker);
+      if (workerKind === 'unreachable') return reply.status(503).send(MERCHANT_UNREACHABLE);
+      if (!workerKind) {
         return reply.status(400).send({
           error: 'unsupported_onchain_worker',
           message: 'on-chain payments need a worker that can sign: the mock worker or the demo merchant',
@@ -1437,6 +1446,7 @@ const inFlightClaims = new Set<string>();
       let txSignature: string | undefined;
       if (!isSimulated) {
         const workerKind = await onchainWorkerKind(userCtx, payment.worker);
+        if (workerKind === 'unreachable') return reply.status(503).send(MERCHANT_UNREACHABLE);
         if (!workerKind) {
           return reply.status(400).send({
             error: 'unsupported_onchain_worker',
@@ -1780,8 +1790,9 @@ const inFlightClaims = new Set<string>();
       }
     }
     // A simulated payment to any other address still runs on the mock worker, as before.
-    if (workerKind === null && payment.isSimulated === false) {
-      return reply.status(400).send({ error: 'unsupported_onchain_worker' });
+    if (payment.isSimulated === false) {
+      if (workerKind === 'unreachable') return reply.status(503).send(MERCHANT_UNREACHABLE);
+      if (workerKind === null) return reply.status(400).send({ error: 'unsupported_onchain_worker' });
     }
     return mockWorkerOutput(getMockWorkerKeypair(userCtx), {
       taskId,

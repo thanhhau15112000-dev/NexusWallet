@@ -370,6 +370,7 @@ export const en: TranslationDictionary = {
       agent_signer_mismatch: 'This task was created for a different agent wallet.',
       unsupported_onchain_worker: 'Devnet tasks can only pay the demo merchant or the mock worker.',
       merchant_worker_onchain_only: 'The demo merchant works only on Devnet tasks.',
+      merchant_worker_unreachable: 'The demo merchant does not answer right now. Try again in a moment.',
       merchant_worker_failed: 'The demo merchant did not deliver the output. Try again in a moment.',
       payment_rejected: 'Cannot create an Escrow with the current task state or budget.',
       payment_not_found: 'Payment not found.',

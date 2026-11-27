@@ -206,12 +206,16 @@ describe('demo merchant as the worker of a task', () => {
     } finally { await app.close(); }
   });
 
-  it('leaves the merchant worker out of the state while the merchant does not answer', async () => {
-    const { app, headers, userCtx } = await setup();
+  it('says the merchant does not answer, instead of calling its address unsupported', async () => {
+    const { app, headers, userCtx, taskId, markOnChain } = await setup();
     try {
+      markOnChain();
       userCtx.merchantWorker = createMerchantWorker(URL_BASE, (async () => { throw new Error('down'); }) as unknown as typeof fetch);
       const state = (await app.inject({ method: 'GET', url: '/api/state', headers })).json();
       expect(state.merchantWorker).toBeNull();
+      const run = await app.inject({ method: 'POST', url: `/api/tasks/${taskId}/payments/pay-chain/worker-run`, headers, payload: {} });
+      expect(run.statusCode).toBe(503);
+      expect(run.json().error).toBe('merchant_worker_unreachable');
     } finally { await app.close(); }
   });
 });

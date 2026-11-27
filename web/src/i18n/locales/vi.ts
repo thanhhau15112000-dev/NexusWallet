@@ -370,6 +370,7 @@ export const vi: TranslationDictionary = {
       agent_signer_mismatch: 'Tác vụ này được tạo cho một ví agent khác.',
       unsupported_onchain_worker: 'Tác vụ trên Devnet chỉ trả được cho merchant demo hoặc mock worker.',
       merchant_worker_onchain_only: 'Merchant demo chỉ nhận việc của tác vụ trên Devnet.',
+      merchant_worker_unreachable: 'Merchant demo hiện không phản hồi. Thử lại sau giây lát.',
       merchant_worker_failed: 'Merchant demo chưa giao được output. Thử lại sau giây lát.',
       payment_rejected: 'Không thể tạo Escrow với trạng thái hoặc ngân sách hiện tại.',
       payment_not_found: 'Không tìm thấy khoản thanh toán.',
