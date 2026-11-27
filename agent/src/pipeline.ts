@@ -225,6 +225,7 @@ function dispatchDecision(
       },
     });
     ctx.audit.record('approval.requested', request.id, { payload });
+    void ctx.telegram?.notifyApprovalRequired(ctx, request);
     return request;
   }
 

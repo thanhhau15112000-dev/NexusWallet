@@ -11,6 +11,7 @@ export const PUBLIC_AUTH_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/session',
   '/api/auth/logout',
+  '/api/webhooks/telegram',
 ]);
 export const PUBLIC_ACTION_PATH_PREFIX = '/api/actions/';
 
