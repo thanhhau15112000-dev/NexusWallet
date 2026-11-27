@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -87,9 +87,19 @@ export function TaskVaultPanel(props: {
   const [newBudgetSol, setNewBudgetSol] = useState('0.5');
   const [newCapSol, setNewCapSol] = useState('0.2');
   const [newHours, setNewHours] = useState('24');
-  const [newAllowedWorker, setNewAllowedWorker] = useState(props.merchantWorkerPubkey ?? props.mockWorkerPubkey ?? '');
   const [newAllowedServiceId, setNewAllowedServiceId] = useState('');
   const [submitOnchain, setSubmitOnchain] = useState(true);
+  // The mode picks the worker: Devnet tasks go to the demo merchant (the mock worker when it is unreachable),
+  // simulated tasks to the mock worker, since the merchant only works where it can see its escrow on-chain.
+  const defaultWorker = (submitOnchain ? props.merchantWorkerPubkey ?? props.mockWorkerPubkey : props.mockWorkerPubkey) ?? '';
+  const [newAllowedWorker, setNewAllowedWorker] = useState(defaultWorker);
+  const lastDefaultWorker = useRef(defaultWorker);
+  useEffect(() => {
+    const previous = lastDefaultWorker.current;
+    lastDefaultWorker.current = defaultWorker;
+    // An address the owner typed stays; only the previous default is replaced.
+    setNewAllowedWorker((current) => (current === previous ? defaultWorker : current));
+  }, [defaultWorker]);
   /** Worker, service and Devnet mode have working defaults, so they stay folded unless a check needs them. */
   const [createAdvancedOpen, setCreateAdvancedOpen] = useState(false);
   /** '' is SOL; otherwise an SPL mint from the policy. */
@@ -1098,32 +1108,6 @@ export function TaskVaultPanel(props: {
                           onChange={(e) => setNewAllowedWorker(e.target.value)}
                           placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
                         />
-                        {props.merchantWorkerPubkey || props.mockWorkerPubkey ? (
-                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                            {props.merchantWorkerPubkey ? (
-                              <Button
-                                type="button"
-                                variant="link"
-                                size="sm"
-                                className="h-auto p-0 text-xs"
-                                onClick={() => setNewAllowedWorker(props.merchantWorkerPubkey!)}
-                              >
-                                {dict.taskVault.create.useMerchantWorker}
-                              </Button>
-                            ) : null}
-                            {props.mockWorkerPubkey ? (
-                              <Button
-                                type="button"
-                                variant="link"
-                                size="sm"
-                                className="h-auto p-0 text-xs"
-                                onClick={() => setNewAllowedWorker(props.mockWorkerPubkey!)}
-                              >
-                                {dict.taskVault.create.useMockWorker}
-                              </Button>
-                            ) : null}
-                          </div>
-                        ) : null}
                       </Field>
                       <Field label={dict.taskVault.create.allowedService}>
                         <Input
@@ -1139,13 +1123,7 @@ export function TaskVaultPanel(props: {
                         type="checkbox"
                         className="h-3.5 w-3.5 accent-accent"
                         checked={submitOnchain}
-                        onChange={(e) => {
-                          setSubmitOnchain(e.target.checked);
-                          // The merchant works only on Devnet, so a simulated task falls back to the mock worker.
-                          if (!e.target.checked && newAllowedWorker === props.merchantWorkerPubkey && props.mockWorkerPubkey) {
-                            setNewAllowedWorker(props.mockWorkerPubkey);
-                          }
-                        }}
+                        onChange={(e) => setSubmitOnchain(e.target.checked)}
                       />
                       <span>{dict.taskVault.create.broadcastOnChain}</span>
                     </label>
