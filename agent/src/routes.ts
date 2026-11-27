@@ -1262,10 +1262,13 @@ const inFlightClaims = new Set<string>();
             userCtx.connection.getMinimumBalanceForRentExemption(0),
             userCtx.connection.getBalance(workerKeypair.publicKey, 'confirmed'),
           ]);
-          const instructions: TransactionInstruction[] = [];
+          // Preparation runs in its own transaction: with it, a token settlement exceeds the
+          // 1232-byte transaction limit. A retry after a failed settlement recomputes the top-up
+          // from the worker's current balance and recreates the token account idempotently.
+          const preparation: TransactionInstruction[] = [];
           const topUp = receiptRent + systemAccountRent - workerLamports;
           if (topUp > 0) {
-            instructions.push(SystemProgram.transfer({
+            preparation.push(SystemProgram.transfer({
               fromPubkey: userCtx.signer.publicKey,
               toPubkey: workerKeypair.publicKey,
               lamports: topUp,
@@ -1274,25 +1277,29 @@ const inFlightClaims = new Set<string>();
           const taskMint = task.mint ? new PublicKey(task.mint) : undefined;
           if (taskMint) {
             // The worker is paid into its associated token account; the agent funds it if missing.
-            instructions.push(createAssociatedTokenAccountIdempotentInstruction(
+            preparation.push(createAssociatedTokenAccountIdempotentInstruction(
               userCtx.signer.publicKey, workerKeypair.publicKey, taskMint,
             ));
           }
-          instructions.push(Ed25519Program.createInstructionWithPublicKey({
-            publicKey: new PublicKey(task.owner).toBytes(),
-            message: Buffer.from(acceptanceMessage),
-            signature: bs58.decode(body.ownerSignature),
-          }));
-          instructions.push(settleAcceptedOutputInstruction({
-            taskCapability: taskPda,
-            escrow: escrowPda,
-            paymentId,
-            worker: workerKeypair.publicKey,
-            agentSigner: new PublicKey(task.agentSigner),
-            resultHash: body.resultHash,
-            mint: taskMint,
-          }));
-          txSignature = await submitTaskVaultInstruction(userCtx.connection, instructions, userCtx.signer, [workerKeypair]);
+          if (preparation.length) {
+            await submitTaskVaultInstruction(userCtx.connection, preparation, userCtx.signer);
+          }
+          txSignature = await submitTaskVaultInstruction(userCtx.connection, [
+            Ed25519Program.createInstructionWithPublicKey({
+              publicKey: new PublicKey(task.owner).toBytes(),
+              message: Buffer.from(acceptanceMessage),
+              signature: bs58.decode(body.ownerSignature),
+            }),
+            settleAcceptedOutputInstruction({
+              taskCapability: taskPda,
+              escrow: escrowPda,
+              paymentId,
+              worker: workerKeypair.publicKey,
+              agentSigner: new PublicKey(task.agentSigner),
+              resultHash: body.resultHash,
+              mint: taskMint,
+            }),
+          ], userCtx.signer, [workerKeypair]);
         } catch (error) {
           req.log.error({ err: error, taskId, paymentId }, 'Task Vault settlement transaction failed');
           return reply.status(502).send({ error: 'onchain_settlement_failed' });
