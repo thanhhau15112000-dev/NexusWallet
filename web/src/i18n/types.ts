@@ -3,7 +3,6 @@ export type Locale = 'en' | 'vi';
 export type TranslationDictionary = {
   tabs: {
     wallet: string;
-    connect: string;
     policy: string;
     approvals: string;
     tasks: string;
@@ -20,7 +19,6 @@ export type TranslationDictionary = {
   };
   pageDesc: {
     wallet: string;
-    connect: string;
     policy: string;
     approvals: string;
     tasks: string;

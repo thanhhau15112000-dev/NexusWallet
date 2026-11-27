@@ -93,8 +93,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow><TableCell>Overview</TableCell><TableCell>See the agent wallet, connect the owner wallet, fund the agent.</TableCell></TableRow>
-                <TableRow><TableCell>Connect AI</TableCell><TableCell>Connect Claude, Codex or another AI client to the agent over MCP.</TableCell></TableRow>
+                <TableRow><TableCell>Overview</TableCell><TableCell>See the agent wallet, connect the owner wallet, fund the agent, and connect Claude, Codex or another AI client over MCP.</TableCell></TableRow>
                 <TableRow><TableCell>Policy</TableCell><TableCell>Set the per-transaction limit and the recipient allowlist.</TableCell></TableRow>
                 <TableRow><TableCell>Approvals</TableCell><TableCell>Review every request and approve held transfers.</TableCell></TableRow>
                 <TableRow><TableCell>Task Vault</TableCell><TableCell>Lock a task budget on-chain and pay workers through escrow.</TableCell></TableRow>
@@ -475,7 +474,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <p>
                 The client connects to the agent&apos;s <code>/mcp</code> URL (Streamable HTTP) with your personal MCP
                 token as a bearer header. Nothing is installed on the client&apos;s machine: copy the entry for your
-                client from the <TabLink tab="connect" label="Connect AI" ctx={ctx} /> page.
+                client from the <TabLink tab="wallet" label="Overview" ctx={ctx} /> page.
               </p>
               <Callout tone="note" title="Where the URL points">
                 On a hosted dashboard the URL is the dashboard origin, so any machine can connect. When you run the
@@ -568,7 +567,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <Steps>
                 <li>
                   Sign in to this dashboard with your wallet, then open <em>Show my connection</em> on
-                  the <TabLink tab="connect" label="Connect AI" ctx={ctx} /> page. On a hosted dashboard click
+                  the <TabLink tab="wallet" label="Overview" ctx={ctx} /> page. On a hosted dashboard click
                   {' '}<em>Create connection token</em>; the token appears once.
                 </li>
                 <li>
@@ -708,7 +707,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 itself, so the MCP server can read it from the agent&apos;s data directory.
               </li>
               <li>
-                <em>Rotate token</em> on the Connect AI page replaces it. Clients connected by URL stop
+                <em>Rotate token</em> on the Overview page replaces it. Clients connected by URL stop
                 working until you copy their entry again. The local stdio bundle re-reads the file when the agent
                 rejects the old token, so it needs no restart; a token pinned with
                 {' '}<code>NEXUS_AGENT_TOKEN</code> is not re-read and must be updated by hand.

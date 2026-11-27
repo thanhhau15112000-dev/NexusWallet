@@ -3,7 +3,6 @@ import type { TranslationDictionary } from '../types.js';
 export const vi: TranslationDictionary = {
   tabs: {
     wallet: 'Tổng quan',
-    connect: 'Kết nối AI',
     policy: 'Chính sách chi tiêu',
     approvals: 'Duyệt yêu cầu',
     tasks: 'Task Vault',
@@ -20,7 +19,6 @@ export const vi: TranslationDictionary = {
   },
   pageDesc: {
     wallet: 'Xem số dư, hạn mức và yêu cầu chờ duyệt. Bạn có thể khóa agent tại đây.',
-    connect: 'Kết nối Claude, Codex hoặc ứng dụng AI khác với agent này qua MCP.',
     policy: 'Đặt hạn mức và chọn người nhận mà agent được phép chuyển tiền.',
     approvals: 'Xem và ký duyệt các yêu cầu thanh toán vượt hạn mức.',
     tasks: 'Cấp ngân sách riêng cho từng tác vụ. Agent giữ từng khoản thanh toán cho tới khi bạn xem kết quả và chấp nhận.',

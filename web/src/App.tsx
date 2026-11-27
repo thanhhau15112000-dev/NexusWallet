@@ -8,7 +8,6 @@ import {
   LayoutGrid,
   LogOut,
   Menu,
-  Plug,
   ShieldCheck,
   Wallet as WalletIcon,
   X,
@@ -55,7 +54,7 @@ import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
-type FeatureTab = 'wallet' | 'connect' | 'policy' | 'approvals' | 'tasks' | 'history' | 'commands' | 'docs';
+type FeatureTab = 'wallet' |'policy' | 'approvals' | 'tasks' | 'history' | 'commands' | 'docs';
 
 type NavGroup = 'setup' | 'activity' | 'resources';
 
@@ -63,7 +62,6 @@ type NavGroup = 'setup' | 'activity' | 'resources';
 // Arrow keys move through this list top to bottom.
 const FEATURE_TABS: Array<{ id: FeatureTab; group: NavGroup; icon: typeof LayoutGrid }> = [
   { id: 'wallet', group: 'setup', icon: LayoutGrid },
-  { id: 'connect', group: 'setup', icon: Plug },
   { id: 'policy', group: 'setup', icon: ShieldCheck },
   { id: 'approvals', group: 'activity', icon: CheckCircle2 },
   { id: 'tasks', group: 'activity', icon: Layers },
@@ -717,19 +715,22 @@ export function App() {
 
         {panel(
           'wallet',
-          <OverviewPanel
-            state={state}
-            wallet={wallet}
-            requests={requests}
-            fundingBusy={Boolean(busy.seed || busy.deposit)}
-            onClaimSeed={() => void claimSeed()}
-            onDeposit={(amount) => void deposit(amount)}
-            onRefresh={refresh}
-            onToast={setToast}
-            onOpenTab={setActiveTab}
-            onConnectWallet={() => setWalletPickerOpen(true)}
-            connectDisabled={!walletChoices.length || Boolean(busy.connect)}
-          />,
+          <>
+            <OverviewPanel
+              state={state}
+              wallet={wallet}
+              requests={requests}
+              fundingBusy={Boolean(busy.seed || busy.deposit)}
+              onClaimSeed={() => void claimSeed()}
+              onDeposit={(amount) => void deposit(amount)}
+              onRefresh={refresh}
+              onToast={setToast}
+              onOpenTab={setActiveTab}
+              onConnectWallet={() => setWalletPickerOpen(true)}
+              connectDisabled={!walletChoices.length || Boolean(busy.connect)}
+            />
+            <McpConnectPanel />
+          </>,
         )}
 
         {panel(
@@ -743,9 +744,6 @@ export function App() {
             onOpenPolicy={() => setActiveTab('policy')}
           />,
         )}
-
-        {panel('connect', <McpConnectPanel />)}
-
         {panel(
           'approvals',
           <RequestList
