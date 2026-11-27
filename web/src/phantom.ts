@@ -4,6 +4,7 @@ import {
   Connection,
   PublicKey,
   SystemProgram,
+  Transaction,
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
@@ -17,7 +18,7 @@ export type PhantomProvider = {
   connect(options?: { onlyIfTrusted?: boolean }): Promise<{ publicKey: PhantomPublicKey }>;
   disconnect(): Promise<void>;
   signMessage(message: Uint8Array, encoding?: 'utf8' | 'hex'): Promise<{ signature: Uint8Array }>;
-  signAndSendTransaction(transaction: VersionedTransaction): Promise<{ signature: string }>;
+  signAndSendTransaction(transaction: Transaction | VersionedTransaction): Promise<{ signature: string }>;
   on(event: 'connect' | 'disconnect' | 'accountChanged', handler: (arg: unknown) => void): void;
   off?(event: string, handler: (arg: unknown) => void): void;
 };
@@ -72,18 +73,6 @@ export async function buildVersionedSolTransfer(params: {
     ],
   }).compileToV0Message();
   return new VersionedTransaction(message);
-}
-
-/**
- * Ask Phantom to sign a UTF-8 message. Phantom returns a raw 64-byte signature;
- * the agent service verifies it base58-encoded against the owner key.
- */
-export async function signPhantomMessage(message: string): Promise<string> {
-  const provider = getPhantom();
-  if (!provider) throw new Error('Phantom is not installed');
-  const encoded = new TextEncoder().encode(message);
-  const { signature } = await provider.signMessage(encoded, 'utf8');
-  return bs58.encode(signature);
 }
 
 /**

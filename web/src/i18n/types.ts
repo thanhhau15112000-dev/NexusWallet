@@ -17,15 +17,6 @@ export type TranslationDictionary = {
     openMenu: string;
     closeMenu: string;
   };
-  pageDesc: {
-    wallet: string;
-    policy: string;
-    approvals: string;
-    tasks: string;
-    history: string;
-    commands: string;
-    docs: string;
-  };
   topbar: {
     ready: string;
     offline: string;
@@ -38,7 +29,6 @@ export type TranslationDictionary = {
     ownerBalance: string;
     spendingLimits: string;
     pendingApprovals: string;
-    perTx: string;
     perDay: string;
     unlimited: string;
     spent24h: string;
@@ -55,29 +45,17 @@ export type TranslationDictionary = {
     moreItems: string;
     editPolicy: string;
     review: string;
-    noPending: string;
-    agentControl: string;
     agentActive: string;
-    activeDesc: string;
-    frozenDesc: string;
-    mcpPromoTitle: string;
-    mcpPromoDesc: string;
-    mcpPromoCta: string;
-    colStatus: string;
-    colCommand: string;
-    colAction: string;
     colTime: string;
   };
   boot: {
     heroTitle: string;
     authNote: string;
-    testFunds: string;
     connectionHint: string;
     signInFailed: string;
     serviceUnavailable: string;
     loading: string;
     signInRequired: string;
-    signInDesc: string;
     signInBtn: string;
     connecting: string;
     installPhantom: string;
@@ -93,8 +71,6 @@ export type TranslationDictionary = {
     ruleNotAllowlisted: string;
     ruleOverLimit: string;
     ruleWithinLimit: string;
-    introDevnet: string;
-    introDocs: string;
   };
   toasts: {
     confirmed: string;
@@ -112,8 +88,6 @@ export type TranslationDictionary = {
   };
   agent: {
     title: string;
-    availableBalance: string;
-    dedicatedAddress: string;
     copyAddress: string;
     rpcError: string;
     frozenStatus: string;
@@ -126,7 +100,6 @@ export type TranslationDictionary = {
     title: string;
     disconnect: string;
     ready: string;
-    notFound: string;
     installPhantom: string;
     connected: string;
     copyAddress: string;
@@ -136,7 +109,6 @@ export type TranslationDictionary = {
     unbound: string;
     connecting: string;
     connectWallet: string;
-    availableBalance: string;
     connectToViewBalance: string;
     loadingBalance: string;
     rpcError: string;
@@ -145,7 +117,6 @@ export type TranslationDictionary = {
   funding: {
     title: string;
     initialSeedClaimed: string;
-    seedCredited: string;
     claimSeed: string;
     claimSeedTitle: string;
     deposit: string;
@@ -201,7 +172,6 @@ export type TranslationDictionary = {
     presetsTitle: string;
     lastTitle: string;
     sendHint: string;
-    mcpNote: string;
     openPolicy: string;
     connectToUse: string;
   };
@@ -220,8 +190,6 @@ export type TranslationDictionary = {
     message: string;
     details: string;
     policyTag: string;
-    modelsTag: string;
-    balanceTag: string;
     signatureTag: string;
     createdTag: string;
     updatedTag: string;
@@ -330,19 +298,11 @@ export type TranslationDictionary = {
   };
   mcp: {
     title: string;
-    eyebrow: string;
-    pitch: string;
-    step1Title: string;
-    step1Desc: string;
     reveal: string;
     localOnlyNote: string;
     hintClaudeCode: string;
     hintCodex: string;
     hintAntigravity: string;
-    step2Title: string;
-    step2Desc: string;
-    step3Title: string;
-    step3Prompt: string;
     copy: string;
     copied: string;
     scopeTitle: string;
@@ -350,9 +310,6 @@ export type TranslationDictionary = {
     scopeRequests: string;
     scopeTransfers: string;
     ownerOnlyNote: string;
-    tokenTitle: string;
-    securityNote: string;
-    rotateToken: string;
     rotating: string;
     createToken: string;
     replaceToken: string;
@@ -392,12 +349,10 @@ export type TranslationDictionary = {
       empty: string;
       cap: string;
       newTask: string;
-      hideForm: string;
     };
     statuses: { active: string; completed: string; revoked: string; expired: string };
     escrowStatuses: { held: string; settled: string; refunded: string };
     detail: {
-      taskTitle: string;
       revoke: string;
       refundAndClose: string;
       refundBlockedPending: string;
@@ -436,15 +391,9 @@ export type TranslationDictionary = {
     escrows: {
       title: string;
       empty: string;
-      colPaymentId: string;
-      colService: string;
       colWorker: string;
-      colAmount: string;
-      colStatus: string;
-      colAction: string;
       proof: string;
       settledAt: string;
-      proofHint: string;
       receiptLocked: string;
       receiptWorkerOnly: string;
       receiptClosed: string;
@@ -473,7 +422,6 @@ export type TranslationDictionary = {
       workerRequired: string;
       useMockWorker: string;
       validWorkerAddress: string;
-      phantomNotFound: string;
       ownerWalletRequired: string;
       transactionFailed: string;
       fundedDevnet: string;
@@ -499,7 +447,6 @@ export type TranslationDictionary = {
       vaultClosedSimulated: string;
       refundFailed: string;
       loadFailed: string;
-      detailFailed: string;
     };
   };
   docs: {

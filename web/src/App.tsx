@@ -766,7 +766,7 @@ export function App() {
           'tasks',
           <TaskVaultPanel
             owner={state.owner}
-            connected={Boolean(wallet)}
+            wallet={connectedWallet}
             agentPubkey={state.agent.pubkey}
             mockWorkerPubkey={state.mockWorker?.pubkey ?? null}
             allowedMints={state.policy.allowedMints}
