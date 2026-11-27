@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { TelegramAlertLanguage, TelegramNotificationEvents } from '@nexus/shared';
 import { Bell, Check, Copy, ExternalLink, RefreshCw, Send, Unplug } from './icons.js';
 import {
   api,
@@ -73,7 +74,15 @@ export function NotificationsPanel(props: {
   const [busyAction, setBusyAction] = useState<'link' | 'test' | 'unlink' | 'save' | null>(null);
 
   const [enabled, setEnabled] = useState(true);
-  const [pendingApproval, setPendingApproval] = useState(true);
+  const [silent, setSilent] = useState(false);
+  const [language, setLanguage] = useState<TelegramAlertLanguage>('en');
+  const [events, setEvents] = useState<TelegramNotificationEvents>({
+    pendingApproval: true,
+    txDenied: true,
+    txFailed: true,
+    txConfirmed: false,
+    approvalExpired: false,
+  });
   const [dirty, setDirty] = useState(false);
 
   const syncFromState = useCallback(
@@ -81,7 +90,9 @@ export function NotificationsPanel(props: {
       setData(next);
       if (!preserveDraft) {
         setEnabled(next.settings.enabled);
-        setPendingApproval(next.settings.events.pendingApproval);
+        setSilent(next.settings.silent);
+        setLanguage(next.settings.language);
+        setEvents({ ...next.settings.events });
       }
       if (next.settings.chatId) {
         setLinkToken(null);
@@ -203,7 +214,9 @@ export function NotificationsPanel(props: {
     try {
       const res = await api.updateTelegramNotifications({
         enabled,
-        events: { pendingApproval },
+        silent,
+        language,
+        events,
       });
       setDirty(false);
       if (data) {
@@ -417,7 +430,7 @@ export function NotificationsPanel(props: {
           ) : null
         }
       >
-        <div className="space-y-2.5">
+        <div className="space-y-4">
           <ToggleRow
             id="telegram-enabled-switch"
             label={dict.notifications.masterToggleLabel}
@@ -429,17 +442,119 @@ export function NotificationsPanel(props: {
               setDirty(true);
             }}
           />
-          <ToggleRow
-            id="telegram-pending-approval-switch"
-            label={dict.notifications.pendingApprovalLabel}
-            hint={dict.notifications.pendingApprovalHint}
-            checked={pendingApproval}
-            disabled={loading || !enabled || busyAction !== null}
-            onChange={(next) => {
-              setPendingApproval(next);
-              setDirty(true);
-            }}
-          />
+
+          <div className="space-y-2">
+            <h3 className="text-xs font-medium text-muted">{dict.notifications.triggersSectionTitle}</h3>
+            <div className="space-y-2">
+              {(
+                [
+                  {
+                    key: 'pendingApproval',
+                    id: 'telegram-pending-approval-switch',
+                    label: dict.notifications.pendingApprovalLabel,
+                    hint: dict.notifications.pendingApprovalHint,
+                  },
+                  {
+                    key: 'txDenied',
+                    id: 'telegram-tx-denied-switch',
+                    label: dict.notifications.txDeniedLabel,
+                    hint: dict.notifications.txDeniedHint,
+                  },
+                  {
+                    key: 'txFailed',
+                    id: 'telegram-tx-failed-switch',
+                    label: dict.notifications.txFailedLabel,
+                    hint: dict.notifications.txFailedHint,
+                  },
+                  {
+                    key: 'txConfirmed',
+                    id: 'telegram-tx-confirmed-switch',
+                    label: dict.notifications.txConfirmedLabel,
+                    hint: dict.notifications.txConfirmedHint,
+                  },
+                  {
+                    key: 'approvalExpired',
+                    id: 'telegram-approval-expired-switch',
+                    label: dict.notifications.approvalExpiredLabel,
+                    hint: dict.notifications.approvalExpiredHint,
+                  },
+                ] as const
+              ).map((item) => (
+                <ToggleRow
+                  key={item.key}
+                  id={item.id}
+                  label={item.label}
+                  hint={item.hint}
+                  checked={events[item.key]}
+                  disabled={loading || !enabled || busyAction !== null}
+                  onChange={(next) => {
+                    setEvents((prev) => ({ ...prev, [item.key]: next }));
+                    setDirty(true);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-xs font-medium text-muted">{dict.notifications.deliverySectionTitle}</h3>
+            <div className="space-y-2">
+              <ToggleRow
+                id="telegram-silent-switch"
+                label={dict.notifications.silentLabel}
+                hint={dict.notifications.silentHint}
+                checked={silent}
+                disabled={loading || !enabled || busyAction !== null}
+                onChange={(next) => {
+                  setSilent(next);
+                  setDirty(true);
+                }}
+              />
+              <div
+                className={cn(
+                  'flex flex-wrap items-center justify-between gap-4 rounded-lg border border-line bg-panel px-3.5 py-3',
+                  loading || !enabled || busyAction !== null ? 'opacity-60' : null,
+                )}
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <span className="block text-sm font-medium text-ink">
+                    {dict.notifications.languageLabel}
+                  </span>
+                  <p className="text-xs text-muted">{dict.notifications.languageHint}</p>
+                </div>
+                <div className="inline-flex items-center gap-1.5" role="group" aria-label={dict.notifications.languageLabel}>
+                  {(
+                    [
+                      { value: 'en', label: dict.notifications.languageEn },
+                      { value: 'vi', label: dict.notifications.languageVi },
+                    ] as const
+                  ).map((option) => {
+                    const selected = language === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={selected}
+                        disabled={loading || !enabled || busyAction !== null}
+                        onClick={() => {
+                          setLanguage(option.value);
+                          setDirty(true);
+                        }}
+                        className={cn(
+                          'cursor-pointer rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed',
+                          selected
+                            ? 'border-accent-line bg-accent-soft text-accent-strong'
+                            : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">

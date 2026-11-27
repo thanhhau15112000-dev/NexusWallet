@@ -5,6 +5,8 @@ import type {
   TaskCapabilityRecord,
   TaskPaymentRecord,
   TaskReceiptRecord,
+  TelegramAlertLanguage,
+  TelegramNotificationEvents,
   TelegramNotificationSettings,
 } from '@nexus/shared';
 import { getCurrentDictionary } from './i18n/context.js';
@@ -382,7 +384,9 @@ export const api = {
 
   updateTelegramNotifications: (input: {
     enabled?: boolean;
-    events?: { pendingApproval?: boolean };
+    silent?: boolean;
+    language?: TelegramAlertLanguage;
+    events?: Partial<TelegramNotificationEvents>;
   }) =>
     request<{ settings: TelegramNotificationSettings }>('/api/notifications/telegram', {
       method: 'PUT',

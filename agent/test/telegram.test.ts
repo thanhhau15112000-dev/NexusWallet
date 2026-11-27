@@ -8,6 +8,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultPolicy } from '@nexus/shared';
+import { expirePendingApprovals } from '../src/approvals.js';
 import { registerAuthHook } from '../src/auth-hook.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { createContext } from '../src/context.js';
@@ -103,7 +104,15 @@ describe('Telegram config & store persistence', () => {
         username: null,
         linkedAt: null,
         lastError: null,
-        events: { pendingApproval: true },
+        silent: false,
+        language: 'en',
+        events: {
+          pendingApproval: true,
+          txDenied: true,
+          txFailed: true,
+          txConfirmed: false,
+          approvalExpired: false,
+        },
       },
     });
 
@@ -112,7 +121,12 @@ describe('Telegram config & store persistence', () => {
     expect(linked.username).toBe('alice');
     expect(linked.linkedAt).toBeTruthy();
 
-    store.setTelegramSettings({ enabled: false, events: { pendingApproval: false } });
+    store.setTelegramSettings({
+      enabled: false,
+      silent: true,
+      language: 'vi',
+      events: { pendingApproval: false, txConfirmed: true, approvalExpired: true },
+    });
     store.setTelegramError('blocked');
 
     const reloaded = new Store(statePath, 'agent-001', 200);
@@ -121,7 +135,15 @@ describe('Telegram config & store persistence', () => {
       chatId: '987654321',
       username: 'alice',
       lastError: 'blocked',
-      events: { pendingApproval: false },
+      silent: true,
+      language: 'vi',
+      events: {
+        pendingApproval: false,
+        txDenied: true,
+        txFailed: true,
+        txConfirmed: true,
+        approvalExpired: true,
+      },
     });
 
     const unlinked = reloaded.unlinkTelegram();
@@ -129,6 +151,40 @@ describe('Telegram config & store persistence', () => {
     expect(unlinked.username).toBeNull();
     expect(unlinked.lastError).toBeNull();
     expect(unlinked.events.pendingApproval).toBe(false);
+    expect(unlinked.events.txConfirmed).toBe(true);
+    expect(unlinked.silent).toBe(true);
+    expect(unlinked.language).toBe('vi');
+
+    // Backfills v1 state.json files that only stored events.pendingApproval.
+    const v1Path = join(dir, 'state-v1.json');
+    writeFileSync(
+      v1Path,
+      JSON.stringify({
+        ...legacy,
+        notifications: {
+          telegram: {
+            enabled: true,
+            chatId: '111',
+            username: 'v1user',
+            linkedAt: '2026-01-01T00:00:00.000Z',
+            lastError: null,
+            events: { pendingApproval: true },
+          },
+        },
+      }),
+    );
+    const v1Store = new Store(v1Path, 'agent-001', 200);
+    expect(v1Store.getNotificationSettings().telegram).toMatchObject({
+      silent: false,
+      language: 'en',
+      events: {
+        pendingApproval: true,
+        txDenied: true,
+        txFailed: true,
+        txConfirmed: false,
+        approvalExpired: false,
+      },
+    });
   });
 });
 
@@ -463,10 +519,32 @@ describe('Telegram HTTP routes & auth boundaries', () => {
         method: 'PUT',
         url: '/api/notifications/telegram',
         headers: { cookie: cookieHeader },
-        payload: { enabled: false, events: { pendingApproval: false } },
+        payload: {
+          enabled: false,
+          silent: true,
+          language: 'vi',
+          events: {
+            pendingApproval: false,
+            txDenied: false,
+            txFailed: true,
+            txConfirmed: true,
+            approvalExpired: true,
+          },
+        },
       });
       expect(updated.statusCode).toBe(200);
-      expect(updated.json().settings.enabled).toBe(false);
+      expect(updated.json().settings).toMatchObject({
+        enabled: false,
+        silent: true,
+        language: 'vi',
+        events: {
+          pendingApproval: false,
+          txDenied: false,
+          txFailed: true,
+          txConfirmed: true,
+          approvalExpired: true,
+        },
+      });
 
       const unlinked = await app.inject({
         method: 'DELETE',
@@ -478,5 +556,146 @@ describe('Telegram HTTP routes & auth boundaries', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe('Telegram extended event alerts & delivery preferences', () => {
+  it('delivers txDenied, txConfirmed (skipping get_balance), txFailed, and approvalExpired with silent & language support', async () => {
+    const allowedRecipient = Keypair.generate().publicKey.toBase58();
+    const unlistedRecipient = Keypair.generate().publicKey.toBase58();
+    const dataDir = mkdtempSync(join(tmpdir(), 'nexus-tg-events-'));
+    const config = makeConfig(dataDir, {
+      DEPLOYMENT_MODE: 'hosted',
+      authRequired: true,
+      TELEGRAM_BOT_TOKEN: '123456:EVENTS_TOKEN',
+      telegramBotUsername: 'nexus_events_bot',
+      allowedOrigins: ['https://nexuspay.example.com'],
+    });
+    const ctx = createContext(config);
+    const { calls, fetchImpl } = mockFetchRecorder();
+    const ownerCtx = ctx.getUserContext!(config.adminPubkey);
+    ownerCtx.telegram = new TelegramService({
+      config,
+      getUserContext: (owner) => ctx.getUserContext!(owner),
+      fetchImpl,
+    });
+
+    ownerCtx.store.setPolicy({
+      maxSolLamportsPerTx: 200_000_000,
+      maxSolLamportsPerDay: null,
+      allowedRecipients: [{ label: 'vendor', address: allowedRecipient }],
+      allowedMints: [],
+      maxTokenAmountByMint: {},
+    });
+    ownerCtx.store.linkTelegram({ chatId: '424242', username: 'alertuser' });
+    ownerCtx.store.setTelegramSettings({
+      enabled: true,
+      silent: true,
+      language: 'vi',
+      events: {
+        pendingApproval: true,
+        txDenied: true,
+        txFailed: true,
+        txConfirmed: true,
+        approvalExpired: true,
+      },
+    });
+
+    // 1. txDenied (unlisted recipient) -> Vietnamese + disable_notification: true
+    const denied = await runAction(ownerCtx, {
+      action: { type: 'transfer_sol', recipient: unlistedRecipient, amountSol: 0.05 },
+    });
+    expect(denied.status).toBe('denied');
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(calls[0]!.body).toMatchObject({
+      chat_id: '424242',
+      disable_notification: true,
+    });
+    expect(String(calls[0]!.body?.text)).toContain('Giao dịch bị chặn');
+
+    // 2. get_balance confirmed -> should NOT send txConfirmed alert
+    vi.spyOn(ownerCtx.connection, 'getBalance').mockResolvedValue(1_000_000_000);
+    const bal = await runAction(ownerCtx, { action: { type: 'get_balance' } });
+    expect(bal.status).toBe('confirmed');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toHaveLength(1);
+
+    // 3. transfer_sol confirmed -> sends txConfirmed with Explorer button
+    vi.spyOn(ownerCtx.connection, 'getMinimumBalanceForRentExemption').mockResolvedValue(890_880);
+    vi.spyOn(ownerCtx.connection, 'getLatestBlockhash').mockResolvedValue({
+      blockhash: Keypair.generate().publicKey.toBase58(),
+      lastValidBlockHeight: 100,
+    });
+    vi.spyOn(ownerCtx.connection, 'getRecentPrioritizationFees').mockResolvedValue([]);
+    vi.spyOn(ownerCtx.connection, 'simulateTransaction').mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null, logs: [] },
+    });
+    vi.spyOn(ownerCtx.connection, 'sendTransaction').mockResolvedValue('5MockSigConfirmed11111111111111111111111111111');
+    vi.spyOn(ownerCtx.connection, 'confirmTransaction').mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null },
+    });
+    vi.spyOn(ownerCtx.connection, 'getSignatureStatus').mockResolvedValue({
+      context: { slot: 1 },
+      value: { slot: 1, confirmations: 1, err: null, confirmationStatus: 'confirmed' },
+    });
+
+    const confirmed = await runAction(ownerCtx, {
+      action: { type: 'transfer_sol', recipient: allowedRecipient, amountSol: 0.05 },
+    });
+    expect(confirmed.status).toBe('confirmed');
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(2);
+    });
+    expect(String(calls[1]!.body?.text)).toContain('Giao dịch thành công');
+    expect(calls[1]!.body?.reply_markup).toEqual({
+      inline_keyboard: [
+        [
+          {
+            text: 'Xem trên Solana Explorer',
+            url: confirmed.execution!.explorerUrl,
+          },
+        ],
+      ],
+    });
+
+    // 4. transfer_sol failed (insufficient funds) -> sends txFailed
+    vi.spyOn(ownerCtx.connection, 'getBalance').mockResolvedValue(100);
+    const failed = await runAction(ownerCtx, {
+      action: { type: 'transfer_sol', recipient: allowedRecipient, amountSol: 0.05 },
+    });
+    expect(failed.status).toBe('failed');
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(3);
+    });
+    expect(String(calls[2]!.body?.text)).toContain('Giao dịch thất bại');
+
+    // 5. pending_approval expired -> sends approvalExpired
+    const pending = await runAction(ownerCtx, {
+      action: { type: 'transfer_sol', recipient: allowedRecipient, amountSol: 0.5 },
+    });
+    expect(pending.status).toBe('pending_approval');
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(4);
+    });
+    const expiresAtMs = new Date(pending.approval!.payload.expiresAt).getTime();
+    const expired = expirePendingApprovals(ownerCtx, expiresAtMs + 1000);
+    expect(expired).toHaveLength(1);
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(5);
+    });
+    expect(String(calls[4]!.body?.text)).toContain('Yêu cầu duyệt hết hạn');
+
+    // 6. Disabling txDenied suppresses denied alerts
+    ownerCtx.store.setTelegramSettings({ events: { txDenied: false } });
+    const deniedQuiet = await runAction(ownerCtx, {
+      action: { type: 'transfer_sol', recipient: unlistedRecipient, amountSol: 0.05 },
+    });
+    expect(deniedQuiet.status).toBe('denied');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toHaveLength(5);
   });
 });

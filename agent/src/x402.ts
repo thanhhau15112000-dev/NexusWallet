@@ -67,7 +67,7 @@ function markConfirmed(ctx: AppContext, request: PaymentRequest, signature: stri
   if (request.status === 'confirmed') return request;
   const now = new Date().toISOString();
   ctx.audit.record('tx.confirmed', request.id, { signature, via: 'x402' });
-  return ctx.store.putRequest({
+  const confirmed = ctx.store.putRequest({
     ...request,
     status: 'confirmed',
     execution: {
@@ -78,6 +78,8 @@ function markConfirmed(ctx: AppContext, request: PaymentRequest, signature: stri
       slot: null,
     },
   });
+  void ctx.telegram?.notifyTransactionConfirmed(ctx, confirmed);
+  return confirmed;
 }
 
 const inFlightX402Signs = new WeakMap<
@@ -142,6 +144,7 @@ async function signAuthorisedOnce(
         error: { code: 'X402_TRANSACTION_FAILED', message: `payment transaction ${found.txId} failed on chain` },
       });
       ctx.audit.record('tx.failed', request.id, { signature: found.txId, via: 'x402' });
+      void ctx.telegram?.notifyTransactionFailed(ctx, failed);
       return { request: failed, error: failed.error! };
     }
     if (found.state === 'pending') {
