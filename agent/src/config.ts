@@ -45,6 +45,8 @@ const EnvSchema = z.object({
 
   /** Log level for the operations log on stdout. */
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  /** Demo merchant base URL; when set, the merchant can be a Task Vault worker for on-chain tasks. */
+  MERCHANT_WORKER_URL: z.union([z.literal(''), z.string().trim().url()]).default(''),
 
   /** Most initial seeds the Master Funder hands out per rolling 24 hours, across all agents. 0 turns seeding off. */
   SEED_CAP_PER_DAY: z.coerce.number().int().min(0).default(50),

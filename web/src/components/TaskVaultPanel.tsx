@@ -46,6 +46,8 @@ export function TaskVaultPanel(props: {
   wallet: ConnectedWallet | null;
   agentPubkey: string;
   mockWorkerPubkey: string | null;
+  /** Demo merchant worker; it can only work on Devnet tasks, where its escrow is on-chain. */
+  merchantWorkerPubkey: string | null;
   /** Policy mints a task budget may use besides SOL. */
   allowedMints: { label: string; address: string }[];
   rpcUrl: string;
@@ -85,7 +87,7 @@ export function TaskVaultPanel(props: {
   const [newBudgetSol, setNewBudgetSol] = useState('0.5');
   const [newCapSol, setNewCapSol] = useState('0.2');
   const [newHours, setNewHours] = useState('24');
-  const [newAllowedWorker, setNewAllowedWorker] = useState(props.mockWorkerPubkey ?? '');
+  const [newAllowedWorker, setNewAllowedWorker] = useState(props.merchantWorkerPubkey ?? props.mockWorkerPubkey ?? '');
   const [newAllowedServiceId, setNewAllowedServiceId] = useState('');
   const [submitOnchain, setSubmitOnchain] = useState(true);
   /** Worker, service and Devnet mode have working defaults, so they stay folded unless a check needs them. */
@@ -130,6 +132,11 @@ export function TaskVaultPanel(props: {
     setReviewedOutputs(new Set());
     void loadTasks();
   }, [props.owner]);
+
+  // A task bound to one worker pays only that worker, so the payment form starts from it.
+  useEffect(() => {
+    if (detail?.task.allowedWorker) setPaymentWorker(detail.task.allowedWorker);
+  }, [detail?.task.taskId, detail?.task.allowedWorker]);
 
   useEffect(() => {
     const timer = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 15_000);
@@ -216,16 +223,24 @@ export function TaskVaultPanel(props: {
       props.onToast({ tone: 'warn', text: dict.taskVault.toasts.workerRequired });
       return;
     }
-    if (submitOnchain) {
+    if (newAllowedWorker.trim()) {
+      let worker: string;
       try {
-        if (new PublicKey(newAllowedWorker.trim()).toBase58() !== props.mockWorkerPubkey) {
-          setCreateAdvancedOpen(true);
-          props.onToast({ tone: 'warn', text: dict.taskVault.toasts.useMockWorker });
-          return;
-        }
+        worker = new PublicKey(newAllowedWorker.trim()).toBase58();
       } catch {
         setCreateAdvancedOpen(true);
         props.onToast({ tone: 'warn', text: dict.taskVault.toasts.validWorkerAddress });
+        return;
+      }
+      const isMerchant = worker === props.merchantWorkerPubkey;
+      if (submitOnchain && !isMerchant && worker !== props.mockWorkerPubkey) {
+        setCreateAdvancedOpen(true);
+        props.onToast({ tone: 'warn', text: dict.taskVault.toasts.useSigningWorker });
+        return;
+      }
+      if (!submitOnchain && isMerchant) {
+        setCreateAdvancedOpen(true);
+        props.onToast({ tone: 'warn', text: dict.taskVault.toasts.merchantWorkerOnchainOnly });
         return;
       }
     }
@@ -376,20 +391,13 @@ export function TaskVaultPanel(props: {
 
   const handleSubmitMockOutput = async (
     paymentId: string,
-    serviceId: string,
     scenario: 'valid' | 'invalid_schema' = 'valid',
   ) => {
     if (!detail) return;
     setBusyAction(`output-${scenario}-${paymentId}`);
     try {
       // Submission saves the output for review; it does not release escrow.
-      const mockResult = await api.runMockService({
-        taskId: detail.task.taskId,
-        paymentId,
-        serviceId,
-        payload: { simulatedTask: detail.task.taskId, paymentId },
-        scenario,
-      });
+      const mockResult = await api.runTaskWorker(detail.task.taskId, paymentId, scenario);
       const res = await api.submitTaskOutput(detail.task.taskId, paymentId, {
         resultHash: mockResult.resultHash,
         resultPayload: mockResult.resultPayload,
@@ -909,7 +917,7 @@ export function TaskVaultPanel(props: {
                 variant="outline"
                 size="sm"
                 disabled={Boolean(busyAction) || paymentActionsLocked}
-                onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId, 'valid')}
+                onClick={() => void handleSubmitMockOutput(p.paymentId, 'valid')}
               >
                 {busyAction === `output-valid-${p.paymentId}`
                   ? dict.taskVault.escrows.submittingOutput
@@ -920,7 +928,7 @@ export function TaskVaultPanel(props: {
                 variant="destructiveOutline"
                 size="sm"
                 disabled={Boolean(busyAction) || paymentActionsLocked}
-                onClick={() => void handleSubmitMockOutput(p.paymentId, p.serviceId, 'invalid_schema')}
+                onClick={() => void handleSubmitMockOutput(p.paymentId, 'invalid_schema')}
               >
                 {busyAction === `output-invalid_schema-${p.paymentId}`
                   ? dict.taskVault.escrows.submittingOutput
@@ -1090,6 +1098,32 @@ export function TaskVaultPanel(props: {
                           onChange={(e) => setNewAllowedWorker(e.target.value)}
                           placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
                         />
+                        {props.merchantWorkerPubkey || props.mockWorkerPubkey ? (
+                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                            {props.merchantWorkerPubkey ? (
+                              <Button
+                                type="button"
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0 text-xs"
+                                onClick={() => setNewAllowedWorker(props.merchantWorkerPubkey!)}
+                              >
+                                {dict.taskVault.create.useMerchantWorker}
+                              </Button>
+                            ) : null}
+                            {props.mockWorkerPubkey ? (
+                              <Button
+                                type="button"
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0 text-xs"
+                                onClick={() => setNewAllowedWorker(props.mockWorkerPubkey!)}
+                              >
+                                {dict.taskVault.create.useMockWorker}
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </Field>
                       <Field label={dict.taskVault.create.allowedService}>
                         <Input
@@ -1105,7 +1139,13 @@ export function TaskVaultPanel(props: {
                         type="checkbox"
                         className="h-3.5 w-3.5 accent-accent"
                         checked={submitOnchain}
-                        onChange={(e) => setSubmitOnchain(e.target.checked)}
+                        onChange={(e) => {
+                          setSubmitOnchain(e.target.checked);
+                          // The merchant works only on Devnet, so a simulated task falls back to the mock worker.
+                          if (!e.target.checked && newAllowedWorker === props.merchantWorkerPubkey && props.mockWorkerPubkey) {
+                            setNewAllowedWorker(props.mockWorkerPubkey);
+                          }
+                        }}
                       />
                       <span>{dict.taskVault.create.broadcastOnChain}</span>
                     </label>

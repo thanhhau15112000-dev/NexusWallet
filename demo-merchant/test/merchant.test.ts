@@ -149,7 +149,7 @@ describe('demo-merchant x402 Worker', () => {
   it('says the payments could not be read instead of guessing when the RPC fails', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'blocked' } }), { status: 403 })));
     const html = await (await handleRequest(new Request('https://merchant.example.com/'), BASE_ENV)).text();
-    expect(html).toContain('Could not read payments from Devnet.');
+    expect(html).toContain('Could not read transactions from Devnet.');
     expect(html).not.toContain('No payments yet.');
   });
 

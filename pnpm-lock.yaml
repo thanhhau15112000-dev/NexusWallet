@@ -68,13 +68,26 @@ importers:
         version: 2.1.9(@types/node@22.20.3)(lightningcss@1.33.0)
 
   demo-merchant:
+    dependencies:
+      '@nexus/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@solana/web3.js':
+        specifier: ^1.98.0
+        version: 1.99.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      bs58:
+        specifier: ^6.0.0
+        version: 6.0.0
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
     devDependencies:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.3)(lightningcss@1.33.0)
       wrangler:
         specifier: ^4.16.0
-        version: 4.168.0(@types/node@22.20.3)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(vitest@2.1.9(@types/node@22.20.3)(lightningcss@1.33.0))
+        version: 4.168.0(@types/node@22.20.3)(bufferutil@4.1.0)(vitest@2.1.9(@types/node@22.20.3)(lightningcss@1.33.0))
 
   mcp:
     dependencies:
@@ -5316,13 +5329,13 @@ snapshots:
 
   mime@3.0.0: {}
 
-  miniflare@5.20261123.1-beta(@types/node@22.20.3)(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+  miniflare@5.20261123.1-beta(@types/node@22.20.3)(bufferutil@4.1.0):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.35.5(@types/node@22.20.3)
       undici: 7.30.2
       workerd: 1.20261123.1
-      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      ws: 8.21.0(bufferutil@4.1.0)
       youch: 4.1.0-beta.10
     transitivePeerDependencies:
       - '@types/node'
@@ -5901,7 +5914,7 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20261123.1
       '@cloudflare/workerd-windows-64': 1.20261123.1
 
-  wrangler@4.168.0(@types/node@22.20.3)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(vitest@2.1.9(@types/node@22.20.3)(lightningcss@1.33.0)):
+  wrangler@4.168.0(@types/node@22.20.3)(bufferutil@4.1.0)(vitest@2.1.9(@types/node@22.20.3)(lightningcss@1.33.0)):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.5.1
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261123.1)
@@ -5911,7 +5924,7 @@ snapshots:
       cloudflare: 5.2.0
       devtools-protocol: 0.0.1182435
       esbuild: 0.28.2
-      miniflare: 5.20261123.1-beta(@types/node@22.20.3)(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      miniflare: 5.20261123.1-beta(@types/node@22.20.3)(bufferutil@4.1.0)
       path-to-regexp: 6.3.0
       undici: 7.30.2
       unenv: 2.0.0-rc.24
@@ -5933,10 +5946,9 @@ snapshots:
       bufferutil: 4.1.0
       utf-8-validate: 6.0.6
 
-  ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+  ws@8.21.0(bufferutil@4.1.0):
     optionalDependencies:
       bufferutil: 4.1.0
-      utf-8-validate: 6.0.6
 
   ws@8.21.3(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     optionalDependencies:
