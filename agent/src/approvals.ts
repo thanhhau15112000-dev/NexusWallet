@@ -22,6 +22,7 @@ function markApprovalExpired(ctx: AppContext, request: PaymentRequest): PaymentR
   ctx.audit.record('approval.expired', request.id, {
     expiresAt: request.approval.payload.expiresAt,
   });
+  void ctx.telegram?.notifyApprovalExpired(ctx, updated);
   return updated;
 }
 

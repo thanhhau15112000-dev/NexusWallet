@@ -16,6 +16,8 @@ import {
   type TaskCapabilityRecord,
   type TaskPaymentRecord,
   type TaskReceiptRecord,
+  type TelegramAlertLanguage,
+  type TelegramNotificationEvents,
   type TelegramNotificationSettings,
 } from '@nexus/shared';
 import { z } from 'zod';
@@ -168,7 +170,9 @@ export class Store {
 
   setTelegramSettings(patch: {
     enabled?: boolean;
-    events?: { pendingApproval?: boolean };
+    silent?: boolean;
+    language?: TelegramAlertLanguage;
+    events?: Partial<TelegramNotificationEvents>;
   }): TelegramNotificationSettings {
     const current = this.getNotificationSettings();
     const next = NotificationSettingsSchema.parse({
@@ -176,11 +180,11 @@ export class Store {
       telegram: {
         ...current.telegram,
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.silent !== undefined ? { silent: patch.silent } : {}),
+        ...(patch.language !== undefined ? { language: patch.language } : {}),
         events: {
           ...current.telegram.events,
-          ...(patch.events?.pendingApproval !== undefined
-            ? { pendingApproval: patch.events.pendingApproval }
-            : {}),
+          ...patch.events,
         },
       },
     });

@@ -1,7 +1,15 @@
 import { z } from 'zod';
 
+export const TelegramAlertLanguageSchema = z.enum(['en', 'vi']);
+
+export type TelegramAlertLanguage = z.infer<typeof TelegramAlertLanguageSchema>;
+
 export const TelegramNotificationEventsSchema = z.object({
   pendingApproval: z.boolean().default(true),
+  txDenied: z.boolean().default(true),
+  txFailed: z.boolean().default(true),
+  txConfirmed: z.boolean().default(false),
+  approvalExpired: z.boolean().default(false),
 });
 
 export type TelegramNotificationEvents = z.infer<typeof TelegramNotificationEventsSchema>;
@@ -12,7 +20,9 @@ export const TelegramNotificationSettingsSchema = z.object({
   username: z.string().min(1).nullable().default(null),
   linkedAt: z.string().nullable().default(null),
   lastError: z.string().nullable().default(null),
-  events: TelegramNotificationEventsSchema.default({ pendingApproval: true }),
+  silent: z.boolean().default(false),
+  language: TelegramAlertLanguageSchema.default('en'),
+  events: TelegramNotificationEventsSchema.default({}),
 });
 
 export type TelegramNotificationSettings = z.infer<typeof TelegramNotificationSettingsSchema>;

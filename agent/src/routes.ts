@@ -615,9 +615,15 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
 
   const TelegramSettingsBody = z.object({
     enabled: z.boolean().optional(),
+    silent: z.boolean().optional(),
+    language: z.enum(['en', 'vi']).optional(),
     events: z
       .object({
         pendingApproval: z.boolean().optional(),
+        txDenied: z.boolean().optional(),
+        txFailed: z.boolean().optional(),
+        txConfirmed: z.boolean().optional(),
+        approvalExpired: z.boolean().optional(),
       })
       .optional(),
   });
@@ -672,6 +678,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const settings = userCtx.store.setTelegramSettings(body);
     userCtx.audit.record('notifications.telegram_updated', null, {
       enabled: settings.enabled,
+      silent: settings.silent,
+      language: settings.language,
       events: settings.events,
     });
     return { settings };

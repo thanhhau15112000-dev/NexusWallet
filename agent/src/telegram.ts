@@ -1,5 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { formatSol, type PaymentRequest } from '@nexus/shared';
+import {
+  formatSol,
+  type PaymentRequest,
+  type ResolvedAction,
+  type TelegramAlertLanguage,
+  type TelegramNotificationEvents,
+  type TelegramNotificationSettings,
+} from '@nexus/shared';
 import type { AppConfig } from './config.js';
 import type { AppContext, OpsLogger } from './context.js';
 
@@ -56,6 +63,96 @@ function isPublicHttpsUrl(value: string): boolean {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+const ALERT_COPY: Record<
+  TelegramAlertLanguage,
+  {
+    approvalTitle: string;
+    approvalDefaultReason: string;
+    approvalCta: string;
+    deniedTitle: string;
+    deniedDefaultReason: string;
+    confirmedTitle: string;
+    confirmedCta: string;
+    failedTitle: string;
+    failedDefaultReason: string;
+    expiredTitle: string;
+    testBody: string;
+    openDashboardCta: string;
+    amount: string;
+    recipient: string;
+    reason: string;
+    request: string;
+    expires: string;
+    expiredAt: string;
+    command: string;
+    signature: string;
+  }
+> = {
+  en: {
+    approvalTitle: 'nexusPay: Approval required',
+    approvalDefaultReason: 'Owner approval required',
+    approvalCta: 'Review & approve in nexusPay',
+    deniedTitle: 'nexusPay: Transfer blocked',
+    deniedDefaultReason: 'Blocked by policy',
+    confirmedTitle: 'nexusPay: Transfer confirmed',
+    confirmedCta: 'View on Solana Explorer',
+    failedTitle: 'nexusPay: Transfer failed',
+    failedDefaultReason: 'Transaction execution failed',
+    expiredTitle: 'nexusPay: Approval expired',
+    testBody: 'nexusPay test notification: configured alerts will be delivered to this chat.',
+    openDashboardCta: 'Open nexusPay',
+    amount: 'Amount',
+    recipient: 'Recipient',
+    reason: 'Reason',
+    request: 'Request',
+    expires: 'Expires',
+    expiredAt: 'Expired at',
+    command: 'Command',
+    signature: 'Signature',
+  },
+  vi: {
+    approvalTitle: 'nexusPay: Cần duyệt giao dịch',
+    approvalDefaultReason: 'Cần chủ ví ký duyệt',
+    approvalCta: 'Xem & duyệt trên nexusPay',
+    deniedTitle: 'nexusPay: Giao dịch bị chặn',
+    deniedDefaultReason: 'Bị từ chối bởi chính sách',
+    confirmedTitle: 'nexusPay: Giao dịch thành công',
+    confirmedCta: 'Xem trên Solana Explorer',
+    failedTitle: 'nexusPay: Giao dịch thất bại',
+    failedDefaultReason: 'Thực thi giao dịch thất bại',
+    expiredTitle: 'nexusPay: Yêu cầu duyệt hết hạn',
+    testBody: 'Tin nhắn thử nghiệm từ nexusPay: các cảnh báo đã bật sẽ được gửi về đây.',
+    openDashboardCta: 'Mở nexusPay',
+    amount: 'Số tiền',
+    recipient: 'Người nhận',
+    reason: 'Lý do',
+    request: 'Mã yêu cầu',
+    expires: 'Hết hạn',
+    expiredAt: 'Hết hạn lúc',
+    command: 'Lệnh',
+    signature: 'Chữ ký',
+  },
+};
+
+function formatRecipientLine(userCtx: AppContext, recipient: string): string {
+  const matched = userCtx.store
+    .getPolicy()
+    .allowedRecipients.find((entry) => entry.address === recipient);
+  return matched ? `${matched.label} (${recipient})` : recipient;
+}
+
+function formatResolvedAmount(action: ResolvedAction | null | undefined): string | null {
+  if (!action) return null;
+  if (action.type === 'transfer_sol') return formatSol(action.lamports);
+  if (action.type === 'transfer_spl') return `${action.amount} (${action.mint})`;
+  return null;
+}
+
+function formatResolvedRecipient(userCtx: AppContext, action: ResolvedAction | null | undefined): string | null {
+  if (!action || action.type === 'get_balance') return null;
+  return formatRecipientLine(userCtx, action.recipient);
 }
 
 export class TelegramService {
@@ -177,7 +274,12 @@ export class TelegramService {
     };
   }
 
-  async sendMessage(chatId: string, text: string, cta?: TelegramCta): Promise<TelegramSendResult> {
+  async sendMessage(
+    chatId: string,
+    text: string,
+    cta?: TelegramCta,
+    options?: { silent?: boolean },
+  ): Promise<TelegramSendResult> {
     if (!this.isConfigured()) {
       return { ok: false, blocked: false, error: 'Telegram bot token is not configured' };
     }
@@ -189,6 +291,9 @@ export class TelegramService {
       text: finalText,
       disable_web_page_preview: true,
     };
+    if (options?.silent) {
+      payload.disable_notification = true;
+    }
     if (cta && useInlineButton) {
       payload.reply_markup = {
         inline_keyboard: [[{ text: cta.label, url: cta.url }]],
@@ -261,56 +366,219 @@ export class TelegramService {
     return { handled: true, action: 'linked' };
   }
 
+  private activeSettingsFor(
+    userCtx: AppContext,
+    event: keyof TelegramNotificationEvents,
+  ): (TelegramNotificationSettings & { chatId: string }) | null {
+    if (!this.isConfigured()) return null;
+    const settings = userCtx.store.getNotificationSettings().telegram;
+    if (!settings.enabled || !settings.events[event] || !settings.chatId) return null;
+    return settings as TelegramNotificationSettings & { chatId: string };
+  }
+
+  private async deliverAlert(
+    userCtx: AppContext,
+    chatId: string,
+    text: string,
+    cta: TelegramCta | undefined,
+    options: { silent?: boolean; requestId?: string },
+  ): Promise<TelegramSendResult> {
+    const result = await this.sendMessage(chatId, text, cta, { silent: options.silent });
+    if (result.ok) {
+      userCtx.store.setTelegramError(null);
+    } else {
+      const storedError = result.blocked
+        ? 'Bot was blocked in Telegram. Unblock the bot or reconnect.'
+        : result.error;
+      userCtx.store.setTelegramError(storedError);
+      if (options.requestId) {
+        this.log?.warn(
+          { requestId: options.requestId, blocked: result.blocked, error: result.error },
+          'telegram.notify_failed',
+        );
+      }
+    }
+    return result;
+  }
+
   async notifyApprovalRequired(userCtx: AppContext, request: PaymentRequest): Promise<void> {
     try {
-      if (!this.isConfigured()) return;
       if (request.status !== 'pending_approval' || !request.approval) return;
+      const settings = this.activeSettingsFor(userCtx, 'pendingApproval');
+      if (!settings) return;
 
-      const settings = userCtx.store.getNotificationSettings().telegram;
-      if (!settings.enabled || !settings.events.pendingApproval || !settings.chatId) return;
-
+      const copy = ALERT_COPY[settings.language];
       const { payload } = request.approval;
       const amountLine =
         payload.actionType === 'transfer_sol'
           ? formatSol(payload.amount)
           : `${payload.amount} (${payload.mint})`;
-      const matchedRecipient = userCtx.store
-        .getPolicy()
-        .allowedRecipients.find((entry) => entry.address === payload.recipient);
-      const recipientLine = matchedRecipient
-        ? `${matchedRecipient.label} (${payload.recipient})`
-        : payload.recipient;
+      const recipientLine = formatRecipientLine(userCtx, payload.recipient);
       const reasons = request.decision?.reasons.length
         ? request.decision.reasons.join('; ')
-        : 'Owner approval required';
+        : copy.approvalDefaultReason;
 
       const text = [
-        'nexusPay: Approval required',
-        `Amount: ${amountLine}`,
-        `Recipient: ${recipientLine}`,
-        `Reason: ${reasons}`,
-        `Request: ${request.id}`,
-        `Expires: ${payload.expiresAt}`,
+        copy.approvalTitle,
+        `${copy.amount}: ${amountLine}`,
+        `${copy.recipient}: ${recipientLine}`,
+        `${copy.reason}: ${reasons}`,
+        `${copy.request}: ${request.id}`,
+        `${copy.expires}: ${payload.expiresAt}`,
       ].join('\n');
 
-      const cta: TelegramCta = {
-        label: 'Review & approve in nexusPay',
-        url: `${this.dashboardOrigin()}/?request=${encodeURIComponent(request.id)}`,
-      };
+      await this.deliverAlert(
+        userCtx,
+        settings.chatId,
+        text,
+        {
+          label: copy.approvalCta,
+          url: `${this.dashboardOrigin()}/?request=${encodeURIComponent(request.id)}`,
+        },
+        { silent: settings.silent, requestId: request.id },
+      );
+    } catch (err) {
+      this.log?.warn(
+        { requestId: request.id, error: errorMessage(err) },
+        'telegram.notify_exception',
+      );
+    }
+  }
 
-      const result = await this.sendMessage(settings.chatId, text, cta);
-      if (result.ok) {
-        userCtx.store.setTelegramError(null);
-      } else {
-        const storedError = result.blocked
-          ? 'Bot was blocked in Telegram. Unblock the bot or reconnect.'
-          : result.error;
-        userCtx.store.setTelegramError(storedError);
-        this.log?.warn(
-          { requestId: request.id, blocked: result.blocked, error: result.error },
-          'telegram.notify_failed',
-        );
-      }
+  async notifyRequestDenied(userCtx: AppContext, request: PaymentRequest): Promise<void> {
+    try {
+      if (request.status !== 'denied') return;
+      const settings = this.activeSettingsFor(userCtx, 'txDenied');
+      if (!settings) return;
+
+      const copy = ALERT_COPY[settings.language];
+      const amountLine = formatResolvedAmount(request.decision?.resolved);
+      const recipientLine = formatResolvedRecipient(userCtx, request.decision?.resolved);
+      const reason =
+        request.error?.message ||
+        request.decision?.reasons.join('; ') ||
+        copy.deniedDefaultReason;
+
+      const lines = [copy.deniedTitle];
+      if (amountLine) lines.push(`${copy.amount}: ${amountLine}`);
+      if (recipientLine) lines.push(`${copy.recipient}: ${recipientLine}`);
+      if (!amountLine && request.prompt) lines.push(`${copy.command}: ${request.prompt.slice(0, 120)}`);
+      lines.push(`${copy.reason}: ${reason}`);
+      lines.push(`${copy.request}: ${request.id}`);
+
+      await this.deliverAlert(
+        userCtx,
+        settings.chatId,
+        lines.join('\n'),
+        { label: copy.openDashboardCta, url: this.dashboardOrigin() },
+        { silent: settings.silent, requestId: request.id },
+      );
+    } catch (err) {
+      this.log?.warn(
+        { requestId: request.id, error: errorMessage(err) },
+        'telegram.notify_exception',
+      );
+    }
+  }
+
+  async notifyTransactionConfirmed(userCtx: AppContext, request: PaymentRequest): Promise<void> {
+    try {
+      if (request.status !== 'confirmed' || !request.execution) return;
+      if (request.decision?.resolved?.type === 'get_balance') return;
+      const settings = this.activeSettingsFor(userCtx, 'txConfirmed');
+      if (!settings) return;
+
+      const copy = ALERT_COPY[settings.language];
+      const amountLine = formatResolvedAmount(request.decision?.resolved);
+      const recipientLine = formatResolvedRecipient(userCtx, request.decision?.resolved);
+      const sig = request.execution.signature;
+      const shortSig = sig.length > 16 ? `${sig.slice(0, 8)}...${sig.slice(-8)}` : sig;
+
+      const lines = [copy.confirmedTitle];
+      if (amountLine) lines.push(`${copy.amount}: ${amountLine}`);
+      if (recipientLine) lines.push(`${copy.recipient}: ${recipientLine}`);
+      lines.push(`${copy.signature}: ${shortSig}`);
+      lines.push(`${copy.request}: ${request.id}`);
+
+      await this.deliverAlert(
+        userCtx,
+        settings.chatId,
+        lines.join('\n'),
+        {
+          label: copy.confirmedCta,
+          url: request.execution.explorerUrl || this.dashboardOrigin(),
+        },
+        { silent: settings.silent, requestId: request.id },
+      );
+    } catch (err) {
+      this.log?.warn(
+        { requestId: request.id, error: errorMessage(err) },
+        'telegram.notify_exception',
+      );
+    }
+  }
+
+  async notifyTransactionFailed(userCtx: AppContext, request: PaymentRequest): Promise<void> {
+    try {
+      if (request.status !== 'failed') return;
+      const settings = this.activeSettingsFor(userCtx, 'txFailed');
+      if (!settings) return;
+
+      const copy = ALERT_COPY[settings.language];
+      const amountLine = formatResolvedAmount(request.decision?.resolved);
+      const recipientLine = formatResolvedRecipient(userCtx, request.decision?.resolved);
+      const reason = request.error?.message || copy.failedDefaultReason;
+
+      const lines = [copy.failedTitle];
+      if (amountLine) lines.push(`${copy.amount}: ${amountLine}`);
+      if (recipientLine) lines.push(`${copy.recipient}: ${recipientLine}`);
+      lines.push(`${copy.reason}: ${reason}`);
+      lines.push(`${copy.request}: ${request.id}`);
+
+      await this.deliverAlert(
+        userCtx,
+        settings.chatId,
+        lines.join('\n'),
+        { label: copy.openDashboardCta, url: this.dashboardOrigin() },
+        { silent: settings.silent, requestId: request.id },
+      );
+    } catch (err) {
+      this.log?.warn(
+        { requestId: request.id, error: errorMessage(err) },
+        'telegram.notify_exception',
+      );
+    }
+  }
+
+  async notifyApprovalExpired(userCtx: AppContext, request: PaymentRequest): Promise<void> {
+    try {
+      if (request.status !== 'expired' || !request.approval) return;
+      const settings = this.activeSettingsFor(userCtx, 'approvalExpired');
+      if (!settings) return;
+
+      const copy = ALERT_COPY[settings.language];
+      const { payload } = request.approval;
+      const amountLine =
+        payload.actionType === 'transfer_sol'
+          ? formatSol(payload.amount)
+          : `${payload.amount} (${payload.mint})`;
+      const recipientLine = formatRecipientLine(userCtx, payload.recipient);
+
+      const text = [
+        copy.expiredTitle,
+        `${copy.amount}: ${amountLine}`,
+        `${copy.recipient}: ${recipientLine}`,
+        `${copy.request}: ${request.id}`,
+        `${copy.expiredAt}: ${payload.expiresAt}`,
+      ].join('\n');
+
+      await this.deliverAlert(
+        userCtx,
+        settings.chatId,
+        text,
+        { label: copy.openDashboardCta, url: this.dashboardOrigin() },
+        { silent: settings.silent, requestId: request.id },
+      );
     } catch (err) {
       this.log?.warn(
         { requestId: request.id, error: errorMessage(err) },
@@ -324,24 +592,14 @@ export class TelegramService {
     if (!settings.chatId) {
       return { ok: false, blocked: false, error: 'Telegram is not connected' };
     }
-    const result = await this.sendMessage(
+    const copy = ALERT_COPY[settings.language];
+    return this.deliverAlert(
+      userCtx,
       settings.chatId,
-      'nexusPay test notification: over-limit approval alerts will be delivered to this chat.',
-      {
-        label: 'Open nexusPay',
-        url: this.dashboardOrigin(),
-      },
+      copy.testBody,
+      { label: copy.openDashboardCta, url: this.dashboardOrigin() },
+      { silent: settings.silent },
     );
-    if (result.ok) {
-      userCtx.store.setTelegramError(null);
-    } else {
-      userCtx.store.setTelegramError(
-        result.blocked
-          ? 'Bot was blocked in Telegram. Unblock the bot or reconnect.'
-          : result.error,
-      );
-    }
-    return result;
   }
 
   async start(): Promise<void> {
