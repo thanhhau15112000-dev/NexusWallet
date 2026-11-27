@@ -6,7 +6,7 @@ This document defines the mandatory UI, styling, and copy rules for `web/`. Ever
 
 ## 1. Product Aesthetic & Anti-AI-Slop Rules
 
-nexusPay is a **non-custodial Solana AI agent wallet and payment guard**. The interface is a **light, quiet wallet dashboard**: white cards on a cool near-white canvas, one brand color taken from the mascot (Nexus Emerald `#177b65`), and typographic hierarchy instead of decoration.
+nexusPay is a **Solana Devnet AI agent payment guard and Task Capability Vault** (non-custodial owner wallet, server-custodial agent signer). The interface is a **light, quiet wallet dashboard**: white cards on a cool near-white canvas, one brand color taken from the mascot (Nexus Emerald `#177b65`), and typographic hierarchy instead of decoration.
 
 **Mandatory visual principles:**
 - **One light surface system:** canvas `bg-bg`, cards `bg-panel` with a `1px` `border-line` and `rounded-xl`, no drop shadows on cards. The sidebar is a white panel with a right hairline. Do not reintroduce dark split panels or dark hero cards.
