@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
+import { LAMPORTS_PER_SOL, type AuditEntryView } from '@nexus/shared';
 import { ChevronLeft, ChevronRight, Clock, ExternalLink, RefreshCw } from './icons.js';
 import { api, type AgentHistoryItem } from '../api.js';
 import { Card, DateTime, Empty, Pill } from './ui.js';
@@ -12,7 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table.js';
-import { RecentRequests } from './RecentRequests.js';
+import { AuditPanel } from './AuditPanel.js';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
 import { cn } from '../lib/utils.js';
 import { useI18n } from '../i18n/context.js';
 
@@ -176,20 +177,26 @@ function ChainHistory(props: { active: boolean }) {
   );
 }
 
+type HistoryView = 'chain' | 'audit';
+
 /**
- * Where transactions are tracked: the agent's requests and the SOL going in and out on-chain.
+ * What already happened: the SOL moving in and out on-chain, and the agent's audit log.
  */
-export function HistoryPanel(props: { active: boolean; requests: PaymentRequest[]; onViewAll: () => void }) {
+export function HistoryPanel(props: { active: boolean; audit: AuditEntryView[] }) {
   const { dict } = useI18n();
+  const [view, setView] = useState<HistoryView>('chain');
   return (
-    <div className="space-y-4">
-      <RecentRequests
-        title={dict.history.requestsTitle}
-        requests={props.requests}
-        limit={20}
-        onViewAll={props.onViewAll}
-      />
-      <ChainHistory active={props.active} />
-    </div>
+    <Tabs value={view} onValueChange={(value) => setView(value as HistoryView)}>
+      <TabsList>
+        <TabsTrigger value="chain">{dict.history.viewChain}</TabsTrigger>
+        <TabsTrigger value="audit">{dict.history.viewAudit}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="chain">
+        <ChainHistory active={props.active && view === 'chain'} />
+      </TabsContent>
+      <TabsContent value="audit">
+        <AuditPanel entries={props.audit} />
+      </TabsContent>
+    </Tabs>
   );
 }

@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   CheckCircle2,
-  ClipboardList,
   Clock,
   Command,
   Layers,
   LayoutGrid,
   LogOut,
   Menu,
+  Plug,
   ShieldCheck,
   Wallet as WalletIcon,
   X,
@@ -32,7 +32,6 @@ import {
 } from './solanaWallets.js';
 import { HistoryPanel } from './components/HistoryPanel.js';
 import { McpConnectPanel } from './components/McpConnectPanel.js';
-import { AuditPanel } from './components/AuditPanel.js';
 import { ConsolePanel } from './components/ConsolePanel.js';
 import { DocsPanel } from './components/DocsPanel.js';
 import { OverviewPanel } from './components/OverviewPanel.js';
@@ -56,23 +55,24 @@ import { useI18n } from './i18n/context.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
 
-type FeatureTab = 'wallet' | 'tasks' | 'commands' | 'policy' | 'approvals' | 'history' | 'audit' | 'docs';
+type FeatureTab = 'wallet' | 'connect' | 'policy' | 'approvals' | 'tasks' | 'history' | 'commands' | 'docs';
 
-type NavGroup = 'operate' | 'control' | 'resources';
+type NavGroup = 'setup' | 'activity' | 'resources';
 
-// Sidebar order; arrow keys move through this list top to bottom.
+// Sidebar order follows the owner's path: set the agent up once, then work with it day to day.
+// Arrow keys move through this list top to bottom.
 const FEATURE_TABS: Array<{ id: FeatureTab; group: NavGroup; icon: typeof LayoutGrid }> = [
-  { id: 'wallet', group: 'operate', icon: LayoutGrid },
-  { id: 'commands', group: 'operate', icon: Command },
-  { id: 'approvals', group: 'operate', icon: CheckCircle2 },
-  { id: 'history', group: 'operate', icon: Clock },
-  { id: 'policy', group: 'control', icon: ShieldCheck },
-  { id: 'tasks', group: 'control', icon: Layers },
-  { id: 'audit', group: 'control', icon: ClipboardList },
+  { id: 'wallet', group: 'setup', icon: LayoutGrid },
+  { id: 'connect', group: 'setup', icon: Plug },
+  { id: 'policy', group: 'setup', icon: ShieldCheck },
+  { id: 'approvals', group: 'activity', icon: CheckCircle2 },
+  { id: 'tasks', group: 'activity', icon: Layers },
+  { id: 'history', group: 'activity', icon: Clock },
+  { id: 'commands', group: 'activity', icon: Command },
   { id: 'docs', group: 'resources', icon: BookOpen },
 ];
 
-const NAV_GROUPS: NavGroup[] = ['operate', 'control', 'resources'];
+const NAV_GROUPS: NavGroup[] = ['setup', 'activity', 'resources'];
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -133,7 +133,6 @@ export function App() {
   // An agent holding a transfer links the owner to ?request=<id>; open the approvals tab for it.
   const [focusRequestId] = useState(() => new URLSearchParams(window.location.search).get('request'));
   const [activeTab, setActiveTab] = useState<FeatureTab>(focusRequestId ? 'approvals' : 'wallet');
-  const [scrollToMcp, setScrollToMcp] = useState(false);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const bindAttempt = useRef<string | null>(null);
@@ -323,15 +322,6 @@ export function App() {
     const timer = setTimeout(() => setToast(null), 6000);
     return () => clearTimeout(timer);
   }, [toast]);
-
-  // Runs after the commands tab is visible (panels stay mounted and only toggle `hidden`).
-  // Must stay above the early return below: hooks cannot be called conditionally.
-  useEffect(() => {
-    if (!scrollToMcp || activeTab !== 'commands') return;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    document.getElementById('mcp-card')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
-    setScrollToMcp(false);
-  }, [scrollToMcp, activeTab]);
 
   const summarise = useCallback(
     (request: PaymentRequest): Toast => {
@@ -550,13 +540,6 @@ export function App() {
     <Pill tone="warn">{dict.wallet.unbound}</Pill>
   );
 
-  // The panels stay mounted and only get `hidden`, so scroll after the commands tab is visible.
-  const openMcpCard = () => {
-    setActiveTab('commands');
-    setScrollToMcp(true);
-  };
-
-
   const panel = (tab: FeatureTab, content: React.ReactNode) => (
     <section
       id={`feature-panel-${tab}`}
@@ -744,7 +727,6 @@ export function App() {
             onRefresh={refresh}
             onToast={setToast}
             onOpenTab={setActiveTab}
-            onOpenMcp={openMcpCard}
             onConnectWallet={() => setWalletPickerOpen(true)}
             connectDisabled={!walletChoices.length || Boolean(busy.connect)}
           />,
@@ -752,18 +734,17 @@ export function App() {
 
         {panel(
           'commands',
-          <div className="space-y-4">
-            <ConsolePanel
-              state={state}
-              busy={Boolean(busy.command)}
-              requests={requests}
-              connected={Boolean(wallet)}
-              onRun={runCommand}
-              onOpenPolicy={() => setActiveTab('policy')}
-            />
-            <McpConnectPanel />
-          </div>,
+          <ConsolePanel
+            state={state}
+            busy={Boolean(busy.command)}
+            requests={requests}
+            connected={Boolean(wallet)}
+            onRun={runCommand}
+            onOpenPolicy={() => setActiveTab('policy')}
+          />,
         )}
+
+        {panel('connect', <McpConnectPanel />)}
 
         {panel(
           'approvals',
@@ -796,9 +777,7 @@ export function App() {
           />,
         )}
 
-        {panel('audit', <AuditPanel entries={audit} />)}
-
-        {panel('history', <HistoryPanel active={activeTab === 'history'} requests={requests} onViewAll={() => setActiveTab('approvals')} />)}
+        {panel('history', <HistoryPanel active={activeTab === 'history'} audit={audit} />)}
 
         {panel('docs', <DocsPanel onOpenTab={setActiveTab} />)}
       </main>

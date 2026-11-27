@@ -3,29 +3,29 @@ export type Locale = 'en' | 'vi';
 export type TranslationDictionary = {
   tabs: {
     wallet: string;
-    tasks: string;
-    commands: string;
+    connect: string;
     policy: string;
     approvals: string;
+    tasks: string;
     history: string;
-    audit: string;
+    commands: string;
     docs: string;
   };
   nav: {
-    operate: string;
-    control: string;
+    setup: string;
+    activity: string;
     resources: string;
     openMenu: string;
     closeMenu: string;
   };
   pageDesc: {
     wallet: string;
-    tasks: string;
-    commands: string;
+    connect: string;
     policy: string;
     approvals: string;
+    tasks: string;
     history: string;
-    audit: string;
+    commands: string;
     docs: string;
   };
   topbar: {
@@ -62,7 +62,6 @@ export type TranslationDictionary = {
     agentActive: string;
     activeDesc: string;
     frozenDesc: string;
-    viewAll: string;
     mcpPromoTitle: string;
     mcpPromoDesc: string;
     mcpPromoCta: string;
@@ -278,7 +277,8 @@ export type TranslationDictionary = {
     timeout: string;
   };
   history: {
-    requestsTitle: string;
+    viewChain: string;
+    viewAudit: string;
     title: string;
     refresh: string;
     prev: string;
