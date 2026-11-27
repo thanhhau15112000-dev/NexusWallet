@@ -6,6 +6,7 @@ import {
   TASK_VAULT_PROGRAM_PUBKEY,
   computeCanonicalSeed,
   computeOutputHash,
+  computeReceiptSigningMessage,
   decodeEscrowAccount,
   deriveEscrowPda,
   deriveTaskCapabilityPda,
@@ -115,7 +116,7 @@ export async function runJob(env: WorkerEnv, job: JobRequest) {
         outputSummary: `${WORKER_SERVICE_LABEL} completed ${job.serviceId} for escrow ${escrowPda.toBase58()}`,
       };
   const resultHash = computeOutputHash(resultPayload);
-  const message = new TextEncoder().encode(`NEXUS_RECEIPT_V1:${job.taskId}:${job.paymentId}:${resultHash}`);
+  const message = computeReceiptSigningMessage(job.taskId, job.paymentId, resultHash);
   return {
     workerPubkey: keypair.publicKey.toBase58(),
     workerSignature: bs58.encode(nacl.sign.detached(message, keypair.secretKey)),
