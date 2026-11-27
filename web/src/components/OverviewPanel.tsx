@@ -261,7 +261,6 @@ export function OverviewPanel(props: {
   onRefresh: () => Promise<void>;
   onToast: (toast: Toast) => void;
   onOpenTab: (tab: 'policy' | 'approvals') => void;
-  onOpenMcp?: () => void;
   /** Opens the wallet picker; undefined hides the button. */
   onConnectWallet?: () => void;
   connectDisabled?: boolean;

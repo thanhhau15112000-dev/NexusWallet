@@ -68,11 +68,12 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </TableHeader>
               <TableBody>
                 <TableRow><TableCell>Tổng quan</TableCell><TableCell>Xem ví agent, kết nối ví chủ sở hữu, nạp vốn cho agent.</TableCell></TableRow>
-                <TableRow><TableCell>Task Vault</TableCell><TableCell>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</TableCell></TableRow>
-                <TableRow><TableCell>Yêu cầu thanh toán</TableCell><TableCell>Yêu cầu agent kiểm tra số dư hoặc gửi SOL bằng văn bản thường.</TableCell></TableRow>
+                <TableRow><TableCell>Kết nối AI</TableCell><TableCell>Kết nối Claude, Codex hoặc ứng dụng AI khác với agent qua MCP.</TableCell></TableRow>
                 <TableRow><TableCell>Chính sách chi tiêu</TableCell><TableCell>Đặt hạn mức mỗi giao dịch và danh sách người nhận được phép.</TableCell></TableRow>
-                <TableRow><TableCell>Chờ duyệt</TableCell><TableCell>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</TableCell></TableRow>
-                <TableRow><TableCell>Nhật ký kiểm toán</TableCell><TableCell>Đọc nhật ký chỉ ghi thêm về các quyết định và lần thực thi.</TableCell></TableRow>
+                <TableRow><TableCell>Duyệt yêu cầu</TableCell><TableCell>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</TableCell></TableRow>
+                <TableRow><TableCell>Task Vault</TableCell><TableCell>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</TableCell></TableRow>
+                <TableRow><TableCell>Lịch sử</TableCell><TableCell>Xem SOL vào/ra ví agent và nhật ký kiểm toán chỉ ghi thêm.</TableCell></TableRow>
+                <TableRow><TableCell>Thử lệnh</TableCell><TableCell>Yêu cầu agent kiểm tra số dư hoặc gửi SOL bằng văn bản thường.</TableCell></TableRow>
               </TableBody>
             </Table>
           ),
@@ -118,7 +119,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               <li>
                 <strong>Chạy một lệnh.</strong> <code>Send 0.05 SOL to my-wallet</code> nằm trong hạn mức, nên agent
                 ký và hiện liên kết Explorer.{' '}
-                <TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />
+                <TabLink tab="commands" label="Thử lệnh" ctx={ctx} />
               </li>
               <li>
                 <strong>Thử các kết quả còn lại.</strong> <code>Send 0.5 SOL to my-wallet</code> bị giữ chờ bạn duyệt.
@@ -132,9 +133,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Kiểm tra kết quả',
           body: (
             <p>
-              Mọi yêu cầu đều hiện trong tab Chờ duyệt cùng trạng thái và kết luận của chính sách; mọi quyết định đều
-              được ghi vào nhật ký kiểm toán kèm phiên bản chính sách tại thời điểm quyết định.{' '}
-              <TabLink tab="approvals" label="Chờ duyệt" ctx={ctx} />
+              Mọi yêu cầu đều hiện trong tab Duyệt yêu cầu cùng trạng thái và kết luận của chính sách; mọi quyết định đều
+              được ghi vào nhật ký kiểm toán trong Lịch sử kèm phiên bản chính sách tại thời điểm quyết định.{' '}
+              <TabLink tab="approvals" label="Duyệt yêu cầu" ctx={ctx} />
             </p>
           ),
         },
@@ -291,10 +292,10 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Lệnh gợi ý',
           body: (
             <p>
-              Khi đã có một người nhận trong danh sách cho phép, trang Yêu cầu thanh toán hiện ba lệnh gợi ý: một lệnh dưới
+              Khi đã có một người nhận trong danh sách cho phép, trang Thử lệnh hiện ba lệnh gợi ý: một lệnh dưới
               hạn mức mỗi giao dịch, một lệnh vượt hạn mức mỗi giao dịch và một lệnh tới địa chỉ ngoài danh
               sách cho phép. Kết quả còn phụ thuộc vào số dư, hạn mức 24 giờ và trạng thái khóa agent.{' '}
-              <TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />
+              <TabLink tab="commands" label="Thử lệnh" ctx={ctx} />
             </p>
           ),
         },
@@ -313,7 +314,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
     {
       id: 'approvals',
       group: 'Hướng dẫn',
-      title: 'Chờ duyệt',
+      title: 'Duyệt yêu cầu',
       summary: 'Duyệt một giao dịch đang chờ bằng chữ ký ví, và chữ ký đó bao phủ những gì.',
       keywords: 'approve sign message expiry owner pending duyệt ký hết hạn',
       sections: [
@@ -322,7 +323,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
           title: 'Duyệt một giao dịch đang chờ',
           body: (
             <Steps>
-              <li>Mở tab Chờ duyệt. Các yêu cầu đang giữ có trạng thái <em>Chờ duyệt</em> và thời điểm hết hạn.</li>
+              <li>Mở tab Duyệt yêu cầu. Các yêu cầu đang giữ có trạng thái <em>Chờ duyệt</em> và thời điểm hết hạn.</li>
               <li>Mở <em>Thông điệp ký</em> để đọc nội dung bạn sắp ký: số tiền, người nhận, phiên bản chính sách và thời hạn.</li>
               <li>Bấm <em>Duyệt</em> và ký thông điệp trong ví. Sau đó agent gửi giao dịch.</li>
             </Steps>
@@ -420,9 +421,10 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <>
               <p>
                 Mỗi mục có thời gian, tên sự kiện, mã yêu cầu và phần chi tiết. Phần chi tiết được niêm phong bằng
-                AES-256-GCM khi lưu; mở một mục rồi mở <em>Bản ghi đã mã hóa</em> để xem dạng được lưu.
+                AES-256-GCM khi lưu; mở một mục rồi mở <em>Bản ghi đã mã hóa</em> để xem dạng được lưu. Nhật ký
+                nằm ở mục <em>Nhật ký kiểm toán</em> trong Lịch sử.
               </p>
-              <TabLink tab="audit" label="Nhật ký kiểm toán" ctx={ctx} />
+              <TabLink tab="history" label="Lịch sử" ctx={ctx} />
             </>
           ),
         },
@@ -447,8 +449,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </p>
               <p>
                 Client kết nối tới URL <code>/mcp</code> của agent (Streamable HTTP) với MCP token cá nhân của bạn làm
-                bearer header. Không cài gì lên máy của client: hãy sao chép cấu hình cho client của bạn từ card MCP
-                trên trang <TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />.
+                bearer header. Không cài gì lên máy của client: hãy sao chép cấu hình cho client của bạn trên trang
+                {' '}<TabLink tab="connect" label="Kết nối AI" ctx={ctx} />.
               </p>
               <Callout tone="note" title="URL trỏ tới đâu">
                 Trên dashboard hosted, URL là origin của dashboard, nên máy nào cũng kết nối được. Khi bạn tự chạy cả
@@ -539,8 +541,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <>
               <Steps>
                 <li>
-                  Đăng nhập dashboard này bằng ví, rồi mở <em>Xem cấu hình kết nối</em> trong card MCP trên trang
-                  {' '}<TabLink tab="commands" label="Yêu cầu thanh toán" ctx={ctx} />. Trên dashboard hosted, bấm
+                  Đăng nhập dashboard này bằng ví, rồi mở <em>Xem cấu hình kết nối</em> trên trang
+                  {' '}<TabLink tab="connect" label="Kết nối AI" ctx={ctx} />. Trên dashboard hosted, bấm
                   {' '}<em>Tạo token kết nối</em>; token chỉ hiện một lần.
                 </li>
                 <li>
@@ -681,7 +683,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 server MCP đọc được nó từ thư mục dữ liệu của agent.
               </li>
               <li>
-                <em>Tạo token mới</em> trong card MCP ở trang Yêu cầu thanh toán sẽ thay token. Các client kết nối bằng URL sẽ
+                <em>Tạo token mới</em> ở trang Kết nối AI sẽ thay token. Các client kết nối bằng URL sẽ
                 ngừng hoạt động cho tới khi bạn sao chép lại cấu hình của chúng. Bản stdio chạy local đọc lại file khi
                 agent từ chối token cũ nên không cần khởi động lại; token ghim bằng
                 {' '}<code>NEXUS_AGENT_TOKEN</code> không được đọc lại và phải cập nhật thủ công.

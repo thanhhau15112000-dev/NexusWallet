@@ -93,12 +93,13 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow><TableCell>Wallet</TableCell><TableCell>See the agent wallet, connect the owner wallet, fund the agent.</TableCell></TableRow>
-                <TableRow><TableCell>Task Vault</TableCell><TableCell>Lock a task budget on-chain and pay workers through escrow.</TableCell></TableRow>
-                <TableRow><TableCell>Commands</TableCell><TableCell>Ask the agent to check its balance or send SOL in plain text.</TableCell></TableRow>
+                <TableRow><TableCell>Overview</TableCell><TableCell>See the agent wallet, connect the owner wallet, fund the agent.</TableCell></TableRow>
+                <TableRow><TableCell>Connect AI</TableCell><TableCell>Connect Claude, Codex or another AI client to the agent over MCP.</TableCell></TableRow>
                 <TableRow><TableCell>Policy</TableCell><TableCell>Set the per-transaction limit and the recipient allowlist.</TableCell></TableRow>
                 <TableRow><TableCell>Approvals</TableCell><TableCell>Review every request and approve held transfers.</TableCell></TableRow>
-                <TableRow><TableCell>Audit</TableCell><TableCell>Read the append-only log of decisions and executions.</TableCell></TableRow>
+                <TableRow><TableCell>Task Vault</TableCell><TableCell>Lock a task budget on-chain and pay workers through escrow.</TableCell></TableRow>
+                <TableRow><TableCell>History</TableCell><TableCell>See SOL moving in and out of the agent wallet, and the append-only audit log.</TableCell></TableRow>
+                <TableRow><TableCell>Try commands</TableCell><TableCell>Ask the agent to check its balance or send SOL in plain text.</TableCell></TableRow>
               </TableBody>
             </Table>
           ),
@@ -143,7 +144,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <li>
                 <strong>Run a command.</strong> <code>Send 0.05 SOL to my-wallet</code> is inside the limit, so the
                 agent signs it and an Explorer link appears.{' '}
-                <TabLink tab="commands" label="AI Commands" ctx={ctx} />
+                <TabLink tab="commands" label="Try commands" ctx={ctx} />
               </li>
               <li>
                 <strong>Try the other outcomes.</strong> <code>Send 0.5 SOL to my-wallet</code> is held for your
@@ -158,7 +159,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           body: (
             <p>
               Every request appears under Approvals with its status and policy verdict, and every decision is
-              written to the Audit log with the policy version it was made under.{' '}
+              written to the audit log in History with the policy version it was made under.{' '}
               <TabLink tab="approvals" label="Approvals" ctx={ctx} />
             </p>
           ),
@@ -316,9 +317,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
           title: 'Presets',
           body: (
             <p>
-              Once a recipient is allowlisted, the AI Commands page shows three presets: one within the per-transaction limit,
+              Once a recipient is allowlisted, the Try commands page shows three presets: one within the per-transaction limit,
               one above that limit, and one to an address outside the allowlist. Results also depend on balance, the 24-hour
-              limit and whether the agent is frozen. <TabLink tab="commands" label="AI Commands" ctx={ctx} />
+              limit and whether the agent is frozen. <TabLink tab="commands" label="Try commands" ctx={ctx} />
             </p>
           ),
         },
@@ -445,9 +446,10 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
             <>
               <p>
                 Each entry has a time, an event name, the request ID and a detail payload. Payloads are sealed with
-                AES-256-GCM at rest; open an entry and expand <em>Encrypted record</em> to see the stored form.
+                AES-256-GCM at rest; open an entry and expand <em>Encrypted record</em> to see the stored form. The
+                log is under <em>Audit log</em> in History.
               </p>
-              <TabLink tab="audit" label="Audit" ctx={ctx} />
+              <TabLink tab="history" label="History" ctx={ctx} />
             </>
           ),
         },
@@ -473,7 +475,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <p>
                 The client connects to the agent&apos;s <code>/mcp</code> URL (Streamable HTTP) with your personal MCP
                 token as a bearer header. Nothing is installed on the client&apos;s machine: copy the entry for your
-                client from the MCP card on the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page.
+                client from the <TabLink tab="connect" label="Connect AI" ctx={ctx} /> page.
               </p>
               <Callout tone="note" title="Where the URL points">
                 On a hosted dashboard the URL is the dashboard origin, so any machine can connect. When you run the
@@ -565,8 +567,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
             <>
               <Steps>
                 <li>
-                  Sign in to this dashboard with your wallet, then open <em>Show my connection</em> in the MCP card on
-                  the <TabLink tab="commands" label="AI Commands" ctx={ctx} /> page. On a hosted dashboard click
+                  Sign in to this dashboard with your wallet, then open <em>Show my connection</em> on
+                  the <TabLink tab="connect" label="Connect AI" ctx={ctx} /> page. On a hosted dashboard click
                   {' '}<em>Create connection token</em>; the token appears once.
                 </li>
                 <li>
@@ -706,7 +708,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 itself, so the MCP server can read it from the agent&apos;s data directory.
               </li>
               <li>
-                <em>Rotate token</em> in the MCP card on the AI Commands page replaces it. Clients connected by URL stop
+                <em>Rotate token</em> on the Connect AI page replaces it. Clients connected by URL stop
                 working until you copy their entry again. The local stdio bundle re-reads the file when the agent
                 rejects the old token, so it needs no restart; a token pinned with
                 {' '}<code>NEXUS_AGENT_TOKEN</code> is not re-read and must be updated by hand.
