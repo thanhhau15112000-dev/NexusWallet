@@ -87,9 +87,8 @@ describe('MCP token authentication', () => {
 
       for (const url of [
         '/api/tasks', '/api/tasks/task-a/revoke', '/api/tasks/task-a/refund',
-        '/api/tasks/task-a/payments/payment-a/settle', '/api/tasks/task-a/payments/payment-a/output',
+        '/api/tasks/task-a/payments/payment-a/settle',
         '/api/tasks/task-a/payments/payment-a/reject', '/api/tasks/task-a/payments/payment-a/refund-expired',
-        '/api/tasks/task-a/payments/payment-a/worker-run',
         '/api/tasks/mock-service/run', '/api/tasks/task-a/receipts/payment-a/close',
       ]) {
         const denied = await app.inject({ method: 'POST', url, headers: bearer(tokenA), payload: {} });
@@ -98,6 +97,41 @@ describe('MCP token authentication', () => {
       }
       expect(ctx.getUserContext!(ownerA.publicKey.toBase58()).store.getPayment('task-a', 'payment-a')?.status).toBe('held');
       expect(ctx.getUserContext!(ownerA.publicKey.toBase58()).store.getTask('task-a')?.status).toBe('active');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lets the agent collect a signed output and cancel its own request, but not settle', async () => {
+    const { app, ctx } = await startApp({ authRequired: true });
+    try {
+      const owner = Keypair.generate();
+      const cookieHeader = await login(app, owner);
+      const token = (await app.inject({ method: 'POST', url: '/api/mcp/token/rotate', headers: { cookie: cookieHeader } })).json().token as string;
+      const mockWorker = ctx.mockWorker!.publicKey.toBase58();
+      const created = await app.inject({ method: 'POST', url: '/api/tasks', headers: { cookie: cookieHeader }, payload: {
+        taskId: 'task-out', budgetLamports: 100, perPaymentCapLamports: 50, expiry: Math.floor(Date.now() / 1000) + 3600,
+        allowedWorker: mockWorker, allowedServiceId: 'service-a', isSimulated: true,
+      } });
+      expect(created.statusCode).toBe(200);
+      const payment = { paymentId: 'payment-out', worker: mockWorker, serviceId: 'service-a', amountLamports: 40, requestHash: 'b'.repeat(64) };
+      expect((await app.inject({ method: 'POST', url: '/api/tasks/task-out/payments', headers: bearer(token), payload: payment })).statusCode).toBe(200);
+
+      const base = '/api/tasks/task-out/payments/payment-out';
+      const output = await app.inject({ method: 'POST', url: `${base}/worker-run`, headers: bearer(token), payload: {} });
+      expect(output.statusCode).toBe(200);
+      const delivered = await app.inject({ method: 'POST', url: `${base}/output`, headers: bearer(token), payload: output.json() });
+      expect(delivered.statusCode).toBe(200);
+      expect(delivered.json().payment).toMatchObject({ status: 'held', delivery: { verification: { verdict: 'pass' } } });
+
+      // The decision on the output stays with the owner.
+      for (const action of ['settle', 'reject']) {
+        expect((await app.inject({ method: 'POST', url: `${base}/${action}`, headers: bearer(token), payload: {} })).statusCode).toBe(401);
+      }
+      expect(ctx.getUserContext!(owner.publicKey.toBase58()).store.getPayment('task-out', 'payment-out')?.status).toBe('held');
+
+      const missing = await app.inject({ method: 'POST', url: '/api/requests/req_missing/cancel', headers: bearer(token), payload: {} });
+      expect(missing.statusCode).toBe(404);
     } finally {
       await app.close();
     }
