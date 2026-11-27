@@ -132,6 +132,7 @@ export type TranslationDictionary = {
     addressPlaceholder: string;
     addRecipient: string;
     useOwnerWallet: string;
+    useMerchantWallet: string;
     invalidLabel: string;
     invalidPerTx: string;
     invalidPerDay: string;

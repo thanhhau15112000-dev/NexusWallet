@@ -122,6 +122,9 @@ export function PolicyPanel(props: {
     setDirty(true);
   };
 
+  /** The wallet the demo merchant's x402 endpoints are paid to, when the agent can reach the merchant. */
+  const merchantWallet = props.state.merchantWorker?.wallet ?? null;
+
   const addEntry = (entry: Entry) => {
     if (!AllowlistEntrySchema.safeParse(entry).success) return;
     if (
@@ -276,16 +279,29 @@ export function PolicyPanel(props: {
           {duplicateLabel ? <p className="text-xs text-bad">{dict.policy.duplicateLabel}</p> : null}
           {existingRecipientInvalid ? <p className="text-xs text-bad">{dict.policy.invalidSavedRecipient}</p> : null}
 
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            className="text-xs"
-            disabled={!props.wallet}
-            onClick={() => props.wallet && addEntry({ label: 'my-wallet', address: props.wallet })}
-          >
-            {dict.policy.useOwnerWallet}
-          </Button>
+          <div className="flex flex-wrap gap-x-1">
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="text-xs"
+              disabled={!props.wallet}
+              onClick={() => props.wallet && addEntry({ label: 'my-wallet', address: props.wallet })}
+            >
+              {dict.policy.useOwnerWallet}
+            </Button>
+            {merchantWallet ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="text-xs"
+                onClick={() => addEntry({ label: 'demo-merchant', address: merchantWallet })}
+              >
+                {dict.policy.useMerchantWallet}
+              </Button>
+            ) : null}
+          </div>
         </Card>
 
         <Card

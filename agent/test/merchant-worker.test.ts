@@ -18,6 +18,7 @@ import { acceptanceSignature } from './task-output-helpers.js';
 const URL_BASE = 'https://merchant.test';
 const dirs: string[] = [];
 
+const MERCHANT_WALLET = Keypair.generate().publicKey.toBase58();
 afterEach(() => {
   vi.restoreAllMocks();
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
@@ -29,7 +30,7 @@ function merchantStub(merchant: Keypair) {
   const settlements: Transaction[] = [];
   const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const path = String(url).slice(URL_BASE.length);
-    if (path === '/worker') return Response.json({ pubkey: merchant.publicKey.toBase58() });
+    if (path === '/worker') return Response.json({ pubkey: merchant.publicKey.toBase58(), wallet: MERCHANT_WALLET });
     const body = JSON.parse(String(init?.body));
     if (path === '/worker/jobs') {
       jobs.push(body);
@@ -71,6 +72,17 @@ describe('createMerchantWorker', () => {
     now += 60_000;
     expect(await worker.pubkey()).toBe(merchant.publicKey.toBase58());
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('publishes the payee wallet, and leaves it out when the merchant sends none or a bad one', async () => {
+    const merchant = Keypair.generate();
+    const infoFor = async (wallet: unknown) => {
+      const fetchImpl = vi.fn(async () => Response.json({ pubkey: merchant.publicKey.toBase58(), wallet }));
+      return createMerchantWorker(URL_BASE, fetchImpl as unknown as typeof fetch).info();
+    };
+    expect(await infoFor(MERCHANT_WALLET)).toEqual({ pubkey: merchant.publicKey.toBase58(), wallet: MERCHANT_WALLET });
+    expect(await infoFor(undefined)).toEqual({ pubkey: merchant.publicKey.toBase58(), wallet: null });
+    expect(await infoFor('not-a-key')).toEqual({ pubkey: merchant.publicKey.toBase58(), wallet: null });
   });
 
   it('refuses an output signed by a key other than the one it published', async () => {
@@ -144,7 +156,7 @@ describe('demo merchant as the worker of a task', () => {
     const { app, headers, merchant } = await setup();
     try {
       const state = (await app.inject({ method: 'GET', url: '/api/state', headers })).json();
-      expect(state.merchantWorker).toEqual({ pubkey: merchant.publicKey.toBase58() });
+      expect(state.merchantWorker).toEqual({ pubkey: merchant.publicKey.toBase58(), wallet: MERCHANT_WALLET });
     } finally { await app.close(); }
   });
 

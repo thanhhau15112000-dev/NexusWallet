@@ -132,6 +132,7 @@ export const vi: TranslationDictionary = {
     addressPlaceholder: 'Địa chỉ ví',
     addRecipient: 'Thêm người nhận',
     useOwnerWallet: 'Dùng ví chủ sở hữu',
+    useMerchantWallet: 'Dùng merchant demo',
     invalidLabel: 'Tên người nhận phải dài từ 1 đến 32 ký tự.',
     invalidPerTx: 'Nhập hạn mức lớn hơn 0 và không quá 1.000 SOL.',
     invalidPerDay: 'Nhập từ 0 đến 100.000 SOL hoặc để trống nếu không giới hạn theo ngày.',

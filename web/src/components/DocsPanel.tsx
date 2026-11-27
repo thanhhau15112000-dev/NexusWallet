@@ -236,6 +236,10 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <li>
                 <strong>Use owner wallet</strong> — adds your connected wallet as <code>my-wallet</code>.
               </li>
+              <li>
+                <strong>Use demo merchant</strong> — adds the wallet the demo merchant&apos;s x402 endpoints are paid to,
+                as <code>demo-merchant</code>. Shown when the agent can reach the merchant.
+              </li>
             </ul>
           ),
         },
