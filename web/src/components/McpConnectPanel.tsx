@@ -38,6 +38,7 @@ export function McpConnectPanel() {
   const [client, setClient] = useState<ClientId>('claude-code');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
   const [copied, setCopied] = useState<CopyTarget | null>(null);
 
   const load = async (issue: boolean) => {
@@ -50,6 +51,7 @@ export function McpConnectPanel() {
       } else {
         setConfig(next);
         setStatus(null);
+        setConfirmRotate(false);
       }
     } catch (err) {
       setError(errorText(err, dict.mcp.loadFailed));
@@ -99,30 +101,69 @@ export function McpConnectPanel() {
           ) : null}
 
           {config ? (
-            <Tabs value={client} onValueChange={(v) => setClient(v as ClientId)}>
-              <TabsList>
-                {CLIENTS.map((item) => (
-                  <TabsTrigger key={item.id} value={item.id}>
-                    {item.name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {CLIENTS.map((item) => {
-                const snippet = item.snippet(config);
-                return (
-                  <TabsContent key={item.id} value={item.id} className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted">
-                      <span>{item.hint(dict.mcp)}</span>
-                      {copyButton(item.id, snippet)}
-                    </div>
-                    <pre className="overflow-x-auto rounded-md border border-line bg-surface-muted p-3 font-mono text-xs text-ink">
-                      {maskToken(snippet, config.token)}
-                    </pre>
-                    {!localOnly ? <p className="text-xs text-warn">{dict.mcp.tokenOnceWarning}</p> : null}
-                  </TabsContent>
-                );
-              })}
-            </Tabs>
+            <div className="space-y-3">
+              <Tabs value={client} onValueChange={(v) => setClient(v as ClientId)}>
+                <TabsList>
+                  {CLIENTS.map((item) => (
+                    <TabsTrigger key={item.id} value={item.id}>
+                      {item.name}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                {CLIENTS.map((item) => {
+                  const snippet = item.snippet(config);
+                  return (
+                    <TabsContent key={item.id} value={item.id} className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                        <span>{item.hint(dict.mcp)}</span>
+                        {copyButton(item.id, snippet)}
+                      </div>
+                      <pre className="overflow-x-auto rounded-md border border-line bg-surface-muted p-3 font-mono text-xs text-ink">
+                        {maskToken(snippet, config.token)}
+                      </pre>
+                      {!localOnly ? <p className="text-xs text-warn">{dict.mcp.tokenOnceWarning}</p> : null}
+                    </TabsContent>
+                  );
+                })}
+              </Tabs>
+              {confirmRotate ? (
+                <div className="space-y-2 rounded-md border border-line bg-surface-muted/40 p-3 text-xs">
+                  <p className="text-warn">{dict.mcp.rotateWarning}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="destructiveOutline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void load(true)}
+                    >
+                      {busy ? dict.mcp.rotating : dict.mcp.replaceToken}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => setConfirmRotate(false)}
+                    >
+                      {dict.agent.cancelFreezeBtn}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setConfirmRotate(true)}
+                  >
+                    {dict.mcp.replaceToken}
+                  </Button>
+                </div>
+              )}
+            </div>
           ) : status ? (
             <div className="space-y-2 rounded-md border border-line bg-surface-muted/40 p-3 text-xs">
               <p className="text-ink">{status.hasToken ? dict.mcp.tokenHidden : dict.mcp.noToken}</p>
