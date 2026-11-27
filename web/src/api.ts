@@ -214,11 +214,6 @@ export const api = {
 
   state: () => request<AgentState>('/api/state'),
 
-  bindOwner: (pubkey: string) =>
-    request<{ owner: string }>('/api/owner', {
-      method: 'POST',
-      body: JSON.stringify({ pubkey }),
-    }),
 
   savePolicy: (input: {
     maxSolPerTx: number;

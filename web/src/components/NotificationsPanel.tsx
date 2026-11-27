@@ -7,15 +7,12 @@ import {
   type TelegramNotificationState,
 } from '../api.js';
 import { useI18n } from '../i18n/context.js';
+import { errorText } from '../lib/errors.js';
 import { cn } from '../lib/utils.js';
 import { Card, DateTime, Notice, Pill } from './ui.js';
 import { Button } from './ui/button.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
-
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback;
-}
 
 function ToggleRow(props: {
   id: string;

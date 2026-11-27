@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { type Connection, PublicKey } from '@solana/web3.js';
+import { getSolanaConnection } from '../lib/solana.js';
 import { LAMPORTS_PER_SOL, type PaymentRequest } from '@nexus/shared';
 import { Lock, ShieldCheck, Unlock } from './icons.js';
 import { api, type AgentState } from '../api.js';
@@ -30,7 +31,7 @@ function useOwnerBalance(rpcUrl: string, wallet: string | null) {
     let connection: Connection;
     let address: PublicKey;
     try {
-      connection = new Connection(rpcUrl, 'confirmed');
+      connection = getSolanaConnection(rpcUrl);
       address = new PublicKey(wallet);
     } catch {
       setLoading(false);

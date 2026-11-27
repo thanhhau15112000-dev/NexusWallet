@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Check, Copy, Plug, ShieldCheck, TriangleAlert } from './icons.js';
-import { api, ApiError, type McpClientConfig, type McpTokenStatus } from '../api.js';
+import { api, type McpClientConfig, type McpTokenStatus } from '../api.js';
 import { Card, Notice } from './ui.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
 import { useI18n } from '../i18n/context.js';
 import type { TranslationDictionary } from '../i18n/types.js';
+import { errorText } from '../lib/errors.js';
 
 type ClientId = 'claude-code' | 'codex' | 'antigravity';
 
@@ -22,9 +23,6 @@ const CLIENTS: Array<{
 ];
 
 type CopyTarget = 'url' | ClientId;
-
-const errorText = (err: unknown, fallback: string) =>
-  err instanceof ApiError || err instanceof Error ? err.message : fallback;
 
 // The token stays masked on screen; Copy puts the full value on the clipboard.
 const maskToken = (text: string, token: string) =>

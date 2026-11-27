@@ -20,6 +20,7 @@ import {
   type PaymentRequest,
 } from '@nexus/shared';
 import { api, ApiError, type AgentState } from './api.js';
+import { errorText } from './lib/errors.js';
 import {
   connectWallet,
   discoverWallets,
@@ -74,10 +75,6 @@ const FEATURE_TABS: Array<{ id: FeatureTab; group: NavGroup; icon: typeof Layout
 ];
 
 const NAV_GROUPS: NavGroup[] = ['setup', 'activity', 'resources'];
-
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 function WalletOptions(props: {
   choices: WalletChoice[];
@@ -136,7 +133,6 @@ export function App() {
   const [activeTab, setActiveTab] = useState<FeatureTab>(focusRequestId ? 'approvals' : 'wallet');
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);
-  const bindAttempt = useRef<string | null>(null);
   const connectedWalletRef = useRef<ConnectedWallet | null>(null);
   const autoConnectAttempted = useRef(false);
   const refreshSequence = useRef(0);
@@ -295,7 +291,6 @@ export function App() {
     if (!connectedWallet) return;
     return observeWallet(connectedWallet, (next) => {
       if (connectedWalletRef.current !== connectedWallet) return;
-      bindAttempt.current = null;
       setActiveWallet(next);
       if (!next && authRequired) void logoutSession();
     });
@@ -403,7 +398,6 @@ export function App() {
     const active = connectedWalletRef.current;
     setActiveWallet(null);
     await disconnectWallet(active);
-    bindAttempt.current = null;
     await logoutSession();
   };
 
