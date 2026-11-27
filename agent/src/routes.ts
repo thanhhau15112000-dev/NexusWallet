@@ -47,13 +47,6 @@ import {
 } from './chain.js';
 import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from './approvals.js';
 import type { AppContext } from './context.js';
-import {
-  canFundSeed,
-  dispenseInitialSeed,
-  INITIAL_SEED_LAMPORTS,
-  SeedTransferFailedError,
-  SeedTransferOutcomeUnknownError,
-} from './funder.js';
 import { IdempotencyConflictError, agentError, runAction, runCommand, type AgentAction } from './pipeline.js';
 import { resolveX402Payment, fetchWithX402 } from './x402.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
@@ -409,22 +402,14 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? null,
   }));
 
-  // Readiness for operators: the RPC answers, and the Master Funder can still pay a seed. 503 when the RPC is down.
+  // Readiness for operators: the RPC answers. 503 when it does not.
   app.get('/api/health/ready', async (_req, reply) => {
-    const probe = ctx.funderProbe ? await ctx.funderProbe() : null;
+    const probe = ctx.rpcProbe ? await ctx.rpcProbe() : null;
     const rpcOk = probe?.rpcOk ?? false;
     return reply.status(rpcOk ? 200 : 503).send({
       ok: rpcOk,
       checkedAt: probe?.checkedAt ?? null,
       rpc: { ok: rpcOk, latencyMs: probe?.latencyMs ?? null, error: probe ? probe.error : 'not configured' },
-      masterFunder: ctx.masterFunderPubkey
-        ? {
-            pubkey: ctx.masterFunderPubkey,
-            lamports: probe?.lamports ?? null,
-            canSeed: probe?.lamports == null ? null : canFundSeed(probe.lamports),
-          }
-        : null,
-      seedCapacity: ctx.seedLedger ? ctx.seedLedger.hasCapacity() : null,
     });
   });
 
@@ -579,16 +564,6 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const tokens: TokenBalance[] | null = await tokensRead;
 
     const isAdmin = Boolean(session?.isAdmin || (session?.owner && session.owner === ctx.config.adminPubkey));
-    let masterFunderBalance: number | null = null;
-    if (isAdmin && ctx.masterFunderPubkey) {
-      try {
-        masterFunderBalance = await getLamportBalance(ctx.connection, ctx.masterFunderPubkey);
-      } catch {
-        // Ignore balance read failure
-      }
-    }
-
-    const seed = await seedAvailability(ctx);
 
     const currentPolicy = userCtx.store.getPolicy();
     const spentLamports = spentLamportsInWindow(userCtx.store.listRequests());
@@ -609,14 +584,6 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
       owner: userCtx.store.getOwner(),
       ownerPinned: false,
       isAdmin,
-      claimedInitialFunding: userCtx.store.hasClaimedInitialFunding(),
-      seed,
-      masterFunder: isAdmin && ctx.masterFunderPubkey
-        ? {
-            pubkey: ctx.masterFunderPubkey,
-            lamports: masterFunderBalance,
-          }
-        : null,
       mockWorker: userCtx.mockWorker ? { pubkey: userCtx.mockWorker.publicKey.toBase58() } : null,
       merchantWorker: await userCtx.merchantWorker?.pubkey().then((pubkey) => (pubkey ? { pubkey } : null)) ?? null,
       agent: {
@@ -644,121 +611,6 @@ export async function registerRoutes(app: FastifyInstance, ctx: AppContext): Pro
     const userCtx = ctx.getUserContext ? ctx.getUserContext(body.pubkey) : ctx;
     userCtx.store.setOwner(body.pubkey);
     return { owner: body.pubkey };
-  });
-
-const inFlightClaims = new Set<string>();
-
-  /**
-   * Whether a seed claim can succeed now, so the dashboard can say why before the owner clicks.
-   * An unreadable funder balance counts as available: the claim itself reports the real error.
-   */
-  async function seedAvailability(root: AppContext): Promise<{ available: boolean; reason: 'funder_unavailable' | 'funder_empty' | 'cap_reached' | null }> {
-    if (!root.masterFunder || !root.seedLedger) return { available: false, reason: 'funder_unavailable' };
-    if (!root.seedLedger.hasCapacity()) return { available: false, reason: 'cap_reached' };
-    const probe = root.funderProbe ? await root.funderProbe() : null;
-    if (probe?.lamports != null && !canFundSeed(probe.lamports)) return { available: false, reason: 'funder_empty' };
-    return { available: true, reason: null };
-  }
-
-  app.post('/api/agent/claim-seed', async (req, reply) => {
-    const userCtx = resolveUserContext(ctx, req);
-    const claimKey = userCtx.agentPubkey;
-
-    if (inFlightClaims.has(claimKey)) {
-      return reply.status(409).send({
-        error: 'claim_in_progress',
-        message: 'A seed claim is already in progress for this agent.',
-      });
-    }
-
-    if (userCtx.store.hasClaimedInitialFunding()) {
-      return reply.status(409).send({
-        error: 'already_claimed',
-        message: 'Initial demo funding (0.1 SOL) has already been claimed for this agent wallet.',
-      });
-    }
-
-    if (!ctx.masterFunder || !ctx.seedLedger) {
-      return reply.status(503).send({
-        error: 'funder_unavailable',
-        message: 'Master Funder is not configured on this instance.',
-      });
-    }
-
-    inFlightClaims.add(claimKey);
-    let reservation: number | null = null;
-    try {
-      if (userCtx.store.hasClaimedInitialFunding()) {
-        return reply.status(409).send({
-          error: 'already_claimed',
-          message: 'Initial demo funding (0.1 SOL) has already been claimed for this agent wallet.',
-        });
-      }
-
-      // A signed transfer kept from an earlier attempt was counted when it was created; resuming it takes no new slot.
-      if (!userCtx.store.getPendingInitialFunding()) {
-        reservation = ctx.seedLedger.reserve();
-        if (reservation === null) {
-          const retryAfterSeconds = ctx.seedLedger.retryAfterSeconds();
-          req.log.warn({ agent: userCtx.agentPubkey, retryAfterSeconds }, 'initial seed cap reached');
-          return reply
-            .status(429)
-            .header('retry-after', String(retryAfterSeconds))
-            .send({
-              error: 'seed_cap_reached',
-              message:
-                'The free demo SOL for the last 24 hours has been handed out. Get Devnet SOL from https://faucet.solana.com, or try again later.',
-              details: { retryAfterSeconds },
-            });
-        }
-      }
-
-      const amountLamports = INITIAL_SEED_LAMPORTS;
-      const result = await dispenseInitialSeed({
-        connection: ctx.connection,
-        funder: ctx.masterFunder,
-        recipientPubkey: userCtx.agentPubkey,
-        amountLamports,
-        pending: userCtx.store.getPendingInitialFunding(),
-        persistPending: (pending) => userCtx.store.setPendingInitialFunding(pending),
-      });
-
-      userCtx.store.setClaimedInitialFunding(true);
-      userCtx.audit.record('agent.initial_seed_claimed', null, {
-        recipient: userCtx.agentPubkey,
-        amountLamports,
-        signature: result.signature,
-      });
-
-      const lamports = await getLamportBalance(userCtx.connection, userCtx.agentPubkey);
-      return { signature: result.signature, lamports, claimedInitialFunding: true };
-    } catch (err) {
-      if (err instanceof SeedTransferFailedError) {
-        userCtx.store.clearPendingInitialFunding();
-      }
-      // Give the slot back only when no seed can have been paid: nothing signed is retained and the claim is not recorded.
-      if (
-        reservation !== null &&
-        !userCtx.store.getPendingInitialFunding() &&
-        !userCtx.store.hasClaimedInitialFunding()
-      ) {
-        ctx.seedLedger.release(reservation);
-      }
-      req.log.warn({ err, agent: userCtx.agentPubkey, masterFunder: ctx.masterFunderPubkey }, 'initial seed claim failed');
-      if (err instanceof SeedTransferOutcomeUnknownError) {
-        return reply.status(409).send({
-          error: 'claim_outcome_unknown',
-          message: 'The previous seed transfer is still being reconciled. Retry later; a second transfer will not be sent.',
-        });
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      return reply.status(502).send({
-        error: 'funder_failed',
-        message,
-      });
-    } finally {
-      inFlightClaims.delete(claimKey);
-    }
   });
 
   const TelegramSettingsBody = z.object({

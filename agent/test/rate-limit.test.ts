@@ -67,8 +67,6 @@ async function startHostedApp(options: RateLimitOptions = {}, remoteTrust = fals
     AGENT_DATA_DIR: dataDir,
     dataDir,
     usersDir: join(dataDir, 'users'),
-    masterFunderPath: join(dataDir, 'master-funder.json'),
-    legacyKeystorePath: join(dataDir, 'agent-keystore.json'),
     statePath: join(dataDir, 'state.json'),
     auditPath: join(dataDir, 'audit.jsonl'),
     keystorePath: join(dataDir, 'agent-keystore.json'),
@@ -164,27 +162,6 @@ describe('rate limit on sensitive routes', () => {
 
       now += MINUTE;
       expect((await challenge(app, pubkey)).statusCode).toBe(200);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('limits claim-seed per address before the handler runs', async () => {
-    const { app } = await startHostedApp({ now: () => 0 });
-    try {
-      const owner = Keypair.generate();
-      const cookieHeader = await login(app, owner);
-      for (const url of ['/api/agent/claim-seed']) {
-        const statuses: number[] = [];
-        for (let i = 0; i < 6; i += 1) {
-          // An invalid body keeps the handler off the network; only the limiter decides the 6th answer.
-          statuses.push(
-            (await app.inject({ method: 'POST', url, headers: { cookie: cookieHeader }, payload: { sol: -1 } })).statusCode,
-          );
-        }
-        expect(statuses.slice(0, 5).every((status) => status !== 429), url).toBe(true);
-        expect(statuses[5], url).toBe(429);
-      }
     } finally {
       await app.close();
     }

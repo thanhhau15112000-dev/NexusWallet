@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   });
 
   await registerRoutes(app, ctx);
-  app.log.info({ masterFunder: ctx.masterFunderPubkey, adminPubkey: config.adminPubkey }, 'Master Funder loaded');
+  app.log.info({ adminPubkey: config.adminPubkey }, 'routes registered');
 
   if (config.authRequired) {
     const webRoot = resolve(process.cwd(), '../web/dist');
