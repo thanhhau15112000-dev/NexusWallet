@@ -245,8 +245,14 @@ function renderHomePage(origin: string, env: Env, chain: ChainView): string {
   <title>nexusPay demo merchant</title>
   <style>
     :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; background: #f6f7f6; color: #111816; }
-    body { max-width: 720px; margin: 32px auto; padding: 0 16px; line-height: 1.5; }
-    .card { background: #fff; border: 1px solid #e3e7e5; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    body { max-width: 1040px; margin: 32px auto; padding: 0 16px; line-height: 1.5; }
+    .card { background: #fff; border: 1px solid #e3e7e5; border-radius: 12px; padding: 20px; margin-bottom: 16px; min-width: 0; }
+    .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .columns .card { margin-bottom: 0; }
+    @media (max-width: 760px) { .columns { grid-template-columns: minmax(0, 1fr); } }
+    .wallet { display: inline-flex; align-items: center; gap: 6px; }
+    button.copy { font: inherit; font-size: 12px; padding: 1px 8px; border: 1px solid #e3e7e5; border-radius: 6px; background: #fff; color: #177b65; cursor: pointer; }
+    button.copy:hover { background: #f6f7f6; }
     h1 { font-size: 20px; margin: 0 0 4px; }
     h2 { font-size: 15px; margin: 0 0 8px; }
     .muted { color: #5a6561; font-size: 13px; }
@@ -263,22 +269,37 @@ function renderHomePage(origin: string, env: Env, chain: ChainView): string {
 <body>
   <div class="card">
     <h1>nexusPay demo merchant</h1>
-    <div class="muted">x402 · Solana Devnet · USDC · wallet <span title="${escapeHtml(env.MERCHANT_WALLET)}">${escapeHtml(shortKey(env.MERCHANT_WALLET))}</span></div>
+    <div class="muted">x402 · Solana Devnet · USDC · wallet <span class="wallet"><span title="${escapeHtml(env.MERCHANT_WALLET)}">${escapeHtml(shortKey(env.MERCHANT_WALLET))}</span><button type="button" class="copy" data-copy="${escapeHtml(env.MERCHANT_WALLET)}" aria-label="Copy wallet address">Copy</button></span></div>
   </div>
-  <div class="card">
-    <h2>Items</h2>
-    <table>
-      <thead><tr><th>Item</th><th>Price</th><th>Endpoint</th></tr></thead>
-      <tbody>${itemRows}</tbody>
-    </table>
+  <div class="columns">
+    <div class="card">
+      <h2>Recent payments</h2>
+      <table>
+        <thead><tr><th>Transaction</th><th>Time (UTC)</th><th>Status</th></tr></thead>
+        <tbody>${paymentRows}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Paid endpoints</h2>
+      <table>
+        <thead><tr><th>Item</th><th>Price</th><th>Endpoint</th></tr></thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+    </div>
   </div>
-  <div class="card">
-    <h2>Recent payments</h2>
-    <table>
-      <thead><tr><th>Transaction</th><th>Time (UTC)</th><th>Status</th></tr></thead>
-      <tbody>${paymentRows}</tbody>
-    </table>
-  </div>
+  <script>
+    document.querySelectorAll('button.copy').forEach((button) => {
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy);
+          button.textContent = 'Copied';
+        } catch {
+          button.textContent = 'Copy failed';
+        }
+        setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+      });
+    });
+  </script>
 </body>
 </html>`;
 }
