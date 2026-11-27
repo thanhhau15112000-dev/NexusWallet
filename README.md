@@ -88,7 +88,7 @@ flowchart LR
 ```
 
 - MCP gửi structured action trực tiếp; tab **Thử lệnh** chuyển nội dung nhập thành action qua model hoặc deterministic parser. Model không nhận private key.
-- Hosted mode tạo context riêng cho từng ví owner. MCP token gọi được 9 route API: đọc trạng thái, request và task, đề xuất transfer/x402 (`intents`, `x402/resolve`, `x402/fetch`), tạo Escrow trong capability đã cấp. Tạo/nạp task, sửa chính sách, cài đặt thông báo Telegram, ký duyệt, từ chối/nghiệm thu output, thu hồi quyền, settlement, refund (kể cả hoàn Escrow hết hạn) và khóa/mở khóa vẫn cần phiên ví chủ sở hữu.
+- Hosted mode tạo context riêng cho từng ví owner. MCP token gọi được 13 route API: đọc trạng thái, request, task và lịch sử on-chain, đề xuất transfer/x402 (`intents`, `x402/resolve`, `x402/fetch`), huỷ transfer còn chờ duyệt, tạo Escrow trong capability đã cấp, lấy và nộp output đã ký của Worker (`worker-run`, `output`). Tạo/nạp task, sửa chính sách, cài đặt thông báo Telegram, ký duyệt, từ chối/nghiệm thu output, thu hồi quyền, settlement, refund (kể cả hoàn Escrow hết hạn) và khóa/mở khóa vẫn cần phiên ví chủ sở hữu.
 - Owner approval signature bind request, amount, recipient, policy version, nonce và TTL. Approval TTL mặc định là 300 giây; authentication session TTL mặc định là 30 phút. Wallet authentication và transaction authorization là hai flow riêng.
 - JSON Store persist qua temporary file + rename; audit payload dùng AES-256-GCM và SHA-256 hash chaining. Đây là server-side state, không phải immutable on-chain ledger.
 
@@ -137,6 +137,8 @@ MCP hiện cung cấp **10 tool** cho Payment Guard, x402 và Task Vault:
 | `nexuspay_get_status` | Ví agent, số dư, policy, mức SOL đã chi và trạng thái khóa |
 | `nexuspay_list_requests` | Danh sách yêu cầu và kết quả xử lý |
 | `nexuspay_get_request` | Chi tiết một yêu cầu, trạng thái duyệt và link Explorer nếu có |
+| `nexuspay_cancel_request` | Rút lại khoản chuyển agent đã đề xuất khi nó còn chờ owner duyệt; không gửi gì |
+| `nexuspay_get_history` | Giao dịch Devnet của ví agent, mới nhất trước, có phân trang |
 | `nexuspay_transfer_sol` | Đề xuất chuyển SOL qua Payment Guard |
 | `nexuspay_transfer_spl` | Đề xuất chuyển SPL token; cần allowlist recipient/mint và hạn mức tương ứng |
 | `nexuspay_x402_fetch` | Gọi URL HTTP 402 theo chuẩn x402 v2 (`exact`, SPL trên Solana Devnet), ký qua Payment Guard và gửi `PAYMENT-SIGNATURE` |
@@ -144,12 +146,13 @@ MCP hiện cung cấp **10 tool** cho Payment Guard, x402 và Task Vault:
 | `nexuspay_list_tasks` | Danh sách Task Vault, capability, ngân sách còn lại, cap và expiry từ record local |
 | `nexuspay_get_task` | Chi tiết task, Escrow và Receipt; phân biệt mô phỏng/Devnet, chưa reconcile lại chain |
 | `nexuspay_execute_task_payment` | Tạo Escrow trong capability chủ ví đã cấp; Worker nhận tiền ở bước settlement riêng |
+| `nexuspay_collect_task_output` | Gọi Worker của Escrow đang giữ để giao output đã ký, lưu lại và chạy kiểm tra tự động; Escrow vẫn giữ tới khi owner settle hoặc từ chối |
 
-MCP token không có quyền sửa chính sách, cài đặt thông báo Telegram, ký duyệt, tạo/nạp/revoke/refund task, chạy Mock Worker, từ chối/nghiệm thu output hoặc settlement. Chủ ví tạo và nạp Task Vault trên dashboard trước khi agent sử dụng ngân sách được cấp.
+MCP token không có quyền sửa chính sách, cài đặt thông báo Telegram, ký duyệt, tạo/nạp/revoke/refund task, từ chối/nghiệm thu output hoặc settlement. Chủ ví tạo và nạp Task Vault trên dashboard trước khi agent sử dụng ngân sách được cấp.
 
 Nếu kết quả là `outcome_unknown`, đối chiếu request và Explorer; retry cùng action với **cùng** `idempotencyKey`. Hai key khác nhau được xem là hai đề xuất. Nếu nhận `RATE_LIMITED`, chờ `retryAfterSeconds` rồi retry với cùng key, không đổi số tiền. Cơ chế này không bảo đảm idempotency vô thời hạn khi request record đã bị prune.
 
-**Task Vault qua MCP:** owner tạo và nạp task trên dashboard; agent gọi `nexuspay_list_tasks` rồi `nexuspay_get_task` để đọc quyền đã cấp. Tạo escrow bằng `nexuspay_execute_task_payment` với `taskId`, `paymentId`, địa chỉ `worker`, `serviceId`, `amountLamports` (số nguyên theo base unit của tài sản task: lamports với SOL, 1 SOL = 1.000.000.000; base unit của mint với token, 1 USDC = 1.000.000) và `requestHash` (SHA-256 hex thường, 64 ký tự). MCP không tạo/nạp task, đổi quyền, revoke, chạy mock worker, settle hay refund.
+**Task Vault qua MCP:** owner tạo và nạp task trên dashboard; agent gọi `nexuspay_list_tasks` rồi `nexuspay_get_task` để đọc quyền đã cấp. Tạo escrow bằng `nexuspay_execute_task_payment` với `taskId`, `paymentId`, địa chỉ `worker`, `serviceId`, `amountLamports` (số nguyên theo base unit của tài sản task: lamports với SOL, 1 SOL = 1.000.000.000; base unit của mint với token, 1 USDC = 1.000.000) và `requestHash` (SHA-256 hex thường, 64 ký tự). Sau đó gọi `nexuspay_collect_task_output` để Worker giao output. MCP không sửa policy, duyệt giao dịch, tạo/nạp task, đổi quyền, revoke, settle hay refund.
 
 Mỗi khoản dùng một `paymentId` riêng trong task. Retry khoản đã có record với cùng tham số trả record đó và `reused: true`; đổi tham số trả `IDEMPOTENCY_CONFLICT`. Nếu nhận `outcome_unknown`, đọc lại task và **giữ nguyên paymentId cùng tham số**. Nếu vẫn thiếu record, owner cần đối chiếu escrow Devnet trước khi bắt đầu khoản khác; đường này chưa tự khôi phục record khi chain đã nhận giao dịch nhưng API mất kết quả. Trường `mode: simulated` chỉ là mô phỏng, không chuyển SOL. Trên Devnet, worker là merchant demo (giữ key riêng, tự ký output và settlement) hoặc mock worker do server giữ key; receipt không chứng minh chất lượng công việc.
 

@@ -531,6 +531,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   <TableRow><TableCell><code>nexuspay_get_status</code></TableCell><TableCell>Địa chỉ agent, số dư SOL, hạn mức mỗi giao dịch, các nhãn trong danh sách cho phép.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_list_requests</code></TableCell><TableCell>Các yêu cầu gần đây kèm kết luận và kết quả. Có thể lọc theo trạng thái.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_get_request</code></TableCell><TableCell>Một yêu cầu, ví dụ để xem bạn đã duyệt hay chưa.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_cancel_request</code></TableCell><TableCell>Rút lại khoản chuyển agent đã đề xuất khi nó còn chờ bạn duyệt. Không gửi gì.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_get_history</code></TableCell><TableCell>Giao dịch Devnet của ví agent, mới nhất trước, từng trang.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_sol</code></TableCell><TableCell>Đề xuất chuyển SOL. Chính sách quyết định.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_transfer_spl</code></TableCell><TableCell>Đề xuất chuyển token SPL. Người nhận và mint phải nằm trong danh sách cho phép.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_x402_fetch</code></TableCell><TableCell>Gọi URL trả HTTP 402 qua x402 v2 (SPL trên Solana Devnet) và gửi <code>PAYMENT-SIGNATURE</code> khi gọi lại.</TableCell></TableRow>
@@ -538,6 +540,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   <TableRow><TableCell><code>nexuspay_list_tasks</code></TableCell><TableCell>Đọc Task Vault đã được cấp quyền, ngân sách còn lại, cap và expiry.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_get_task</code></TableCell><TableCell>Đọc task, Escrow và Receipt. Record local chưa được reconcile lại với chain.</TableCell></TableRow>
                   <TableRow><TableCell><code>nexuspay_execute_task_payment</code></TableCell><TableCell>Tạo Escrow trong capability đã cấp. Worker nhận tiền ở bước settlement riêng.</TableCell></TableRow>
+                  <TableRow><TableCell><code>nexuspay_collect_task_output</code></TableCell><TableCell>Gọi Worker của Escrow đang giữ để giao output đã ký và chạy kiểm tra tự động. Escrow vẫn giữ tới khi bạn settle hoặc từ chối.</TableCell></TableRow>
                 </TableBody>
               </Table>
               <p>
