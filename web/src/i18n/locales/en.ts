@@ -3,7 +3,6 @@ import type { TranslationDictionary } from '../types.js';
 export const en: TranslationDictionary = {
   tabs: {
     wallet: 'Overview',
-    connect: 'Connect AI',
     policy: 'Policy',
     approvals: 'Approvals',
     tasks: 'Task Vault',
@@ -20,7 +19,6 @@ export const en: TranslationDictionary = {
   },
   pageDesc: {
     wallet: 'Balances, spending limits, pending approvals and the agent kill switch.',
-    connect: 'Connect Claude, Codex or another AI client to this agent over MCP.',
     policy: 'Limits and the recipient allowlist every transfer is checked against.',
     approvals: 'Transfers above the limit wait here for your wallet signature.',
     tasks: 'Give each task its own budget. The agent holds each payment until you review the result and accept it.',

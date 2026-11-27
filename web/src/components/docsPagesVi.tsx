@@ -67,8 +67,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow><TableCell>Tổng quan</TableCell><TableCell>Xem ví agent, kết nối ví chủ sở hữu, nạp vốn cho agent.</TableCell></TableRow>
-                <TableRow><TableCell>Kết nối AI</TableCell><TableCell>Kết nối Claude, Codex hoặc ứng dụng AI khác với agent qua MCP.</TableCell></TableRow>
+                <TableRow><TableCell>Tổng quan</TableCell><TableCell>Xem ví agent, kết nối ví chủ sở hữu, nạp vốn cho agent, và kết nối Claude, Codex hoặc ứng dụng AI khác qua MCP.</TableCell></TableRow>
                 <TableRow><TableCell>Chính sách chi tiêu</TableCell><TableCell>Đặt hạn mức mỗi giao dịch và danh sách người nhận được phép.</TableCell></TableRow>
                 <TableRow><TableCell>Duyệt yêu cầu</TableCell><TableCell>Xem lại mọi yêu cầu và duyệt các giao dịch đang chờ.</TableCell></TableRow>
                 <TableRow><TableCell>Task Vault</TableCell><TableCell>Khóa ngân sách tác vụ on-chain và trả cho worker qua escrow.</TableCell></TableRow>
@@ -450,7 +449,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               <p>
                 Client kết nối tới URL <code>/mcp</code> của agent (Streamable HTTP) với MCP token cá nhân của bạn làm
                 bearer header. Không cài gì lên máy của client: hãy sao chép cấu hình cho client của bạn trên trang
-                {' '}<TabLink tab="connect" label="Kết nối AI" ctx={ctx} />.
+                {' '}<TabLink tab="wallet" label="Tổng quan" ctx={ctx} />.
               </p>
               <Callout tone="note" title="URL trỏ tới đâu">
                 Trên dashboard hosted, URL là origin của dashboard, nên máy nào cũng kết nối được. Khi bạn tự chạy cả
@@ -542,7 +541,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               <Steps>
                 <li>
                   Đăng nhập dashboard này bằng ví, rồi mở <em>Xem cấu hình kết nối</em> trên trang
-                  {' '}<TabLink tab="connect" label="Kết nối AI" ctx={ctx} />. Trên dashboard hosted, bấm
+                  {' '}<TabLink tab="wallet" label="Tổng quan" ctx={ctx} />. Trên dashboard hosted, bấm
                   {' '}<em>Tạo token kết nối</em>; token chỉ hiện một lần.
                 </li>
                 <li>
@@ -683,7 +682,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 server MCP đọc được nó từ thư mục dữ liệu của agent.
               </li>
               <li>
-                <em>Tạo token mới</em> ở trang Kết nối AI sẽ thay token. Các client kết nối bằng URL sẽ
+                <em>Tạo token mới</em> ở trang Tổng quan sẽ thay token. Các client kết nối bằng URL sẽ
                 ngừng hoạt động cho tới khi bạn sao chép lại cấu hình của chúng. Bản stdio chạy local đọc lại file khi
                 agent từ chối token cũ nên không cần khởi động lại; token ghim bằng
                 {' '}<code>NEXUS_AGENT_TOKEN</code> không được đọc lại và phải cập nhật thủ công.
