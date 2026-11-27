@@ -230,6 +230,12 @@ export type TranslationDictionary = {
     updatedTag: string;
     confirmedTag: string;
     explorer: string;
+    requestId: string;
+    verdicts: {
+      allow: string;
+      require_approval: string;
+      deny: string;
+    };
     actions: {
       balance: string;
       manualApproval: string;
@@ -295,6 +301,9 @@ export type TranslationDictionary = {
     title: string;
     ciphertext: string;
     noEntries: string;
+    requestId: string;
+    /** Keyed by the audit event name; an event without a label shows its raw name. */
+    events: Record<string, string>;
   };
   mascot: {
     wallet: string;
@@ -374,6 +383,7 @@ export type TranslationDictionary = {
       hoursUnit: string;
       cancel: string;
       broadcastOnChain: string;
+      advanced: string;
       submitBtn: string;
       submittingBtn: string;
       connectHint: string;
@@ -421,6 +431,7 @@ export type TranslationDictionary = {
       workerPlaceholder: string;
       serviceId: string;
       amount: string;
+      advanced: string;
       submitBtn: string;
       submittingBtn: string;
     };
@@ -465,10 +476,13 @@ export type TranslationDictionary = {
       useMockWorker: string;
       validWorkerAddress: string;
       phantomNotFound: string;
+      ownerWalletRequired: string;
+      transactionFailed: string;
       fundedDevnet: string;
       createdSimulated: string;
       createFailed: string;
       enterValidAmount: string;
+      serviceRequired: string;
       workerMismatch: string;
       serviceMismatch: string;
       onchainEscrow: string;

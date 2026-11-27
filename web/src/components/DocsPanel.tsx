@@ -201,9 +201,9 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow><TableCell>Claim 0.1 SOL seed</TableCell><TableCell>One-time transfer from the service funder. Available once per agent.</TableCell></TableRow>
-                  <TableRow><TableCell>Deposit 0.1 SOL</TableCell><TableCell>Your wallet sends 0.1 SOL to the agent. Your wallet asks you to confirm.</TableCell></TableRow>
-                  <TableRow><TableCell>Official Faucet</TableCell><TableCell>Opens faucet.solana.com with the agent address filled in.</TableCell></TableRow>
+                  <TableRow><TableCell>Get 0.1 free test SOL</TableCell><TableCell>One-time transfer from the service funder. Available once per agent.</TableCell></TableRow>
+                  <TableRow><TableCell>Send 0.1 SOL from my wallet</TableCell><TableCell>Your wallet sends 0.1 SOL to the agent. Your wallet asks you to confirm.</TableCell></TableRow>
+                  <TableRow><TableCell>More test SOL</TableCell><TableCell>Opens faucet.solana.com with the agent address filled in.</TableCell></TableRow>
                 </TableBody>
               </Table>
               <Callout tone="note" title="Zero balance is fine for policy checks">
@@ -392,21 +392,21 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               <li>
                 <strong>Fund.</strong> Choose the payment asset: SOL or a token the policy allows, such as USDC. The
                 budget moves from your wallet into the vault, so the form checks your balance of that asset. Enter a
-                total budget, per-payment cap and expiry (1–168 hours). Tick
-                {' '}<em>Broadcast on-chain</em> to create it on Devnet through your wallet; otherwise it is simulated.
+                total budget, per-payment cap and expiry (1–168 hours). Under <em>Advanced settings</em>, the Devnet
+                option is on by default and creates the task through your wallet; untick it to simulate.
               </li>
               <li>
-                <strong>Execute payment.</strong> Move an amount into escrow for a worker. The worker and service must
+                <strong>Hold payment.</strong> Move an amount into escrow for a worker. The worker and service must
                 match the task limits, and the amount must fit the cap and the remaining budget.
               </li>
               <li>
-                <strong>Submit output.</strong> The mock Worker produces output and signs its hash. Submission saves the output for review while the Escrow remains held.
+                <strong>Get demo result.</strong> The mock Worker produces output and signs its hash. Submission saves the output for review while the Escrow remains held.
               </li>
               <li>
                 <strong>Review and accept.</strong> Read the submitted output, confirm that you accept it, and sign acceptance with the owner wallet to release payment before task expiry. The program verifies acceptance of the exact output, Escrow and amount. Quality is checked by the owner; there is no independent quality verification or dispute resolution. Without acceptance, funds remain held until expiry, when they can be refunded to the owner. Output replacement and revision workflows are not supported yet.
               </li>
               <li>
-                <strong>Close.</strong> <em>Revoke Task</em> stops new payments. <em>Refund &amp; Close</em> returns the
+                <strong>Close.</strong> <em>Revoke Task</em> stops new payments. <em>Refund and close task</em> returns the
                 unallocated budget to the owner once no Escrow is held. After expiry, held Escrows must be refunded separately; this screen does not support that action yet.
               </li>
             </Steps>
@@ -445,7 +445,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
             <>
               <p>
                 Each entry has a time, an event name, the request ID and a detail payload. Payloads are sealed with
-                AES-256-GCM at rest; toggle <em>Ciphertext</em> to see the stored form.
+                AES-256-GCM at rest; open an entry and expand <em>Encrypted record</em> to see the stored form.
               </p>
               <TabLink tab="audit" label="Audit" ctx={ctx} />
             </>

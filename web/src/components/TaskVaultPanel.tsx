@@ -66,6 +66,8 @@ export function TaskVaultPanel(props: {
   const [newAllowedWorker, setNewAllowedWorker] = useState(props.mockWorkerPubkey ?? '');
   const [newAllowedServiceId, setNewAllowedServiceId] = useState('');
   const [submitOnchain, setSubmitOnchain] = useState(true);
+  /** Worker, service and Devnet mode have working defaults, so they stay folded unless a check needs them. */
+  const [createAdvancedOpen, setCreateAdvancedOpen] = useState(false);
   /** '' is SOL; otherwise an SPL mint from the policy. */
   const [newAsset, setNewAsset] = useState('');
   const newAssetUnit = props.allowedMints.find((entry) => entry.address === newAsset)?.label ?? 'SOL';
@@ -76,6 +78,7 @@ export function TaskVaultPanel(props: {
   const [paymentWorker, setPaymentWorker] = useState(props.mockWorkerPubkey ?? '');
   const [paymentService, setPaymentService] = useState('service-data-enrichment');
   const [paymentAmountSol, setPaymentAmountSol] = useState('0.1');
+  const [paymentAdvancedOpen, setPaymentAdvancedOpen] = useState(false);
 
   const loadTasks = async (selectId?: string) => {
     setLoading(true);
@@ -181,16 +184,19 @@ export function TaskVaultPanel(props: {
       return;
     }
     if (submitOnchain && !newAllowedWorker.trim()) {
+      setCreateAdvancedOpen(true);
       props.onToast({ tone: 'warn', text: dict.taskVault.toasts.workerRequired });
       return;
     }
     if (submitOnchain) {
       try {
         if (new PublicKey(newAllowedWorker.trim()).toBase58() !== props.mockWorkerPubkey) {
+          setCreateAdvancedOpen(true);
           props.onToast({ tone: 'warn', text: dict.taskVault.toasts.useMockWorker });
           return;
         }
       } catch {
+        setCreateAdvancedOpen(true);
         props.onToast({ tone: 'warn', text: dict.taskVault.toasts.validWorkerAddress });
         return;
       }
@@ -207,6 +213,7 @@ export function TaskVaultPanel(props: {
       if (submitOnchain) {
         const provider = getPhantom();
         if (!provider) {
+          setCreateAdvancedOpen(true);
           props.onToast({ tone: 'warn', text: dict.taskVault.toasts.phantomNotFound });
           setBusyAction(null);
           return;
@@ -245,7 +252,7 @@ export function TaskVaultPanel(props: {
           'confirmed',
         );
         if (confirmation.value.err) {
-          throw new Error('On-chain task creation transaction failed');
+          throw new Error(dict.taskVault.toasts.transactionFailed);
         }
       }
 
@@ -295,7 +302,14 @@ export function TaskVaultPanel(props: {
     }
     const worker = paymentWorker.trim() || props.owner || props.agentPubkey;
 
+    if (!paymentService.trim()) {
+      setPaymentAdvancedOpen(true);
+      props.onToast({ tone: 'warn', text: dict.taskVault.toasts.serviceRequired });
+      return;
+    }
+
     if (detail.task.allowedWorker && worker !== detail.task.allowedWorker) {
+      setPaymentAdvancedOpen(true);
       props.onToast({
         tone: 'warn',
         text: interpolate(dict.taskVault.toasts.workerMismatch, {
@@ -307,6 +321,7 @@ export function TaskVaultPanel(props: {
     }
 
     if (detail.task.allowedServiceId && paymentService.trim() !== detail.task.allowedServiceId) {
+      setPaymentAdvancedOpen(true);
       props.onToast({
         tone: 'warn',
         text: interpolate(dict.taskVault.toasts.serviceMismatch, {
@@ -417,7 +432,7 @@ export function TaskVaultPanel(props: {
     setBusyAction(`close-receipt-${paymentId}`);
     try {
       const provider = getPhantom();
-      if (!provider) throw new Error('Phantom wallet is required to reclaim receipt rent');
+      if (!provider) throw new Error(dict.taskVault.toasts.phantomNotFound);
       const connection = new Connection(props.rpcUrl, 'confirmed');
       const ownerPubkey = new PublicKey(props.owner);
       const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, detail.task.taskId);
@@ -435,7 +450,7 @@ export function TaskVaultPanel(props: {
       transaction.feePayer = ownerPubkey;
       const { signature } = await provider.signAndSendTransaction(transaction as any);
       const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-      if (confirmation.value.err) throw new Error('Receipt close transaction failed');
+      if (confirmation.value.err) throw new Error(dict.taskVault.toasts.transactionFailed);
       await api.closeTaskReceipt(detail.task.taskId, paymentId, signature);
       props.onToast({
         tone: 'ok',
@@ -457,9 +472,9 @@ export function TaskVaultPanel(props: {
     try {
       let txSignature: string | undefined;
       if (detail?.task.isSimulated === false) {
-        if (!props.owner) throw new Error('Connect the owner wallet to revoke this on-chain task');
+        if (!props.owner) throw new Error(dict.taskVault.toasts.ownerWalletRequired);
         const provider = getPhantom();
-        if (!provider) throw new Error('Phantom wallet is required to revoke this on-chain task');
+        if (!provider) throw new Error(dict.taskVault.toasts.phantomNotFound);
         const connection = new Connection(props.rpcUrl, 'confirmed');
         const ownerPubkey = new PublicKey(props.owner);
         const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
@@ -470,7 +485,7 @@ export function TaskVaultPanel(props: {
         tx.feePayer = ownerPubkey;
         const { signature } = await provider.signAndSendTransaction(tx as any);
         const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-        if (confirmation.value.err) throw new Error('On-chain revoke transaction failed');
+        if (confirmation.value.err) throw new Error(dict.taskVault.toasts.transactionFailed);
         txSignature = signature;
       }
       await api.revokeTask(taskId, txSignature);
@@ -491,9 +506,9 @@ export function TaskVaultPanel(props: {
     try {
       let txSignature: string | undefined;
       if (detail?.task.isSimulated === false) {
-        if (!props.owner) throw new Error('Connect the owner wallet to close this on-chain task');
+        if (!props.owner) throw new Error(dict.taskVault.toasts.ownerWalletRequired);
         const provider = getPhantom();
-        if (!provider) throw new Error('Phantom wallet is required to close this on-chain task');
+        if (!provider) throw new Error(dict.taskVault.toasts.phantomNotFound);
         const connection = new Connection(props.rpcUrl, 'confirmed');
         const ownerPubkey = new PublicKey(props.owner);
         const [taskPda] = deriveTaskCapabilityPda(ownerPubkey, taskId);
@@ -513,7 +528,7 @@ export function TaskVaultPanel(props: {
         tx.feePayer = ownerPubkey;
         const { signature } = await provider.signAndSendTransaction(tx as any);
         const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-        if (confirmation.value.err) throw new Error('On-chain refund transaction failed');
+        if (confirmation.value.err) throw new Error(dict.taskVault.toasts.transactionFailed);
         txSignature = signature;
       }
       const res = await api.refundTask(taskId, txSignature);
@@ -814,35 +829,46 @@ export function TaskVaultPanel(props: {
                   </Field>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                  <Field label={dict.taskVault.create.allowedWorker} required={submitOnchain}>
-                    <Input
-                      type="text"
-                      value={newAllowedWorker}
-                      onChange={(e) => setNewAllowedWorker(e.target.value)}
-                      placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
-                    />
-                  </Field>
-                  <Field label={dict.taskVault.create.allowedService}>
-                    <Input
-                      type="text"
-                      value={newAllowedServiceId}
-                      onChange={(e) => setNewAllowedServiceId(e.target.value)}
-                      placeholder={dict.taskVault.create.allowedServicePlaceholder}
-                    />
-                  </Field>
-                </div>
+                <details
+                  className="text-xs"
+                  open={createAdvancedOpen}
+                  onToggle={(e) => setCreateAdvancedOpen(e.currentTarget.open)}
+                >
+                  <summary className="cursor-pointer font-medium text-muted hover:text-ink">
+                    {dict.taskVault.create.advanced}
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                      <Field label={dict.taskVault.create.allowedWorker} required={submitOnchain}>
+                        <Input
+                          type="text"
+                          value={newAllowedWorker}
+                          onChange={(e) => setNewAllowedWorker(e.target.value)}
+                          placeholder={dict.taskVault.create.allowedWorkerPlaceholder}
+                        />
+                      </Field>
+                      <Field label={dict.taskVault.create.allowedService}>
+                        <Input
+                          type="text"
+                          value={newAllowedServiceId}
+                          onChange={(e) => setNewAllowedServiceId(e.target.value)}
+                          placeholder={dict.taskVault.create.allowedServicePlaceholder}
+                        />
+                      </Field>
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-accent"
+                        checked={submitOnchain}
+                        onChange={(e) => setSubmitOnchain(e.target.checked)}
+                      />
+                      <span>{dict.taskVault.create.broadcastOnChain}</span>
+                    </label>
+                  </div>
+                </details>
 
-                <div className="flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5 accent-accent"
-                      checked={submitOnchain}
-                      onChange={(e) => setSubmitOnchain(e.target.checked)}
-                    />
-                    <span>{dict.taskVault.create.broadcastOnChain}</span>
-                  </label>
+                <div className="flex justify-end border-t border-line pt-4">
                   <Button type="submit" variant="default" disabled={busyAction === 'create' || !props.owner || locked}>
                     {busyAction === 'create' ? dict.taskVault.create.submittingBtn : dict.taskVault.create.submitBtn}
                   </Button>
@@ -996,27 +1022,39 @@ export function TaskVaultPanel(props: {
 
               {taskOpen ? (
                 <Card title={dict.taskVault.payment.title} titleIcon={<Play size={15} />}>
-                  <form
-                    onSubmit={handleExecutePayment}
-                    className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_140px_auto]"
-                  >
-                    <Field label={dict.taskVault.payment.workerAddress}>
-                      <Input
-                        type="text"
-                        value={paymentWorker}
-                        onChange={(e) => setPaymentWorker(e.target.value)}
-                        placeholder={dict.taskVault.payment.workerPlaceholder}
-                      />
-                    </Field>
-                    <Field label={dict.taskVault.payment.serviceId} required>
-                      <Input type="text" value={paymentService} onChange={(e) => setPaymentService(e.target.value)} required />
-                    </Field>
-                    <Field label={dict.taskVault.payment.amount} required>
-                      <UnitInput unit={assetOf(detail.task).unit} min="0.000001" value={paymentAmountSol} onChange={setPaymentAmountSol} />
-                    </Field>
-                    <Button type="submit" variant="default" disabled={busyAction === 'execute_payment' || locked}>
-                      {busyAction === 'execute_payment' ? dict.taskVault.payment.submittingBtn : dict.taskVault.payment.submitBtn}
-                    </Button>
+                  <form onSubmit={handleExecutePayment} className="space-y-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="sm:w-48">
+                        <Field label={dict.taskVault.payment.amount} required>
+                          <UnitInput unit={assetOf(detail.task).unit} min="0.000001" value={paymentAmountSol} onChange={setPaymentAmountSol} />
+                        </Field>
+                      </div>
+                      <Button type="submit" variant="default" disabled={busyAction === 'execute_payment' || locked}>
+                        {busyAction === 'execute_payment' ? dict.taskVault.payment.submittingBtn : dict.taskVault.payment.submitBtn}
+                      </Button>
+                    </div>
+                    <details
+                      className="text-xs"
+                      open={paymentAdvancedOpen}
+                      onToggle={(e) => setPaymentAdvancedOpen(e.currentTarget.open)}
+                    >
+                      <summary className="cursor-pointer font-medium text-muted hover:text-ink">
+                        {dict.taskVault.payment.advanced}
+                      </summary>
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                        <Field label={dict.taskVault.payment.workerAddress}>
+                          <Input
+                            type="text"
+                            value={paymentWorker}
+                            onChange={(e) => setPaymentWorker(e.target.value)}
+                            placeholder={dict.taskVault.payment.workerPlaceholder}
+                          />
+                        </Field>
+                        <Field label={dict.taskVault.payment.serviceId} required>
+                          <Input type="text" value={paymentService} onChange={(e) => setPaymentService(e.target.value)} />
+                        </Field>
+                      </div>
+                    </details>
                   </form>
                 </Card>
               ) : null}

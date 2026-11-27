@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { ClipboardList } from './icons.js';
 import type { AuditEntryView } from '@nexus/shared';
 import { Card, DateTime, Empty, Mono } from './ui.js';
@@ -6,24 +5,9 @@ import { useI18n } from '../i18n/context.js';
 
 export function AuditPanel(props: { entries: AuditEntryView[] }) {
   const { dict } = useI18n();
-  const [showSealed, setShowSealed] = useState(false);
 
   return (
-    <Card
-      title={dict.audit.title}
-      titleIcon={<ClipboardList size={15} />}
-      actions={
-        <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted">
-          <input
-            type="checkbox"
-            className="h-3.5 w-3.5 accent-accent"
-            checked={showSealed}
-            onChange={(e) => setShowSealed(e.target.checked)}
-          />
-          <span>{dict.audit.ciphertext}</span>
-        </label>
-      }
-    >
+    <Card title={dict.audit.title} titleIcon={<ClipboardList size={15} />}>
       {props.entries.length === 0 ? (
         <Empty>{dict.audit.noEntries}</Empty>
       ) : (
@@ -32,17 +16,27 @@ export function AuditPanel(props: { entries: AuditEntryView[] }) {
             <li key={entry.id} className="px-3 py-2">
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-center gap-3 text-xs">
-                  <Mono className="text-muted"><DateTime value={entry.at} /></Mono>
-                  <span className="font-semibold text-ink">{entry.event}</span>
-                  {entry.requestId ? (
-                    <Mono title={entry.requestId} className="ml-auto text-muted">
-                      {entry.requestId}
-                    </Mono>
-                  ) : null}
+                  <span className="text-muted tabular-nums"><DateTime value={entry.at} /></span>
+                  <span className="font-semibold text-ink" title={entry.event}>
+                    {dict.audit.events[entry.event] ?? entry.event}
+                  </span>
                 </summary>
-                <pre className="mt-2 overflow-x-auto rounded border border-line bg-surface-muted p-2.5 font-mono text-[11px] text-ink">
-                  {showSealed ? entry.sealed.ciphertext : JSON.stringify(entry.detail, null, 2).slice(0, 600)}
-                </pre>
+                <div className="mt-2 space-y-2">
+                  {entry.requestId ? (
+                    <p className="text-[11px] text-muted">
+                      {dict.audit.requestId}: <Mono title={entry.requestId} className="text-ink">{entry.requestId}</Mono>
+                    </p>
+                  ) : null}
+                  <pre className="overflow-x-auto rounded border border-line bg-surface-muted p-2.5 font-mono text-[11px] text-ink">
+                    {JSON.stringify(entry.detail, null, 2).slice(0, 600)}
+                  </pre>
+                  <details className="text-[11px]">
+                    <summary className="cursor-pointer font-medium text-muted hover:text-ink">{dict.audit.ciphertext}</summary>
+                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded border border-line bg-surface-muted p-2.5 font-mono text-[11px] text-ink">
+                      {entry.sealed.ciphertext}
+                    </pre>
+                  </details>
+                </div>
               </details>
             </li>
           ))}
