@@ -83,7 +83,7 @@ describe('i18n Translation Dictionary Integrity', () => {
   });
 
   it('every feature tab has a localized label in both en and vi', () => {
-    const requiredTabs = ['wallet', 'policy', 'approvals', 'tasks', 'history', 'commands', 'docs'] as const;
+    const requiredTabs = ['wallet', 'policy', 'notifications', 'approvals', 'tasks', 'history', 'commands', 'docs'] as const;
     for (const tab of requiredTabs) {
       expect(en.tabs[tab], `en missing tab "${tab}"`).toBeDefined();
       expect(vi.tabs[tab], `vi missing tab "${tab}"`).toBeDefined();

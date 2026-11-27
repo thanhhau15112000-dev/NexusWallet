@@ -4,6 +4,7 @@ export type TranslationDictionary = {
   tabs: {
     wallet: string;
     policy: string;
+    notifications: string;
     approvals: string;
     tasks: string;
     history: string;
@@ -325,7 +326,57 @@ export type TranslationDictionary = {
     loading: string;
     loadFailed: string;
     clipboardUnavailable: string;
-  },
+  };
+  notifications: {
+    connectionTitle: string;
+    settingsTitle: string;
+    statusConnected: string;
+    statusNotConnected: string;
+    statusUnconfigured: string;
+    loading: string;
+    retry: string;
+    loadFailed: string;
+    botNotConfiguredNote: string;
+    accountLabel: string;
+    noUsername: string;
+    linkedAtLabel: string;
+    deliveryError: string;
+    connectPrompt: string;
+    connectBtn: string;
+    generatingLink: string;
+    linkReadyTitle: string;
+    expiresAtLabel: string;
+    linkInstructions: string;
+    commandHint: string;
+    copyCommand: string;
+    openTelegram: string;
+    openTelegramWeb: string;
+    copyLink: string;
+    cancelLink: string;
+    waitingForStart: string;
+    linkExpired: string;
+    linkFailed: string;
+    connectedToast: string;
+    sendTest: string;
+    sendingTest: string;
+    testSent: string;
+    testFailed: string;
+    reconnect: string;
+    disconnect: string;
+    disconnecting: string;
+    disconnectedToast: string;
+    disconnectFailed: string;
+    masterToggleLabel: string;
+    masterToggleHint: string;
+    pendingApprovalLabel: string;
+    pendingApprovalHint: string;
+    securityNote: string;
+    save: string;
+    saving: string;
+    unsaved: string;
+    savedToast: string;
+    saveFailed: string;
+  };
   taskVault: {
     errors: Record<string, string>;
     connectToOperate: string;

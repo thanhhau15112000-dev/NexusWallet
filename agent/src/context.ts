@@ -10,6 +10,7 @@ import { createModelPipeline, type ModelPipeline } from './model/index.js';
 import { SeedLedger } from './seed-ledger.js';
 import { SessionManager } from './sessions.js';
 import { Store } from './store.js';
+import { TelegramService } from './telegram.js';
 
 export type AppContext = {
   config: AppConfig;
@@ -31,6 +32,7 @@ export type AppContext = {
   mockWorker?: Keypair;
   /** The demo merchant as a remote worker, when MERCHANT_WORKER_URL is set. */
   merchantWorker?: MerchantWorker;
+  telegram?: TelegramService;
   getUserContext?: (ownerPubkey: string) => AppContext;
   /** Cached Master Funder balance read; also tells whether the RPC answers. */
   funderProbe?: () => Promise<FunderProbe>;
@@ -80,6 +82,11 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
   const seedLedger = new SeedLedger(resolve(config.dataDir, 'seed-ledger.json'), config.SEED_CAP_PER_DAY);
 
   const userContexts = new Map<string, AppContext>();
+  const telegram = new TelegramService({
+    config,
+    getUserContext: (ownerPubkey) => getUserContext(ownerPubkey),
+    log,
+  });
 
   function getUserContext(ownerPubkey: string): AppContext {
     const cached = userContexts.get(ownerPubkey);
@@ -133,6 +140,7 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
       seedLedger,
       mockWorker,
       merchantWorker,
+      telegram,
       getUserContext,
       funderProbe,
     };
@@ -151,6 +159,7 @@ export function createContext(config: AppConfig, log?: OpsLogger): AppContext {
     masterFunder: funder.keypair,
     masterFunderPubkey: funder.pubkey,
     seedLedger,
+    telegram,
     getUserContext,
     funderProbe,
   };

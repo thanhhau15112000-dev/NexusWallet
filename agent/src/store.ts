@@ -2,17 +2,21 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   DEFAULT_DAILY_WINDOW_MS,
+  defaultNotificationSettings,
   defaultPolicy,
   mayHaveMovedFunds,
+  NotificationSettingsSchema,
   PolicySchema,
   TaskCapabilityRecordSchema,
   TaskPaymentRecordSchema,
   TaskReceiptRecordSchema,
+  type NotificationSettings,
   type PaymentRequest,
   type Policy,
   type TaskCapabilityRecord,
   type TaskPaymentRecord,
   type TaskReceiptRecord,
+  type TelegramNotificationSettings,
 } from '@nexus/shared';
 import { z } from 'zod';
 
@@ -39,6 +43,7 @@ export type StoreData = {
   payments?: Record<string, TaskPaymentRecord>;
   receipts?: Record<string, TaskReceiptRecord>;
   frozen?: { at: string } | null;
+  notifications?: NotificationSettings;
 };
 
 /**
@@ -80,6 +85,9 @@ export class Store {
         payments: rekeyByTask(raw.payments ?? {}),
         receipts: rekeyByTask(raw.receipts ?? {}),
         frozen,
+        notifications: raw.notifications
+          ? NotificationSettingsSchema.parse(raw.notifications)
+          : defaultNotificationSettings(),
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -101,6 +109,7 @@ export class Store {
         payments: {},
         receipts: {},
         frozen: null,
+        notifications: defaultNotificationSettings(),
       };
     }
   }
@@ -190,6 +199,91 @@ export class Store {
 
   setOwner(pubkey: string | null): void {
     this.data.ownerPubkey = pubkey;
+    this.flush();
+  }
+
+  getNotificationSettings(): NotificationSettings {
+    const base = this.data.notifications ?? defaultNotificationSettings();
+    return {
+      telegram: {
+        ...base.telegram,
+        events: { ...base.telegram.events },
+      },
+    };
+  }
+
+  setTelegramSettings(patch: {
+    enabled?: boolean;
+    events?: { pendingApproval?: boolean };
+  }): TelegramNotificationSettings {
+    const current = this.getNotificationSettings();
+    const next = NotificationSettingsSchema.parse({
+      ...current,
+      telegram: {
+        ...current.telegram,
+        ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        events: {
+          ...current.telegram.events,
+          ...(patch.events?.pendingApproval !== undefined
+            ? { pendingApproval: patch.events.pendingApproval }
+            : {}),
+        },
+      },
+    });
+    this.data.notifications = next;
+    this.flush();
+    return this.getNotificationSettings().telegram;
+  }
+
+  linkTelegram(input: {
+    chatId: string;
+    username: string | null;
+    linkedAt?: string;
+  }): TelegramNotificationSettings {
+    const current = this.getNotificationSettings();
+    const next = NotificationSettingsSchema.parse({
+      ...current,
+      telegram: {
+        ...current.telegram,
+        enabled: true,
+        chatId: input.chatId,
+        username: input.username,
+        linkedAt: input.linkedAt ?? new Date().toISOString(),
+        lastError: null,
+      },
+    });
+    this.data.notifications = next;
+    this.flush();
+    return this.getNotificationSettings().telegram;
+  }
+
+  unlinkTelegram(): TelegramNotificationSettings {
+    const current = this.getNotificationSettings();
+    const next = NotificationSettingsSchema.parse({
+      ...current,
+      telegram: {
+        ...current.telegram,
+        chatId: null,
+        username: null,
+        linkedAt: null,
+        lastError: null,
+      },
+    });
+    this.data.notifications = next;
+    this.flush();
+    return this.getNotificationSettings().telegram;
+  }
+
+  setTelegramError(error: string | null): void {
+    const current = this.getNotificationSettings();
+    if (current.telegram.lastError === error) return;
+    this.data.notifications = {
+      ...current,
+      telegram: {
+        ...current.telegram,
+        lastError: error,
+      },
+    };
     this.flush();
   }
 

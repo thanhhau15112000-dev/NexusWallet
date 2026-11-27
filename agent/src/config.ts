@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
@@ -53,6 +54,10 @@ const EnvSchema = z.object({
 
   APPROVAL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   MAX_REQUESTS_KEPT: z.coerce.number().int().positive().default(200),
+
+  TELEGRAM_BOT_TOKEN: z.string().trim().default(''),
+  TELEGRAM_BOT_USERNAME: z.string().trim().default(''),
+  TELEGRAM_WEBHOOK_SECRET: z.string().trim().default(''),
 });
 
 export const LOCAL_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
@@ -182,10 +187,22 @@ export function loadConfig() {
     ? env.ALLOWED_OWNERS.split(',').map((p) => p.trim()).filter(Boolean)
     : [];
 
+  if (env.TELEGRAM_WEBHOOK_SECRET && !/^[A-Za-z0-9_-]{16,256}$/.test(env.TELEGRAM_WEBHOOK_SECRET)) {
+    throw new Error('TELEGRAM_WEBHOOK_SECRET must be 16-256 characters using only A-Z, a-z, 0-9, _ or -');
+  }
+  const telegramBotUsername = env.TELEGRAM_BOT_USERNAME.replace(/^@+/, '');
+  const telegramWebhookSecret =
+    env.TELEGRAM_WEBHOOK_SECRET ||
+    (env.TELEGRAM_BOT_TOKEN
+      ? createHmac('sha256', env.SESSION_COOKIE_SECRET).update('nexus-telegram-webhook-secret').digest('hex')
+      : '');
+
   return {
     ...env,
     adminPubkey,
     allowedOwners,
+    telegramBotUsername,
+    telegramWebhookSecret,
     authRequired: hosted,
     dataDir,
     usersDir: resolve(dataDir, 'users'),

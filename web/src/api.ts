@@ -5,6 +5,7 @@ import type {
   TaskCapabilityRecord,
   TaskPaymentRecord,
   TaskReceiptRecord,
+  TelegramNotificationSettings,
 } from '@nexus/shared';
 import { getCurrentDictionary } from './i18n/context.js';
 
@@ -64,6 +65,20 @@ export type AuthSession = {
   owner: string | null;
   expiresAt: string | null;
   isAdmin?: boolean;
+};
+
+export type TelegramNotificationState = {
+  botConfigured: boolean;
+  botUsername: string | null;
+  mode: 'local' | 'hosted';
+  settings: TelegramNotificationSettings;
+};
+
+export type TelegramLinkTokenResponse = {
+  deepLink: string;
+  startCommand: string;
+  expiresAt: string;
+  botUsername: string;
 };
 
 export class ApiError extends Error {
@@ -370,5 +385,34 @@ export const api = {
     }>(`/api/tasks/${encodeURIComponent(taskId)}/payments/${encodeURIComponent(paymentId)}/worker-run`, {
       method: 'POST',
       body: JSON.stringify({ scenario }),
+    }),
+
+  telegramNotifications: () =>
+    request<TelegramNotificationState>('/api/notifications/telegram'),
+
+  createTelegramLinkToken: () =>
+    request<TelegramLinkTokenResponse>('/api/notifications/telegram/link-token', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  updateTelegramNotifications: (input: {
+    enabled?: boolean;
+    events?: { pendingApproval?: boolean };
+  }) =>
+    request<{ settings: TelegramNotificationSettings }>('/api/notifications/telegram', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+
+  sendTelegramTest: () =>
+    request<{ ok: boolean }>('/api/notifications/telegram/test', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  unlinkTelegram: () =>
+    request<{ settings: TelegramNotificationSettings }>('/api/notifications/telegram', {
+      method: 'DELETE',
     }),
 };

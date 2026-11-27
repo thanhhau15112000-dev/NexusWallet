@@ -329,3 +329,11 @@ export const Unlock = icon('Unlock', (
     <path d="M8 11V7a4 4 0 0 1 8 0" />
   </>
 ));
+
+export const Bell = icon('Bell', (
+  <>
+    <path d="M6 8.5a6 6 0 0 1 12 0c0 5.5 2.2 7 2.2 7H3.8S6 14 6 8.5Z" {...tint} />
+    <path d="M6 8.5a6 6 0 0 1 12 0c0 5.5 2.2 7 2.2 7H3.8S6 14 6 8.5Z" />
+    <path d="M10.3 19a1.8 1.8 0 0 0 3.4 0" />
+  </>
+));
