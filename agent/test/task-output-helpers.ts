@@ -10,7 +10,7 @@ import {
 export function acceptanceSignature(task: TaskCapabilityRecord, payment: TaskPaymentRecord, resultHash: string, ownerSecretKey: Uint8Array): string {
   const [taskCapability] = deriveTaskCapabilityPda(new PublicKey(task.owner), task.taskId);
   const [escrow] = deriveEscrowPda(taskCapability, payment.paymentId);
-  const message = computeTaskAcceptanceMessage({ taskCapability, escrow, requestHash: payment.requestHash, resultHash, amountLamports: payment.amountLamports });
+  const message = computeTaskAcceptanceMessage({ taskCapability, escrow, requestHash: payment.requestHash, resultHash, amountLamports: payment.amountLamports, mint: task.mint });
   return bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), ownerSecretKey));
 }
 
