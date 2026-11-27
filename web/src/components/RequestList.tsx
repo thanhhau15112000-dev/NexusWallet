@@ -56,6 +56,14 @@ export function localizeError(
   for (const [key, value] of Object.entries(error.details ?? {})) {
     if (typeof value === 'string' || typeof value === 'number') params[key] = value;
   }
+  // A limit is stated in SOL or in a token's units; {requested} and {limit} carry the unit either way.
+  if (typeof params.requestedSol === 'number' && typeof params.limitSol === 'number') {
+    params.requested = `${params.requestedSol} SOL`;
+    params.limit = `${params.limitSol} SOL`;
+  } else if (typeof params.requestedAmount === 'number' && typeof params.limitAmount === 'number' && typeof params.mintLabel === 'string') {
+    params.requested = `${params.requestedAmount} ${params.mintLabel}`;
+    params.limit = `${params.limitAmount} ${params.mintLabel}`;
+  }
   const placeholders = Array.from(template.matchAll(/\{(\w+)\}/g), (match) => match[1] ?? '');
   if (placeholders.some((key) => !(key in params))) return error.message;
   return interpolate(template, params);

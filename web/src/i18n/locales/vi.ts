@@ -254,7 +254,7 @@ export const vi: TranslationDictionary = {
     errors: {
       RECIPIENT_NOT_IN_ALLOWLIST: 'Người nhận "{recipient}" không có trong danh sách được phép.',
       MINT_NOT_IN_ALLOWLIST: 'Token {mint} không có trong danh sách được phép.',
-      AMOUNT_EXCEEDS_TRANSACTION_LIMIT: 'Số tiền vượt hạn mức mỗi giao dịch, cần chủ ví duyệt.',
+      AMOUNT_EXCEEDS_TRANSACTION_LIMIT: 'Số tiền {requested} vượt hạn mức mỗi giao dịch {limit}, cần chủ ví duyệt.',
       DAILY_LIMIT_EXCEEDED: 'Số tiền vượt hạn mức trong 24 giờ (còn {remainingSol} SOL), cần chủ ví duyệt.',
       INVALID_AMOUNT: 'Số tiền không hợp lệ.',
       NO_EXECUTABLE_ACTION: 'Lệnh không tương ứng với thao tác nào được hỗ trợ.',

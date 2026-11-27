@@ -420,7 +420,7 @@ export function TaskVaultPanel(props: {
     } catch (err) {
       props.onToast({
         tone: 'bad',
-        text: err instanceof ApiError ? err.message : dict.taskVault.toasts.settleFailed,
+        text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.settleFailed,
       });
     } finally {
       setBusyAction(null);
@@ -495,7 +495,7 @@ export function TaskVaultPanel(props: {
       });
       await selectTask(taskId);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : dict.taskVault.toasts.revokeFailed });
+      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.revokeFailed });
     } finally {
       setBusyAction(null);
     }
@@ -540,7 +540,7 @@ export function TaskVaultPanel(props: {
       });
       await selectTask(taskId);
     } catch (err) {
-      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : dict.taskVault.toasts.refundFailed });
+      props.onToast({ tone: 'bad', text: err instanceof ApiError ? err.message : err instanceof Error ? err.message : dict.taskVault.toasts.refundFailed });
     } finally {
       setBusyAction(null);
     }

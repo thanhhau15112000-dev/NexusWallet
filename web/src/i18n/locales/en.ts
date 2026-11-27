@@ -254,7 +254,7 @@ export const en: TranslationDictionary = {
     errors: {
       RECIPIENT_NOT_IN_ALLOWLIST: 'Recipient "{recipient}" is not on the allowlist.',
       MINT_NOT_IN_ALLOWLIST: 'Token {mint} is not on the allowlist.',
-      AMOUNT_EXCEEDS_TRANSACTION_LIMIT: 'Amount exceeds the per-transaction limit; owner approval is required.',
+      AMOUNT_EXCEEDS_TRANSACTION_LIMIT: 'Amount {requested} exceeds the per-transaction limit of {limit}; owner approval is required.',
       DAILY_LIMIT_EXCEEDED: 'Amount exceeds the 24-hour limit ({remainingSol} SOL remaining); owner approval is required.',
       INVALID_AMOUNT: 'Invalid amount.',
       NO_EXECUTABLE_ACTION: 'The command does not map to a supported action.',
