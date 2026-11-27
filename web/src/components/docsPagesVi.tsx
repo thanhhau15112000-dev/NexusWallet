@@ -176,9 +176,9 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow><TableCell>Nhận 0.1 SOL seed</TableCell><TableCell>Chuyển một lần từ ví cấp phát của dịch vụ. Mỗi agent chỉ nhận được một lần.</TableCell></TableRow>
-                  <TableRow><TableCell>Nạp 0.1 SOL</TableCell><TableCell>Ví của bạn gửi 0.1 SOL cho agent. Ví sẽ yêu cầu bạn xác nhận.</TableCell></TableRow>
-                  <TableRow><TableCell>Trang vòi Solana chính thức</TableCell><TableCell>Mở faucet.solana.com với địa chỉ agent đã điền sẵn.</TableCell></TableRow>
+                  <TableRow><TableCell>Nhận miễn phí 0.1 SOL thử nghiệm</TableCell><TableCell>Chuyển một lần từ ví cấp phát của dịch vụ. Mỗi agent chỉ nhận được một lần.</TableCell></TableRow>
+                  <TableRow><TableCell>Chuyển 0.1 SOL từ ví của tôi</TableCell><TableCell>Ví của bạn gửi 0.1 SOL cho agent. Ví sẽ yêu cầu bạn xác nhận.</TableCell></TableRow>
+                  <TableRow><TableCell>Lấy thêm SOL thử nghiệm</TableCell><TableCell>Mở faucet.solana.com với địa chỉ agent đã điền sẵn.</TableCell></TableRow>
                 </TableBody>
               </Table>
               <Callout tone="note" title="Số dư bằng 0 vẫn kiểm tra được chính sách">
@@ -369,21 +369,21 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 <strong>Nạp vốn.</strong> Chọn tài sản thanh toán: SOL hoặc token mà chính sách cho phép, ví dụ USDC.
                 Ngân sách chuyển từ ví của bạn vào vault, nên form kiểm tra số dư tài sản đó trong ví. Nhập tổng ngân
                 sách, hạn mức mỗi lần chi và thời hạn (1–168 giờ).
-                Chọn <em>Ghi tác vụ lên Solana Devnet bằng ví Phantom</em> để tạo trên Devnet qua ví của bạn;
-                nếu không thì tác vụ chỉ được mô phỏng.
+                Trong <em>Cài đặt nâng cao</em>, tùy chọn Devnet được bật sẵn và tạo tác vụ qua ví của bạn;
+                bỏ chọn để chạy mô phỏng.
               </li>
               <li>
-                <strong>Giữ tiền trong Escrow.</strong> Chuyển một khoản vào escrow cho một worker. Worker và dịch vụ phải khớp giới
+                <strong>Giữ khoản thanh toán.</strong> Chuyển một khoản vào escrow cho một worker. Worker và dịch vụ phải khớp giới
                 hạn của tác vụ, và số tiền phải nằm trong hạn mức mỗi lần chi cùng ngân sách còn lại.
               </li>
               <li>
-                <strong>Bàn giao output.</strong> Mock Worker tạo output và ký hash của nội dung đó. Output được lưu để kiểm tra; tiền vẫn giữ trong Escrow.
+                <strong>Lấy kết quả demo.</strong> Mock Worker tạo output và ký hash của nội dung đó. Output được lưu để kiểm tra; tiền vẫn giữ trong Escrow.
               </li>
               <li>
                 <strong>Nghiệm thu và trả tiền.</strong> Đọc output đã bàn giao, xác nhận đồng ý nghiệm thu và ký bằng ví chủ sở hữu trước khi tác vụ hết hạn. Program kiểm tra chữ ký cho đúng output, Escrow và số tiền. Chất lượng do chủ ví kiểm tra; chưa có xác minh độc lập hoặc phân xử tranh chấp. Nếu không nghiệm thu, tiền giữ đến expiry rồi có thể hoàn về chủ ví. Chưa hỗ trợ thay thế output hoặc luồng sửa lại.
               </li>
               <li>
-                <strong>Đóng.</strong> <em>Thu hồi quyền chi</em> dừng các khoản thanh toán mới. <em>Hoàn tiền và đóng Task Vault</em> trả ngân sách chưa phân bổ về cho chủ ví khi không còn Escrow đang giữ. Sau expiry, Escrow còn giữ cần được hoàn riêng; màn hình hiện chưa hỗ trợ thao tác này.
+                <strong>Đóng.</strong> <em>Thu hồi quyền chi</em> dừng các khoản thanh toán mới. <em>Hoàn tiền và đóng tác vụ</em> trả ngân sách chưa phân bổ về cho chủ ví khi không còn Escrow đang giữ. Sau expiry, Escrow còn giữ cần được hoàn riêng; màn hình hiện chưa hỗ trợ thao tác này.
               </li>
             </Steps>
           ),
@@ -420,7 +420,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
             <>
               <p>
                 Mỗi mục có thời gian, tên sự kiện, mã yêu cầu và phần chi tiết. Phần chi tiết được niêm phong bằng
-                AES-256-GCM khi lưu; bật <em>Bản mã hóa</em> để xem dạng được lưu.
+                AES-256-GCM khi lưu; mở một mục rồi mở <em>Bản ghi đã mã hóa</em> để xem dạng được lưu.
               </p>
               <TabLink tab="audit" label="Nhật ký kiểm toán" ctx={ctx} />
             </>

@@ -56,9 +56,28 @@ export function localizeError(
   for (const [key, value] of Object.entries(error.details ?? {})) {
     if (typeof value === 'string' || typeof value === 'number') params[key] = value;
   }
+  // A limit is stated in SOL or in a token's units; {requested} and {limit} carry the unit either way.
+  if (typeof params.requestedSol === 'number' && typeof params.limitSol === 'number') {
+    params.requested = `${params.requestedSol} SOL`;
+    params.limit = `${params.limitSol} SOL`;
+  } else if (typeof params.requestedAmount === 'number' && typeof params.limitAmount === 'number' && typeof params.mintLabel === 'string') {
+    params.requested = `${params.requestedAmount} ${params.mintLabel}`;
+    params.limit = `${params.limitAmount} ${params.mintLabel}`;
+  }
   const placeholders = Array.from(template.matchAll(/\{(\w+)\}/g), (match) => match[1] ?? '');
   if (placeholders.some((key) => !(key in params))) return error.message;
   return interpolate(template, params);
+}
+
+/** The policy's reason for a decision, localized by its code; decisions stored before codes existed keep the raw reasons. */
+function describeDecision(
+  decision: NonNullable<PaymentRequest['decision']>,
+  templates: Record<string, string>,
+  interpolate: (template: string, params: Record<string, string | number>) => string,
+): string {
+  const message = decision.reasons.join('; ');
+  if (!decision.code) return message;
+  return localizeError({ code: decision.code, message, details: decision.details }, templates, interpolate);
 }
 
 function RequestRow(props: {
@@ -100,7 +119,6 @@ function RequestRow(props: {
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted">
-          <Mono title={request.id}>{shorten(request.id, 5)}</Mono>
           <span className="text-[11px] tabular-nums">
             <DateTime value={request.createdAt} />
           </span>
@@ -189,11 +207,15 @@ function RequestRow(props: {
         <div className="mt-2 space-y-1.5 rounded-md border border-line bg-surface-muted/50 p-2.5 text-[11px]">
           {decision ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="neutral">v{decision.policyVersion}</Badge>
-              <Pill tone={verdictTone(decision.verdict)}>{decision.verdict}</Pill>
-              <span className="text-muted">{decision.reasons.join('; ')}</span>
+              <Pill tone={verdictTone(decision.verdict)}>{dict.requests.verdicts[decision.verdict]}</Pill>
+              <Badge variant="neutral">{dict.requests.policyTag} v{decision.policyVersion}</Badge>
+              <span className="text-muted">{describeDecision(decision, dict.requests.errors, interpolate)}</span>
             </div>
           ) : null}
+          <div>
+            <span className="font-semibold text-muted">{dict.requests.requestId}:</span>{' '}
+            <Mono title={request.id}>{request.id}</Mono>
+          </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>
               <span className="font-semibold text-muted">{dict.requests.createdTag}:</span>{' '}
