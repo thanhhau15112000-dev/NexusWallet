@@ -336,7 +336,7 @@ export const vi: TranslationDictionary = {
     copied: 'Đã sao chép',
     scopeTitle: 'Agent của bạn được làm gì',
     scopeStatus: 'Đọc trạng thái ví, số dư, hạn mức và lịch sử giao dịch Devnet',
-    scopeRequests: 'Theo dõi yêu cầu, kết quả và ngân sách Task Vault đã được cấp; rút lại khoản chuyển của chính nó khi còn chờ duyệt',
+    scopeRequests: 'Theo dõi yêu cầu, kết quả và ngân sách Task Vault đã được cấp; rút lại khoản chuyển đang chờ duyệt',
     scopeTransfers: 'Đề xuất chuyển SOL/SPL theo chính sách; tạo Escrow trong capability Task Vault đã được cấp và lấy output của Worker',
     ownerOnlyNote: 'Sửa chính sách, ký duyệt, nạp hoặc thu hồi task, settlement và refund chỉ chủ ví làm được, sau khi đăng nhập ví vào app này.',
     rotating: 'Đang xử lý…',

@@ -336,7 +336,7 @@ export const en: TranslationDictionary = {
     copied: 'Copied',
     scopeTitle: 'What your agent can do',
     scopeStatus: 'Read wallet status, balance, limits and Devnet transaction history',
-    scopeRequests: 'Read requests, outcomes and delegated Task Vault budgets; withdraw its own transfer while it waits for approval',
+    scopeRequests: 'Read requests, outcomes and delegated Task Vault budgets; withdraw a transfer that is still waiting for approval',
     scopeTransfers: 'Propose SOL/SPL transfers under the policy; create Escrows within a delegated Task Vault capability and collect the worker output',
     ownerOnlyNote: 'Changing the policy, approving requests, funding or revoking tasks, settling and refunding are done only by the owner, after signing in to this app with their wallet.',
     rotating: 'Working…',
