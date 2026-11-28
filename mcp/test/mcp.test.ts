@@ -233,10 +233,19 @@ describe('nexusPay MCP tools', () => {
       'nexuspay_x402_fetch',
       'nexuspay_x402_resolve',
     ]);
-    expect(tools.find((tool) => tool.name === 'nexuspay_transfer_sol')?.annotations).toMatchObject({
-      destructiveHint: true,
-      readOnlyHint: false,
-    });
+    // Every tool that can sign a payment must be marked destructive.
+    for (const name of [
+      'nexuspay_transfer_sol',
+      'nexuspay_transfer_spl',
+      'nexuspay_execute_task_payment',
+      'nexuspay_x402_fetch',
+      'nexuspay_x402_resolve',
+    ]) {
+      expect(tools.find((tool) => tool.name === name)?.annotations, name).toMatchObject({
+        destructiveHint: true,
+        readOnlyHint: false,
+      });
+    }
     expect(tools.find((tool) => tool.name === 'nexuspay_get_status')?.annotations?.readOnlyHint).toBe(true);
   });
 
