@@ -130,11 +130,11 @@ Nguồn: [`crypto.ts`](agent/src/crypto.ts), [`audit.ts`](agent/src/audit.ts), [
 
 Endpoint hosted: `https://nexuspay-56wn.onrender.com/mcp`. Đăng nhập dashboard rồi sao chép cấu hình theo client từ card MCP trên tab **Tổng quan**. Hosted mode chỉ hiển thị token một lần khi tạo hoặc đổi token, server lưu hash SHA-256. Local mode giữ token trên disk để stdio client đọc cấu hình. Token là mã truy cập bí mật; không đưa vào issue, ảnh chụp hoặc repo. Đổi token sẽ ngắt các client dùng token cũ.
 
-MCP hiện cung cấp **10 tool** cho Payment Guard, x402 và Task Vault:
+MCP hiện cung cấp **13 tool** cho Payment Guard, x402 và Task Vault:
 
 | Tool | Chức năng |
 | --- | --- |
-| `nexuspay_get_status` | Ví agent, số dư, policy, mức SOL đã chi và trạng thái khóa |
+| `nexuspay_get_status` | Ví agent, số dư, policy, mức SOL và token đã chi trong 24 giờ, trạng thái khóa |
 | `nexuspay_list_requests` | Danh sách yêu cầu và kết quả xử lý |
 | `nexuspay_get_request` | Chi tiết một yêu cầu, trạng thái duyệt và link Explorer nếu có |
 | `nexuspay_cancel_request` | Rút lại khoản chuyển agent đã đề xuất khi nó còn chờ owner duyệt; không gửi gì |

@@ -552,7 +552,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
         body: z.string().optional().describe('Optional request body.'),
         idempotencyKey: x402IdempotencyKeyInput,
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async ({ url, method, headers, body, idempotencyKey }) => {
       try {
