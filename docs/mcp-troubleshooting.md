@@ -8,7 +8,7 @@ Dành cho người (hoặc agent) đang cài nexusPay MCP vào client. Cách k�
 | --- | --- | --- |
 | `401` / `mcp_token_rejected` | Token đã bị rotate hoặc copy sai | Mở dashboard → tab **Tổng quan** (Overview) → card **Kết nối ứng dụng AI qua MCP** (Connect an AI agent (MCP)). Bản hosted không hiện lại được token cũ: tạo token mới, copy entry và cập nhật client. Bản local: copy lại entry |
 | Transfer trả `PENDING_APPROVAL_REQUIRED` | Số tiền vượt hạn mức mỗi giao dịch | Owner duyệt trên dashboard; poll `nexuspay_get_request` theo `pollIntervalMs` |
-| Transfer trả `X402_APPROVAL_REQUIRED` | Khoản thanh toán x402 vượt `maxTokenAmountByMint` | Chủ ví duyệt ở tab **Duyệt yêu cầu**, sau đó agent gọi lại với **cùng** `idempotencyKey` để ký và gửi `PAYMENT-SIGNATURE` |
+| Transfer trả `X402_APPROVAL_REQUIRED` | Khoản thanh toán x402 vượt `maxTokenAmountByMint` hoặc hạn mức 24 giờ `maxTokenAmountPerDayByMint` của mint | Chủ ví duyệt ở tab **Duyệt yêu cầu**, sau đó agent gọi lại với **cùng** `idempotencyKey` để ký và gửi `PAYMENT-SIGNATURE` |
 | Transfer trả `X402_ALREADY_PAID` | Khoản gắn với `idempotencyKey` này đã xác nhận trên chain | Không gửi lại; dùng `idempotencyKey` mới nếu muốn thanh toán lần khác |
 | Transfer trả `outcome_unknown` | Timeout hoặc lỗi server sau khi đã gửi | Gọi lại với cùng `idempotencyKey`; không đổi số tiền |
 | `onchain_payment_failed` (Task Vault) | Lỗi tạo Escrow trên Devnet (có thể lỗi trước khi gửi hoặc mất phản hồi sau khi gửi) | Đọc lại `nexuspay_get_task`, giữ nguyên `paymentId` và các tham số khi thử lại; nếu không có record local, chủ ví cần đối chiếu Escrow trên Devnet trước khi tạo `paymentId` mới |
