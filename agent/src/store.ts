@@ -110,8 +110,9 @@ export class Store {
 
   /** Every policy write bumps the version; pending approvals bound to an older version die with it. */
   setPolicy(
-    next: Omit<Policy, 'version' | 'updatedAt' | 'agentId' | 'maxSolLamportsPerDay'> & {
+    next: Omit<Policy, 'version' | 'updatedAt' | 'agentId' | 'maxSolLamportsPerDay' | 'maxTokenAmountPerDayByMint'> & {
       maxSolLamportsPerDay?: number | null;
+      maxTokenAmountPerDayByMint?: Record<string, number>;
     },
   ): Policy {
     this.data.policy = PolicySchema.parse({

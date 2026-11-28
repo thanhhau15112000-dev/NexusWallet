@@ -58,7 +58,7 @@ Daily cap trong rolling 24-hour window là **approval threshold**, không phải
 | Màn hình | Nhóm | Chức năng |
 | --- | --- | --- |
 | Tổng quan | Thiết lập | Xem số dư ví agent/chủ sở hữu, hạn mức, yêu cầu chờ duyệt; nạp 0.1 SOL từ ví chủ sở hữu hoặc mở Solana Official Faucet; khóa/mở khóa agent; card **Kết nối ứng dụng AI qua MCP** (lấy URL `/mcp`, cấu hình Claude Code / Codex / Antigravity, tạo/đổi token) |
-| Chính sách chi tiêu | Thiết lập | Cấu hình hạn mức SOL mỗi giao dịch và ngưỡng 24 giờ, allowlist người nhận và SPL mint kèm hạn mức mỗi giao dịch theo mint |
+| Chính sách chi tiêu | Thiết lập | Cấu hình hạn mức SOL mỗi giao dịch và ngưỡng 24 giờ, allowlist người nhận và SPL mint kèm hạn mức mỗi giao dịch và ngưỡng 24 giờ theo mint |
 | Thông báo | Thiết lập | Liên kết bot Telegram cá nhân (tùy chọn) để nhận cảnh báo một chiều (chờ duyệt, bị chặn, thất bại, thành công, duyệt hết hạn), bật/tắt chế độ im lặng và chọn ngôn ngữ tin nhắn EN/VI. Không ký hay duyệt giao dịch trong Telegram |
 | Duyệt yêu cầu | Hoạt động | Xem danh sách yêu cầu, ký duyệt giao dịch vượt hạn mức bằng ví chủ sở hữu hoặc hủy yêu cầu đang chờ |
 | Task Vault | Hoạt động | Tạo và nạp ngân sách tác vụ bằng SOL hoặc SPL token được allowlist (Devnet mặc định hoặc Mô phỏng), tạo Escrow, chạy Worker bàn giao output (merchant demo cho Devnet hoặc Mock Worker), xem báo cáo kiểm tra output, từ chối kèm lý do (tối đa 3 lượt nộp), ký nghiệm thu trước quyết toán, thu hồi quyền chi, hoàn Escrow hết hạn và đóng Task Vault |
@@ -101,7 +101,7 @@ flowchart LR
 | **AES-256-GCM** | Encryption at rest cho agent private key và audit payload; không bảo vệ khỏi runtime compromise |
 | **Append-only / SHA-256 hash chaining** | Audit append entry và bind previous-entry hash; cần integrity verification, không cung cấp immutability trước server có quyền rewrite toàn bộ file |
 | **Idempotency** | Với structured transfer action, `idempotencyKey` nhận diện retry cùng action; key khác action trả `IDEMPOTENCY_CONFLICT` khi record còn được giữ lại |
-| **Retention / rolling 24-hour window** | Request retention mặc định là 200. Khi prune, giao dịch SOL/SPL đã hoặc có thể đã chuyển tiền trong 24 giờ và request chưa kết thúc được giữ lại, nên SOL spending accounting và idempotency key của chúng không mất trong cửa sổ 24 giờ ([store.test.ts](agent/test/store.test.ts)) |
+| **Retention / rolling 24-hour window** | Request retention mặc định là 200. Khi prune, giao dịch SOL/SPL đã hoặc có thể đã chuyển tiền trong 24 giờ và request chưa kết thúc được giữ lại, nên spending accounting của SOL và từng SPL mint cùng idempotency key của chúng không mất trong cửa sổ 24 giờ ([store.test.ts](agent/test/store.test.ts)) |
 | **Deterministic fallback parser** | Tab **Thử lệnh** dùng deterministic parser khi không dùng model provider; action vẫn qua schema validation và `evaluatePolicy` |
 | **Rate limit** | Fixed-window limit theo route: đăng nhập (`POST /api/auth/challenge`, `POST /api/auth/login`) 10/phút/IP cho từng route; đề xuất chi tiêu (`POST /api/agent/intents`, `POST /api/agent/x402/resolve`, `POST /api/agent/x402/fetch`, `POST /api/tasks/:taskId/payments`, `POST /api/commands`) dùng chung 30/phút/owner trong mỗi loại danh tính (session hoặc MCP token); endpoint `POST /mcp` 600/phút/owner (backstop); các route `/api/*` còn lại 240/phút/owner. Vượt giới hạn trả `RATE_LIMITED` kèm `retryAfterSeconds`. Counter rate limit nằm trong memory, reset khi restart; không thay thế WAF/CDN |
 | **Thông báo Telegram (tùy chọn)** | Bot một chiều theo owner (`telegram.ts`), liên kết qua link token 10 phút lưu trong memory. Local dùng long-polling (`getUpdates`), hosted dùng webhook `/api/webhooks/telegram` xác thực `X-Telegram-Bot-Api-Secret-Token`. Hỗ trợ 5 sự kiện (`pendingApproval`, `txDenied`, `txFailed` bật mặc định; `txConfirmed`, `approvalExpired` tắt mặc định), `silent` và ngôn ngữ EN/VI. Gửi best-effort không có retry queue; `approvalExpired` chỉ phát khi đọc request (lazy expiration); không hỗ trợ duyệt/ký trong Telegram |
@@ -241,7 +241,7 @@ Các thay đổi bổ sung sau release `#93` (x402 v2, Task Vault hỗ trợ SPL
 
 ## Phạm vi và giới hạn
 
-Đã có Payment Guard cho SOL/SPL, allowlist người nhận/mint, approval, kill switch, remote/stdio MCP, x402 v2 (SPL trên Devnet), thông báo Telegram một chiều, context theo owner và Task Vault (SOL và SPL token được allowlist). Chưa có mainnet, swap/staking/NFT, gọi program tùy ý, ngưỡng ngày cho SPL, phân xử tranh chấp hoặc kiểm định chất lượng công việc độc lập. Chưa có audit bảo mật độc lập.
+Đã có Payment Guard cho SOL/SPL, allowlist người nhận/mint, approval, kill switch, remote/stdio MCP, x402 v2 (SPL trên Devnet), thông báo Telegram một chiều, context theo owner và Task Vault (SOL và SPL token được allowlist). Chưa có mainnet, swap/staking/NFT, gọi program tùy ý, phân xử tranh chấp hoặc kiểm định chất lượng công việc độc lập. Chưa có audit bảo mật độc lập.
 
 Bảng xếp theo **potential impact từ cao xuống thấp**: quyền ký và tài sản, policy bypass, mất khả năng recovery, availability, rồi audit/UX. Thứ tự này không đồng nghĩa mọi threat đã được khai thác hoặc có cùng likelihood. Scope hiện tại là Devnet; chưa có bằng chứng mất tài sản mainnet. Rủi ro trust model và BUG đã tái hiện được phân biệt trong cột bằng chứng.
 

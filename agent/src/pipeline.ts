@@ -14,6 +14,7 @@ import {
   lamportsToSol,
   solToLamports,
   spentLamportsInWindow,
+  spentTokensInWindow,
   type AgentErrorCode,
   type ApprovalPayload,
   type ExecutionRecord,
@@ -298,9 +299,8 @@ async function processCommand(
   // The model call can take long enough for the policy to change. Evaluate
   // against the latest policy, not the snapshot used to build the prompt.
   const currentPolicy = ctx.store.getPolicy();
-  const spentLamports24h = spentLamportsInWindow(ctx.store.listRequests());
   const baseDecision = planMatchesIntent(intent.value, plan.value.action, currentPolicy)
-    ? evaluatePolicy(currentPolicy, plan.value.action, { spentLamports24h })
+    ? evaluatePolicy(currentPolicy, plan.value.action, usageInWindow(ctx))
     : {
         verdict: 'deny' as const,
         policyVersion: currentPolicy.version,
@@ -350,8 +350,13 @@ async function processAction(
   });
   ctx.audit.record('request.created', request.id, { source: x402 ? 'x402' : 'agent_action', action, x402 });
 
-  const spentLamports24h = spentLamportsInWindow(ctx.store.listRequests());
-  return dispatchDecision(ctx, request, evaluatePolicy(policy, action, { spentLamports24h }), policy);
+  return dispatchDecision(ctx, request, evaluatePolicy(policy, action, usageInWindow(ctx)), policy);
+}
+
+/** What has already counted toward the 24-hour SOL and per-mint limits. */
+function usageInWindow(ctx: AppContext) {
+  const requests = ctx.store.listRequests();
+  return { spentLamports24h: spentLamportsInWindow(requests), spentTokens24h: spentTokensInWindow(requests) };
 }
 
 /** The resource an x402 payment pays for; the transfer itself is the action. */

@@ -240,7 +240,8 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
               </li>
               <li>
                 <strong>Allowed tokens</strong> — SPL token mints the agent may transfer, each with a per-transaction cap
-                (<code>maxTokenAmountByMint</code>). There is no 24-hour aggregate cap for SPL tokens.
+                (<code>maxTokenAmountByMint</code>) and an optional 24-hour limit (<code>maxTokenAmountPerDayByMint</code>).
+                Each mint is counted on its own, in its own units; an empty 24-hour limit means no daily limit.
               </li>
               <li>
                 <strong>Use owner wallet</strong> — adds your connected wallet as <code>my-wallet</code>.
@@ -592,7 +593,7 @@ export function buildPages(ctx: DocsContext, dict: TranslationDictionary): DocPa
                 key of a payment that already landed sends nothing and returns <code>X402_ALREADY_PAID</code>.
               </p>
               <p>
-                Requests over <code>maxTokenAmountByMint</code> wait for owner approval and remain in{' '}
+                Requests over <code>maxTokenAmountByMint</code> or the mint&apos;s 24-hour limit wait for owner approval and remain in{' '}
                 <code>approved</code> until the agent retries with the same <code>idempotencyKey</code>. While the
                 signed transaction is still valid on chain, retries reuse it; a new transaction is signed only after
                 the old blockhash expires, and the request becomes <code>confirmed</code> only when the signature lands

@@ -241,8 +241,18 @@ function PolicySummaryCard(props: { state: AgentState; onEdit: () => void }) {
               {mints.slice(0, LIST_PREVIEW).map((entry) => (
                 <li key={entry.address} className="flex items-center justify-between gap-3 text-sm">
                   <span className="min-w-0 truncate text-ink" title={entry.address}>{entry.label}</span>
-                  <Mono className="text-muted">
+                  <Mono className="text-right text-muted">
                     {interpolate(dict.overview.perTxCap, { amount: policy.maxTokenAmountByMint[entry.address] ?? 0 })}
+                    {policy.maxTokenAmountPerDayByMint?.[entry.address] !== undefined ? (
+                      <span className="block">
+                        {usage?.tokens24h?.[entry.address]?.remaining != null
+                          ? interpolate(dict.overview.tokenDailyRemaining, {
+                              remaining: usage.tokens24h[entry.address]!.remaining!,
+                              limit: policy.maxTokenAmountPerDayByMint[entry.address]!,
+                            })
+                          : `${policy.maxTokenAmountPerDayByMint[entry.address]} ${dict.overview.per24hUnit}`}
+                      </span>
+                    ) : null}
                   </Mono>
                 </li>
               ))}

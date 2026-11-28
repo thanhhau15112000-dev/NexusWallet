@@ -43,6 +43,7 @@ export type TranslationDictionary = {
     perTxCap: string;
     perTxUnit: string;
     per24hUnit: string;
+    tokenDailyRemaining: string;
     moreItems: string;
     editPolicy: string;
     review: string;
@@ -150,6 +151,7 @@ export type TranslationDictionary = {
     tokenNamePlaceholder: string;
     capPlaceholder: string;
     capFor: string;
+    dailyCapFor: string;
     capHint: string;
     addToken: string;
     useDevnetUsdc: string;
