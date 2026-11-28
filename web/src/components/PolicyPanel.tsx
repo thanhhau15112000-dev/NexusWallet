@@ -26,6 +26,17 @@ function capsFrom(mints: Entry[], caps: Record<string, number>): Record<string, 
   return Object.fromEntries(mints.map((mint) => [mint.address, String(caps[mint.address] ?? 0)]));
 }
 
+/** A 24-hour token limit as typed: undefined for empty (no daily limit), null when invalid. */
+function parseDailyCap(value: string): number | null | undefined {
+  return value.trim() === '' ? undefined : parseCap(value);
+}
+
+function dailyCapsFrom(mints: Entry[], caps: Record<string, number> | undefined): Record<string, string> {
+  return Object.fromEntries(
+    mints.map((mint) => [mint.address, caps?.[mint.address] === undefined ? '' : String(caps[mint.address])]),
+  );
+}
+
 export function PolicyPanel(props: {
   state: AgentState;
   wallet: string | null;
@@ -36,6 +47,7 @@ export function PolicyPanel(props: {
     allowedRecipients: Entry[];
     allowedMints: Entry[];
     maxTokenAmountByMint: Record<string, number>;
+    maxTokenAmountPerDayByMint: Record<string, number>;
   }) => Promise<void>;
 }) {
   const { dict, interpolate } = useI18n();
@@ -53,6 +65,9 @@ export function PolicyPanel(props: {
   const [caps, setCaps] = useState<Record<string, string>>(() =>
     capsFrom(policy.allowedMints, policy.maxTokenAmountByMint),
   );
+  const [dailyCaps, setDailyCaps] = useState<Record<string, string>>(() =>
+    dailyCapsFrom(policy.allowedMints, policy.maxTokenAmountPerDayByMint),
+  );
   const [mintLabel, setMintLabel] = useState('');
   const [mintAddress, setMintAddress] = useState('');
   const [mintCap, setMintCap] = useState('');
@@ -65,7 +80,9 @@ export function PolicyPanel(props: {
   const duplicateMintLabel = Boolean(
     mintLabel && mints.some((entry) => entry.label.toLowerCase() === mintLabel.toLowerCase()),
   );
-  const savedCapInvalid = mints.some((mint) => parseCap(caps[mint.address] ?? '') === null);
+  const savedCapInvalid = mints.some(
+    (mint) => parseCap(caps[mint.address] ?? '') === null || parseDailyCap(dailyCaps[mint.address] ?? '') === null,
+  );
 
   const parsedMaxSol = Number(maxSol);
   const maxSolInvalid =
@@ -100,6 +117,7 @@ export function PolicyPanel(props: {
     setRecipients(policy.allowedRecipients);
     setMints(policy.allowedMints);
     setCaps(capsFrom(policy.allowedMints, policy.maxTokenAmountByMint));
+    setDailyCaps(dailyCapsFrom(policy.allowedMints, policy.maxTokenAmountPerDayByMint));
   }, [
     policy.version,
     policy.maxSolPerTx,
@@ -107,6 +125,7 @@ export function PolicyPanel(props: {
     policy.allowedRecipients,
     policy.allowedMints,
     policy.maxTokenAmountByMint,
+    policy.maxTokenAmountPerDayByMint,
     dirty,
   ]);
 
@@ -148,6 +167,12 @@ export function PolicyPanel(props: {
         allowedMints: mints,
         maxTokenAmountByMint: Object.fromEntries(
           mints.map((mint) => [mint.address, parseCap(caps[mint.address] ?? '') ?? 0]),
+        ),
+        maxTokenAmountPerDayByMint: Object.fromEntries(
+          mints.flatMap((mint) => {
+            const daily = parseDailyCap(dailyCaps[mint.address] ?? '');
+            return typeof daily === 'number' ? [[mint.address, daily]] : [];
+          }),
         ),
       });
       setDirty(false);
@@ -318,6 +343,7 @@ export function PolicyPanel(props: {
             <ul className="divide-y divide-line rounded-md border border-line">
               {mints.map((entry) => {
                 const capInvalid = parseCap(caps[entry.address] ?? '') === null;
+                const dailyCapInvalid = parseDailyCap(dailyCaps[entry.address] ?? '') === null;
                 return (
                   <li key={entry.address} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2">
@@ -325,7 +351,7 @@ export function PolicyPanel(props: {
                       <Mono title={entry.address} className="text-muted">{shorten(entry.address, 6)}</Mono>
                       <CopyAddressButton value={entry.address} label={dict.wallet.copyAddress} />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Input
                         type="number"
                         min="0"
@@ -342,6 +368,21 @@ export function PolicyPanel(props: {
                       <span className="max-w-40 truncate text-xs text-muted" title={entry.label}>
                         {entry.label} {dict.overview.perTxUnit}
                       </span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="any"
+                        aria-label={interpolate(dict.policy.dailyCapFor, { label: entry.label })}
+                        aria-invalid={dailyCapInvalid}
+                        placeholder={dict.policy.unlimitedPlaceholder}
+                        className={cn('h-8 w-28 text-xs tabular-nums', dailyCapInvalid && 'border-bad')}
+                        value={dailyCaps[entry.address] ?? ''}
+                        onChange={(e) => {
+                          setDailyCaps({ ...dailyCaps, [entry.address]: e.target.value });
+                          setDirty(true);
+                        }}
+                      />
+                      <span className="text-xs text-muted">{dict.overview.per24hUnit}</span>
                       <Button
                         type="button"
                         variant="link"
@@ -350,6 +391,9 @@ export function PolicyPanel(props: {
                         onClick={() => {
                           setMints(mints.filter((m) => m.address !== entry.address));
                           setCaps(Object.fromEntries(Object.entries(caps).filter(([mint]) => mint !== entry.address)));
+                          setDailyCaps(
+                            Object.fromEntries(Object.entries(dailyCaps).filter(([mint]) => mint !== entry.address)),
+                          );
                           setDirty(true);
                         }}
                       >

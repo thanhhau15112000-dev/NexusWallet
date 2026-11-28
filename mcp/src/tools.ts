@@ -64,6 +64,8 @@ type StateResponse = {
   usage?: {
     spentSol24h: number;
     remainingSol24h: number | null;
+    /** Per allowlisted mint, keyed by address. remaining is null when the mint has no daily limit. */
+    tokens24h?: Record<string, { spent: number; remaining: number | null }>;
   };
 };
 
@@ -223,7 +225,7 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
     {
       title: 'Get nexusPay wallet status',
       description:
-        'Agent wallet address and SOL balance on Devnet, 24-hour spending usage, the fee reserve a SOL transfer needs on top of its amount (estimatedFeeSol), plus the owner policy: per-transaction and daily SOL limits and the allowlisted recipient and mint labels you may use.',
+        'Agent wallet address and SOL balance on Devnet, 24-hour spending usage, the fee reserve a SOL transfer needs on top of its amount (estimatedFeeSol), plus the owner policy: per-transaction and daily SOL limits, per-transaction and daily token limits by mint, and the allowlisted recipient and mint labels you may use.',
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async () => {
@@ -248,9 +250,11 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
             recipients: state.policy.allowedRecipients,
             mints: state.policy.allowedMints,
             maxTokenAmountByMint: state.policy.maxTokenAmountByMint,
+            maxTokenAmountPerDayByMint: state.policy.maxTokenAmountPerDayByMint ?? {},
           },
           spentSol24h: state.usage?.spentSol24h ?? 0,
           remainingSol24h: state.usage?.remainingSol24h ?? null,
+          tokens24h: state.usage?.tokens24h ?? {},
         });
       } catch (err) {
         return handleError(err);

@@ -5,6 +5,8 @@ import {
   lamportsToSol,
   solToLamports,
   spentLamportsInWindow,
+  spentTokensInWindow,
+  remainingTokenAmount,
 } from '@nexus/shared';
 import { expirePendingApprovals } from '../approvals.js';
 import { getSession } from '../auth-hook.js';
@@ -26,6 +28,8 @@ const PolicyBody = z.object({
   allowedRecipients: z.array(AllowlistEntrySchema).max(32),
   allowedMints: z.array(AllowlistEntrySchema).max(16),
   maxTokenAmountByMint: z.record(z.string(), z.number().nonnegative()).default({}),
+  /** Omitted keeps the current daily limits; a mint without an entry has no daily limit. */
+  maxTokenAmountPerDayByMint: z.record(z.string(), z.number().nonnegative()).optional(),
 });
 
 const HISTORY_CACHE_TTL_MS = 8_000;
@@ -51,7 +55,9 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: AppContext): voi
     const isAdmin = Boolean(session?.isAdmin);
 
     const currentPolicy = userCtx.store.getPolicy();
-    const spentLamports = spentLamportsInWindow(userCtx.store.listRequests());
+    const requests = userCtx.store.listRequests();
+    const spentLamports = spentLamportsInWindow(requests);
+    const spentTokens = spentTokensInWindow(requests);
     const remainingLamports =
       currentPolicy.maxSolLamportsPerDay === null
         ? null
@@ -60,6 +66,13 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: AppContext): voi
     const usage = {
       spentSol24h: lamportsToSol(spentLamports),
       remainingSol24h: remainingLamports === null ? null : lamportsToSol(remainingLamports),
+      tokens24h: Object.fromEntries(
+        currentPolicy.allowedMints.map(({ address }) => {
+          const spent = spentTokens[address] ?? '0';
+          const limit = currentPolicy.maxTokenAmountPerDayByMint[address];
+          return [address, { spent: Number(spent), remaining: limit === undefined ? null : remainingTokenAmount(limit, spent) }];
+        }),
+      ),
     };
 
     return {
@@ -102,6 +115,12 @@ export function registerWalletRoutes(app: FastifyInstance, ctx: AppContext): voi
       allowedRecipients: body.allowedRecipients,
       allowedMints: body.allowedMints,
       maxTokenAmountByMint: body.maxTokenAmountByMint,
+      // Daily limits only for mints still on the allowlist, so removing a mint drops its limit.
+      maxTokenAmountPerDayByMint: Object.fromEntries(
+        Object.entries(body.maxTokenAmountPerDayByMint ?? current.maxTokenAmountPerDayByMint).filter(([mint]) =>
+          body.allowedMints.some((entry) => entry.address === mint),
+        ),
+      ),
     });
     userCtx.audit.record('policy.updated', null, { policy });
     return { policy: publicPolicy(policy) };

@@ -13,6 +13,7 @@ import { loadMcpConfig, type McpConfig } from '../src/config.js';
 import { createServer } from '../src/tools.js';
 
 const OWNER = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+const USDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const TOKEN = `nxp_${OWNER}_${'a'.repeat(43)}`;
 const config: McpConfig = {
   apiUrl: 'http://127.0.0.1:8787',
@@ -636,6 +637,9 @@ describe('nexusPay MCP tools', () => {
     expect(status.estimatedFeeSol).toBe(0.00001);
     expect(status.policy.recipients).toEqual([{ label: 'treasury', address: OWNER }]);
     expect(JSON.stringify(status)).not.toMatch(/isAdmin|rpcUrl/);
+    // An agent that predates token daily limits reports none.
+    expect(status.policy.maxTokenAmountPerDayByMint).toEqual({});
+    expect(status.tokens24h).toEqual({});
   });
 
   it('exposes frozen: true on nexuspay_get_status when agent is frozen', async () => {
@@ -714,12 +718,14 @@ describe('nexusPay MCP tools', () => {
             maxSolPerTx: 0.1,
             maxSolPerDay: 0.5,
             allowedRecipients: [{ label: 'treasury', address: OWNER }],
-            allowedMints: [],
-            maxTokenAmountByMint: {},
+            allowedMints: [{ label: 'usdc', address: USDC }],
+            maxTokenAmountByMint: { [USDC]: 1 },
+            maxTokenAmountPerDayByMint: { [USDC]: 5 },
           },
           usage: {
             spentSol24h: 0.2,
             remainingSol24h: 0.3,
+            tokens24h: { [USDC]: { spent: 1.5, remaining: 3.5 } },
           },
         }),
       ) as unknown as Fetch,
@@ -729,6 +735,8 @@ describe('nexusPay MCP tools', () => {
     expect(status.policy.maxSolPerDay).toBe(0.5);
     expect(status.spentSol24h).toBe(0.2);
     expect(status.remainingSol24h).toBe(0.3);
+    expect(status.policy.maxTokenAmountPerDayByMint).toEqual({ [USDC]: 5 });
+    expect(status.tokens24h).toEqual({ [USDC]: { spent: 1.5, remaining: 3.5 } });
   });
 
   it('returns approval with reason code DAILY_LIMIT_EXCEEDED when transfer exceeds daily cap', async () => {

@@ -64,6 +64,11 @@ export function localizeError(
     params.requested = `${params.requestedAmount} ${params.mintLabel}`;
     params.limit = `${params.limitAmount} ${params.mintLabel}`;
   }
+  if (typeof params.remainingSol === 'number') {
+    params.remaining = `${params.remainingSol} SOL`;
+  } else if (typeof params.remainingAmount === 'number' && typeof params.mintLabel === 'string') {
+    params.remaining = `${params.remainingAmount} ${params.mintLabel}`;
+  }
   const placeholders = Array.from(template.matchAll(/\{(\w+)\}/g), (match) => match[1] ?? '');
   if (placeholders.some((key) => !(key in params))) return error.message;
   return interpolate(template, params);
