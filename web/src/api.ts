@@ -33,7 +33,12 @@ export type AgentState = {
     frozenAt?: string | null;
   };
   policy: Policy & { maxSolPerTx: number; maxSolPerDay?: number | null };
-  usage?: { spentSol24h: number; remainingSol24h: number | null };
+  usage?: {
+    spentSol24h: number;
+    remainingSol24h: number | null;
+    /** Per allowlisted mint; remaining is null when the mint has no daily limit. Absent on older agents. */
+    tokens24h?: Record<string, { spent: number; remaining: number | null }>;
+  };
 };
 
 export type AgentHistoryItem = {
@@ -221,6 +226,7 @@ export const api = {
     allowedRecipients: { label: string; address: string }[];
     allowedMints: { label: string; address: string }[];
     maxTokenAmountByMint: Record<string, number>;
+    maxTokenAmountPerDayByMint: Record<string, number>;
   }) =>
     request<{ policy: AgentState['policy'] }>('/api/policy', {
       method: 'PUT',

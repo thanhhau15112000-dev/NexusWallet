@@ -240,6 +240,36 @@ describe('API routes: PUT /api/policy & GET /api/state', () => {
     expect(ctx.store.getPolicy().maxSolLamportsPerDay).toBeNull();
   });
 
+  it('keeps token daily limits when PUT /api/policy omits them and drops limits for removed mints', async () => {
+    const MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+    const ctx = makeContext({ maxSolPerTx: 0.1, maxSolPerDay: null });
+    const app = Fastify();
+    await registerRoutes(app, ctx);
+    const base = {
+      maxSolPerTx: 0.1,
+      allowedRecipients: [{ label: 'treasury', address: TREASURY }],
+      allowedMints: [{ label: 'usdc', address: MINT }],
+      maxTokenAmountByMint: { [MINT]: 1 },
+    };
+
+    const set = await app.inject({
+      method: 'PUT',
+      url: '/api/policy',
+      payload: { ...base, maxTokenAmountPerDayByMint: { [MINT]: 5, [STRANGER]: 9 } },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(ctx.store.getPolicy().maxTokenAmountPerDayByMint).toEqual({ [MINT]: 5 });
+
+    await app.inject({ method: 'PUT', url: '/api/policy', payload: base });
+    expect(ctx.store.getPolicy().maxTokenAmountPerDayByMint).toEqual({ [MINT]: 5 });
+
+    const state = await app.inject({ method: 'GET', url: '/api/state' });
+    expect(state.json().usage.tokens24h).toEqual({ [MINT]: { spent: 0, remaining: 5 } });
+
+    await app.inject({ method: 'PUT', url: '/api/policy', payload: { ...base, allowedMints: [], maxTokenAmountByMint: {} } });
+    expect(ctx.store.getPolicy().maxTokenAmountPerDayByMint).toEqual({});
+  });
+
   it('exposes usage metrics in GET /api/state', async () => {
     const ctx = makeContext({ maxSolPerTx: 0.1, maxSolPerDay: 0.25 });
     const app = Fastify();
@@ -252,6 +282,7 @@ describe('API routes: PUT /api/policy & GET /api/state', () => {
     expect(stateBefore.json().usage).toEqual({
       spentSol24h: 0,
       remainingSol24h: 0.25,
+      tokens24h: {},
     });
 
     // Make a 0.05 SOL transfer
@@ -265,6 +296,7 @@ describe('API routes: PUT /api/policy & GET /api/state', () => {
     expect(stateAfter.json().usage).toEqual({
       spentSol24h: 0.05,
       remainingSol24h: 0.2,
+      tokens24h: {},
     });
 
     // Clear daily cap -> remaining becomes null
@@ -276,6 +308,7 @@ describe('API routes: PUT /api/policy & GET /api/state', () => {
     expect(stateNoCap.json().usage).toEqual({
       spentSol24h: 0.05,
       remainingSol24h: null,
+      tokens24h: {},
     });
   });
 

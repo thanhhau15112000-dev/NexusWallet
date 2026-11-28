@@ -236,6 +236,52 @@ describe('x402 v2 Payment Guard integration', () => {
     expect(transferSpl).not.toHaveBeenCalled();
   });
 
+  it('holds payments under the per-transaction cap once the 24-hour token limit is reached, then signs after approval', async () => {
+    const ctx = makeContext() as AppContext & { _ownerKp: nacl.SignKeyPair };
+    const current = ctx.store.getPolicy();
+    ctx.store.setPolicy({ ...current, maxTokenAmountPerDayByMint: { [USDC_MINT]: 0.02 } });
+
+    // Each payment is 0.01 USDC, under the 1 USDC per-transaction cap.
+    for (const key of ['daily-1', 'daily-2']) {
+      const paid = await resolveX402Payment(ctx, v2Challenge({ resource: `https://example.com/${key}` }), undefined, key);
+      expect(paid.status).toBe('completed');
+    }
+
+    const third = v2Challenge({ resource: 'https://example.com/daily-3' });
+    const held = await resolveX402Payment(ctx, third, undefined, 'daily-3');
+    expect(held.status).toBe('pending_approval');
+    if (held.status !== 'pending_approval') throw new Error('expected pending_approval');
+    expect(held.request.decision).toMatchObject({
+      code: 'DAILY_LIMIT_EXCEEDED',
+      details: { mint: USDC_MINT, spentAmount: 0.02, remainingAmount: 0, limitAmount: 0.02 },
+    });
+    expect(signX402Transfer).toHaveBeenCalledTimes(2);
+
+    const message = held.request.approval!.message;
+    const ownerSig = bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), ctx._ownerKp.secretKey));
+    await approveRequest(ctx, {
+      requestId: held.requestId,
+      signature: ownerSig,
+      signerPubkey: bs58.encode(ctx._ownerKp.publicKey),
+    });
+    const resumed = await resolveX402Payment(ctx, third, undefined, 'daily-3');
+    expect(resumed.status).toBe('completed');
+    expect(signX402Transfer).toHaveBeenCalledTimes(3);
+  });
+
+  it('lets only one of two concurrent payments through a 24-hour token limit that fits one', async () => {
+    const ctx = makeContext();
+    ctx.store.setPolicy({ ...ctx.store.getPolicy(), maxTokenAmountPerDayByMint: { [USDC_MINT]: 0.01 } });
+
+    const results = await Promise.all(
+      ['race-1', 'race-2'].map((key) =>
+        resolveX402Payment(ctx, v2Challenge({ resource: `https://example.com/${key}` }), undefined, key),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual(['completed', 'pending_approval']);
+    expect(signX402Transfer).toHaveBeenCalledTimes(1);
+  });
+
   it('(d) reuses the signed transaction on retry while chain state is pending', async () => {
     const ctx = makeContext();
     const challenge = v2Challenge();

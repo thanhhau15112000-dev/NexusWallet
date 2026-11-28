@@ -215,7 +215,8 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
               </li>
               <li>
                 <strong>Token được phép</strong> — các SPL token mint agent được phép chuyển, mỗi mint có hạn mức riêng cho
-                từng giao dịch (<code>maxTokenAmountByMint</code>). Token SPL chưa có hạn mức tổng theo 24 giờ.
+                từng giao dịch (<code>maxTokenAmountByMint</code>) và hạn mức 24 giờ tùy chọn (<code>maxTokenAmountPerDayByMint</code>).
+                Mỗi mint được tính riêng theo đơn vị của chính nó; để trống hạn mức 24 giờ nghĩa là không giới hạn theo ngày.
               </li>
               <li>
                 <strong>Dùng ví chủ sở hữu</strong> — thêm ví bạn đang kết nối vào danh sách với tên <code>my-wallet</code>.
@@ -569,7 +570,7 @@ export function buildPagesVi(ctx: DocsContext, dict: TranslationDictionary): Doc
                 chain thì agent không gửi gì và trả về <code>X402_ALREADY_PAID</code>.
               </p>
               <p>
-                Khoản vượt <code>maxTokenAmountByMint</code> sẽ chờ chủ ví duyệt và giữ trạng thái{' '}
+                Khoản vượt <code>maxTokenAmountByMint</code> hoặc hạn mức 24 giờ của mint sẽ chờ chủ ví duyệt và giữ trạng thái{' '}
                 <code>approved</code> cho đến khi agent gọi lại với đúng <code>idempotencyKey</code>. Khi giao dịch đã
                 ký còn hiệu lực trên chain, các lần retry dùng lại đúng giao dịch đó; chỉ ký giao dịch mới khi
                 blockhash cũ đã hết hạn, và request chỉ sang <code>confirmed</code> khi signature đã xác nhận trên chain.
