@@ -100,7 +100,7 @@ export class Store {
   private flush(): void {
     mkdirSync(dirname(this.path), { recursive: true });
     const tmp = `${this.path}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.data, null, 2));
+    writeFileSync(tmp, JSON.stringify(this.data, null, 2), { mode: 0o600 });
     renameSync(tmp, this.path);
   }
 

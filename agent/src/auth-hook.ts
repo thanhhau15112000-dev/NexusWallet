@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { LOCAL_ORIGIN_REGEX } from './config.js';
+import { isOriginAllowed } from './config.js';
 import type { AppContext } from './context.js';
 import { mcpOwnerFor } from './mcp-token.js';
 import { SESSION_COOKIE_NAME } from './sessions.js';
@@ -17,11 +17,18 @@ export const PUBLIC_ACTION_PATH_PREFIX = '/api/actions/';
 
 export type RequestIdentity = { kind: 'session' | 'token'; owner: string };
 
+/** Reads and verifies the wallet-signed session cookie, or null if absent/invalid. */
+export function getSession(ctx: AppContext, req: FastifyRequest) {
+  const cookie = req.cookies?.[SESSION_COOKIE_NAME];
+  if (!cookie) return null;
+  const unsigned = req.unsignCookie(cookie);
+  if (!unsigned.valid || !unsigned.value) return null;
+  return ctx.sessions.getSession(unsigned.value);
+}
+
 /** Who the request is authenticated as: a wallet-signed session, or an MCP token on a route in its scope. */
 export function requestIdentity(ctx: AppContext, req: FastifyRequest): RequestIdentity | null {
-  const cookieValue = req.cookies?.[SESSION_COOKIE_NAME];
-  const unsigned = cookieValue ? req.unsignCookie(cookieValue) : null;
-  const session = unsigned?.valid && unsigned.value ? ctx.sessions.getSession(unsigned.value) : null;
+  const session = getSession(ctx, req);
   if (session) return { kind: 'session', owner: session.owner };
   const tokenOwner = mcpOwnerFor(ctx.config, req);
   return tokenOwner ? { kind: 'token', owner: tokenOwner } : null;
@@ -39,13 +46,7 @@ export function registerAuthHook(app: FastifyInstance, ctx: AppContext): void {
     const pathname = req.url.split('?', 1)[0] ?? req.url;
     const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     const isPublicAction = pathname.startsWith(PUBLIC_ACTION_PATH_PREFIX);
-    if (
-      mutating &&
-      !isPublicAction &&
-      req.headers.origin &&
-      !config.allowedOrigins.includes(req.headers.origin) &&
-      !LOCAL_ORIGIN_REGEX.test(req.headers.origin)
-    ) {
+    if (mutating && !isPublicAction && !isOriginAllowed(req.headers.origin, config)) {
       return reply.status(403).send({ error: 'origin_not_allowed' });
     }
     if (PUBLIC_AUTH_PATHS.has(pathname) || isPublicAction) return;

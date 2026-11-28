@@ -344,6 +344,7 @@ export const vi: TranslationDictionary = {
     tokenHidden: 'Ví này đã có token. Hệ thống chỉ lưu SHA-256 hash, nên không thể hiển thị lại token.',
     tokenOnceWarning: 'Token chỉ hiện một lần. Hãy sao chép ngay: rời khỏi hoặc tải lại trang này thì không xem lại được.',
     rotateWarning: 'Tạo token mới sẽ ngắt mọi client còn dùng token cũ.',
+    cancelRotate: 'Giữ token hiện tại',
     loading: 'Đang tải…',
     loadFailed: 'Không thể tải cấu hình MCP',
     clipboardUnavailable: 'Không thể truy cập bộ nhớ tạm; vui lòng bôi đen và sao chép thủ công',
@@ -580,6 +581,7 @@ export const vi: TranslationDictionary = {
     toasts: {
       connectOwnerFirst: 'Hãy kết nối ví chủ sở hữu trước',
       enterValidSol: 'Nhập số lượng dương hợp lệ',
+      invalidExpiry: 'Nhập thời hạn hiệu lực từ 0.05 đến 168 giờ',
       noOwnerTokens: 'Ví chủ sở hữu không có {unit} để nạp cho tác vụ này',
       insufficientOwnerBalance: 'Ngân sách vượt số dư ví chủ sở hữu ({balance} {unit})',
       capExceedsBudget: 'Hạn mức mỗi lần chi không thể vượt quá tổng ngân sách',

@@ -10,7 +10,7 @@ import {
   scryptSync,
   timingSafeEqual,
 } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -147,6 +147,8 @@ export function loadOrCreateAgentKey(path: string, passphrase: string): AgentKey
     sealed: sealer.seal(bs58.encode(pair.secretKey)),
   };
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(file, null, 2), { mode: 0o600 });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(file, null, 2), { mode: 0o600 });
+  renameSync(tmp, path);
   return { publicKey: file.publicKey, secretKey: pair.secretKey, created: true };
 }

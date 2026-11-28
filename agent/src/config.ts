@@ -60,6 +60,15 @@ const EnvSchema = z.object({
 
 export const LOCAL_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 
+export function isOriginAllowed(
+  origin: string | undefined,
+  config: Pick<AppConfig, 'authRequired' | 'allowedOrigins'>,
+): boolean {
+  if (!origin) return true;
+  if (config.allowedOrigins.includes(origin)) return true;
+  return !config.authRequired && LOCAL_ORIGIN_REGEX.test(origin);
+}
+
 const DEVNET_RPC_HOSTS = new Set(['api.devnet.solana.com']);
 
 /**
@@ -180,7 +189,10 @@ export function loadConfig() {
   }
 
   const dataDir = resolve(process.cwd(), env.AGENT_DATA_DIR);
-  const adminPubkey = env.ADMIN_PUBKEY || env.OWNER_PUBKEY || 'GePDtss1nywz1RZcS2tvcRwKCkh8J3HdamfhWAkDrard';
+  const adminPubkey =
+    env.ADMIN_PUBKEY ||
+    env.OWNER_PUBKEY ||
+    (hosted ? '' : 'GePDtss1nywz1RZcS2tvcRwKCkh8J3HdamfhWAkDrard');
   const allowedOwners = env.ALLOWED_OWNERS
     ? env.ALLOWED_OWNERS.split(',').map((p) => p.trim()).filter(Boolean)
     : [];

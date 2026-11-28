@@ -1,7 +1,6 @@
-import bs58 from 'bs58';
 import {
   ComputeBudgetProgram,
-  Connection,
+  type Connection,
   PublicKey,
   SystemProgram,
   Transaction,
@@ -9,6 +8,7 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import { solToLamports } from '@nexus/shared';
+import { getSolanaConnection } from './lib/solana.js';
 
 type PhantomPublicKey = { toString(): string };
 
@@ -88,7 +88,7 @@ export async function sendSolFromPhantom(params: {
   const provider = params.provider ?? getPhantom();
   if (!provider) throw new Error('Phantom is not installed');
 
-  const connection = new Connection(params.rpcUrl, 'confirmed');
+  const connection = getSolanaConnection(params.rpcUrl);
   const from = new PublicKey(params.fromPubkey);
   const to = new PublicKey(params.toPubkey);
   const lamports = solToLamports(params.amountSol);

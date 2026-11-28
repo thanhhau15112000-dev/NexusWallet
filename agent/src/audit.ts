@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import type { AuditEntry, AuditEntryView } from '@nexus/shared';
@@ -13,9 +13,21 @@ function loadSalt(path: string): Buffer {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     const salt = randomBytes(16);
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, salt.toString('base64'), { mode: 0o600 });
+    const tmp = `${path}.tmp`;
+    writeFileSync(tmp, salt.toString('base64'), { mode: 0o600 });
+    renameSync(tmp, path);
     return salt;
   }
+}
+
+function computeEntryHash(
+  entry: Pick<AuditEntry, 'prevHash' | 'id' | 'at' | 'requestId' | 'event' | 'sealed' | 'hashVersion'>,
+): string {
+  const payload =
+    entry.hashVersion === 2
+      ? `${entry.prevHash}:${entry.id}:${entry.at}:${entry.requestId ?? ''}:${entry.event}:${entry.sealed.iv}:${entry.sealed.ciphertext}:${entry.sealed.tag}`
+      : `${entry.prevHash}:${entry.id}:${entry.at}:${entry.requestId ?? ''}:${entry.event}:${entry.sealed.ciphertext}:${entry.sealed.tag}`;
+  return createHash('sha256').update(payload).digest('hex');
 }
 
 /**
@@ -61,9 +73,8 @@ export class AuditLog {
     const at = new Date().toISOString();
     const sealed = this.sealer.seal(detail);
     const prevHash = this.lastHash;
-    const hash = createHash('sha256')
-      .update(`${prevHash}:${id}:${at}:${requestId ?? ''}:${event}:${sealed.ciphertext}:${sealed.tag}`)
-      .digest('hex');
+    const hashVersion = 2 as const;
+    const hash = computeEntryHash({ prevHash, id, at, requestId, event, sealed, hashVersion });
     this.lastHash = hash;
 
     const entry: AuditEntry = {
@@ -74,6 +85,7 @@ export class AuditLog {
       sealed,
       prevHash,
       hash,
+      hashVersion,
     };
     mkdirSync(dirname(this.path), { recursive: true });
     appendFileSync(this.path, `${JSON.stringify(entry)}\n`);
@@ -115,9 +127,7 @@ export class AuditLog {
         return { valid: false, compromisedIndex: i, reason: 'broken_hash_chain' };
       }
 
-      const calculatedHash = createHash('sha256')
-        .update(`${entry.prevHash}:${entry.id}:${entry.at}:${entry.requestId ?? ''}:${entry.event}:${entry.sealed.ciphertext}:${entry.sealed.tag}`)
-        .digest('hex');
+      const calculatedHash = computeEntryHash(entry);
 
       if (entry.hash !== calculatedHash) {
         return { valid: false, compromisedIndex: i, reason: 'tampered_entry_hash' };
