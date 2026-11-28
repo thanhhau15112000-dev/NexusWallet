@@ -42,7 +42,9 @@ const INSTRUCTIONS = [
   'Task Vault limits reject payments outside the capability; they do not enter the transfer approval queue.',
   'Keep the same paymentId and all parameters after an uncertain outcome; never use a new paymentId to retry.',
   'Tasks and payments marked simulated do not move funds. On Devnet the worker is either the demo merchant, which signs its own output and settlement, or a server-held mock worker.',
-  'You cannot create or fund tasks, revoke them, run the mock worker, settle escrows or refund through MCP.',
+  'After an escrow is held, call nexuspay_collect_task_output to have its worker deliver a signed output; the automatic checks run on it, and the owner decides whether to settle.',
+  'You can withdraw a transfer you proposed with nexuspay_cancel_request while it still waits for approval.',
+  'You cannot change the policy, approve transfers, create or fund tasks, revoke them, settle escrows or refund through MCP.',
 ].join(' ');
 
 type StateResponse = {
@@ -303,6 +305,51 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
   );
 
   server.registerTool(
+    'nexuspay_cancel_request',
+    {
+      title: 'Withdraw a transfer waiting for approval',
+      description:
+        'Cancel a transfer you proposed that is still waiting for the owner to approve. Nothing is sent; the request ends as denied with code `cancelled`. Only a request in pending_approval can be cancelled.',
+      inputSchema: { requestId: z.string().trim().regex(/^req_[A-Za-z0-9-]{1,40}$/) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ requestId }) => {
+      try {
+        const { request } = await api.post<{ request: PaymentRequest }>(
+          `/api/requests/${encodeURIComponent(requestId)}/cancel`, {},
+        );
+        return ok(summarizeRequest(request, config.dashboardUrl));
+      } catch (err) {
+        return handleError(err, { requestId });
+      }
+    },
+  );
+
+  server.registerTool(
+    'nexuspay_get_history',
+    {
+      title: "Read the agent wallet's Devnet transactions",
+      description:
+        'Transactions that touched the agent wallet on Devnet, newest first, with the SOL change (fee included), balance after and fee of each, plus an explorer link. Pass nextBefore from a page as before to read older ones.',
+      inputSchema: {
+        limit: z.number().int().min(1).max(50).default(10),
+        before: z.string().trim().regex(/^[1-9A-HJ-NP-Za-km-z]{64,88}$/).optional()
+          .describe('nextBefore from the previous page.'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ limit, before }) => {
+      try {
+        const query = new URLSearchParams({ limit: String(limit) });
+        if (before) query.set('before', before);
+        return ok(await api.get<unknown>(`/api/agent/history?${query.toString()}`));
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  server.registerTool(
     'nexuspay_list_tasks',
     {
       title: 'List delegated Task Vault budgets',
@@ -407,6 +454,31 @@ export function createServer(api: NexusApi, config: McpConfig): McpServer {
           && (err instanceof ApiUnreachableError || (err instanceof ApiError && err.status >= 500))) {
           return outcomeUnknown();
         }
+        return handleError(err, ids);
+      }
+    },
+  );
+
+  server.registerTool(
+    'nexuspay_collect_task_output',
+    {
+      title: 'Collect the worker output for a held escrow',
+      description:
+        'Ask the worker of a held escrow (the demo merchant or the mock worker) to deliver its signed output, then record it so the automatic checks run. Returns the delivery with its verification verdict. No funds move: the escrow stays held until the owner settles or rejects it. Calling again returns the recorded delivery.',
+      inputSchema: { taskId: taskIdInput, paymentId: paymentIdInput },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ taskId, paymentId }) => {
+      const path = `/api/tasks/${encodeURIComponent(taskId)}/payments/${encodeURIComponent(paymentId)}`;
+      const ids = { taskId, paymentId };
+      try {
+        const detail = await api.get<TaskDetailResponse>(`/api/tasks/${encodeURIComponent(taskId)}`);
+        const existing = detail.payments.find((item) => item.paymentId === paymentId);
+        if (existing?.delivery) return ok({ paymentId, status: existing.status, delivery: existing.delivery, reused: true });
+        const output = await api.post<Record<string, unknown>>(`${path}/worker-run`, { scenario: 'valid' });
+        const { payment, reused } = await api.post<{ payment: TaskPaymentRecord; reused: boolean }>(`${path}/output`, output);
+        return ok({ paymentId, status: payment.status, delivery: payment.delivery, reused });
+      } catch (err) {
         return handleError(err, ids);
       }
     },

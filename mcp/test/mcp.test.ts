@@ -213,12 +213,15 @@ describe('loadMcpConfig', () => {
 });
 
 describe('nexusPay MCP tools', () => {
-  it('lists ten tools and marks transfers as destructive', async () => {
+  it('lists thirteen tools and marks transfers as destructive', async () => {
     const client = await connect(vi.fn());
     const { tools } = await client.listTools();
 
     expect(tools.map((tool) => tool.name).sort()).toEqual([
+      'nexuspay_cancel_request',
+      'nexuspay_collect_task_output',
       'nexuspay_execute_task_payment',
+      'nexuspay_get_history',
       'nexuspay_get_request',
       'nexuspay_get_status',
       'nexuspay_get_task',
@@ -788,6 +791,30 @@ describe('nexusPay MCP tools', () => {
     expect(list.map((item: { requestId: string }) => item.requestId)).toEqual(['req_1']);
   });
 
+  it('cancels a held request through the agent and returns it as denied', async () => {
+    const fetchImpl = vi.fn(async () => json(200, {
+      request: request({ id: 'req_9', status: 'denied', error: { code: 'cancelled', message: 'cancelled by agent' } }),
+    }));
+    const client = await connect(fetchImpl as unknown as Fetch);
+
+    const result = parse(await client.callTool({ name: 'nexuspay_cancel_request', arguments: { requestId: 'req_9' } }));
+
+    expect(fetchImpl.mock.calls[0]).toMatchObject([`${config.apiUrl}/api/requests/req_9/cancel`, { method: 'POST' }]);
+    expect(result).toMatchObject({ requestId: 'req_9', status: 'denied' });
+  });
+
+  it('reads a page of on-chain history and passes the cursor', async () => {
+    const page = { items: [{ signature: 's'.repeat(88), deltaLamports: -5000 }], nextBefore: null };
+    const fetchImpl = vi.fn(async (_url: unknown, _init?: RequestInit) => json(200, page));
+    const client = await connect(fetchImpl as unknown as Fetch);
+    const before = '5'.repeat(88);
+
+    const result = parse(await client.callTool({ name: 'nexuspay_get_history', arguments: { limit: 5, before } }));
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(`${config.apiUrl}/api/agent/history?limit=5&before=${before}`);
+    expect(result).toEqual(page);
+  });
+
   it('rejects malformed request ids before calling the agent', async () => {
     const fetchImpl = vi.fn();
     const client = await connect(fetchImpl as unknown as Fetch);
@@ -914,6 +941,30 @@ describe('Task Vault MCP tools', () => {
     const result = await call(fetchImpl as unknown as Fetch, 'nexuspay_get_task', { taskId: 'missing' });
     expect(result.isError).toBe(true);
     expect(parse(result).code).toBe('task_not_found');
+  });
+
+  it('has the worker deliver, records the output, and leaves the escrow held', async () => {
+    const workerOutput = { workerPubkey: OWNER, workerSignature: 'sig', resultHash: 'c'.repeat(64), resultPayload: { status: 'completed' } };
+    const delivery = { attempt: 1, resultHash: workerOutput.resultHash, verification: { verdict: 'pass' } };
+    const fetchImpl = vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (init?.method !== 'POST') return json(200, detail([paymentRecord]));
+      return String(url).endsWith('/worker-run')
+        ? json(200, workerOutput)
+        : json(200, { payment: { ...paymentRecord, delivery }, reused: false });
+    });
+    const result = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_collect_task_output', { taskId: 'task-mcp', paymentId: 'pay-mcp' }));
+    const base = `${config.apiUrl}/api/tasks/task-mcp/payments/pay-mcp`;
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([`${config.apiUrl}/api/tasks/task-mcp`, `${base}/worker-run`, `${base}/output`]);
+    expect(JSON.parse(fetchImpl.mock.calls[2]?.[1]?.body as string)).toEqual(workerOutput);
+    expect(result).toEqual({ paymentId: 'pay-mcp', status: 'held', delivery, reused: false });
+  });
+
+  it('returns a recorded delivery without asking the worker again', async () => {
+    const delivery = { attempt: 1, resultHash: 'c'.repeat(64), verification: { verdict: 'pass' } };
+    const fetchImpl = vi.fn(async () => json(200, detail([{ ...paymentRecord, delivery }])));
+    const result = parse(await call(fetchImpl as unknown as Fetch, 'nexuspay_collect_task_output', { taskId: 'task-mcp', paymentId: 'pay-mcp' }));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ delivery, reused: true });
   });
 
   it('reads first, then posts exactly the payment and returns the held escrow', async () => {

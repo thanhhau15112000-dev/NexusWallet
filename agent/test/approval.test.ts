@@ -279,7 +279,8 @@ describe('approveRequest hard gates', () => {
 
     expect(cancelled.status).toBe('denied');
     expect(cancelled.error).toMatchObject({ code: 'cancelled' });
-    expect(audit.record).toHaveBeenCalledWith('approval.cancelled', stored.id, {});
+    expect(cancelled.error).toEqual({ code: 'cancelled', message: 'cancelled by owner' });
+    expect(audit.record).toHaveBeenCalledWith('approval.cancelled', stored.id, { by: 'owner' });
     const signed = sign(payload && buildApprovalMessage(payload), ownerKey);
     await expect(
       approveRequest(ctx, { requestId: stored.id, signature: signed.signature, signerPubkey: signed.pubkey }),

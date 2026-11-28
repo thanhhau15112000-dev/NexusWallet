@@ -44,7 +44,8 @@ export function expirePendingApprovals(ctx: AppContext, now = Date.now()): Payme
  * Owner withdraws a transfer that is still waiting for approval. Nothing was signed, so this only
  * closes the request; it can never be approved afterwards (approve requires `pending_approval`).
  */
-export function cancelRequest(ctx: AppContext, requestId: string): PaymentRequest {
+/** `by` is who withdrew it: the owner from the dashboard, or the agent through MCP. */
+export function cancelRequest(ctx: AppContext, requestId: string, by: 'owner' | 'agent' = 'owner'): PaymentRequest {
   const request = ctx.store.getRequest(requestId);
   if (!request) throw new ApprovalError('not_found', 'request not found');
   if (request.status !== 'pending_approval' || !request.approval) {
@@ -53,9 +54,9 @@ export function cancelRequest(ctx: AppContext, requestId: string): PaymentReques
   const updated = ctx.store.putRequest({
     ...request,
     status: 'denied',
-    error: { code: 'cancelled', message: 'cancelled by owner' },
+    error: { code: 'cancelled', message: `cancelled by ${by}` },
   });
-  ctx.audit.record('approval.cancelled', request.id, {});
+  ctx.audit.record('approval.cancelled', request.id, { by });
   return updated;
 }
 

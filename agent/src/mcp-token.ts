@@ -10,21 +10,26 @@ import { dirname, resolve } from 'node:path';
 const TOKEN_FILE = 'mcp-token';
 const BEARER = /^Bearer (nxp_([1-9A-HJ-NP-Za-km-z]{32,44})_[A-Za-z0-9_-]{43})$/;
 
-// MCP reads state, requests and tasks, proposes transfers and spends delegated task budgets.
-// Policy, approvals, owner binding, task funding/revocation and worker settlement
-// stay behind a wallet-signed session.
+// MCP reads state, requests, tasks and on-chain history, proposes transfers, cancels a transfer still
+// waiting for approval, spends delegated task budgets and collects the worker's signed output for an escrow.
+// None of these can move funds past the policy or change it: policy, approvals, owner binding,
+// task funding/revocation, settlement and refunds stay behind a wallet-signed session.
 // Matched against the registered route pattern, not the raw URL, so path tricks such as
 // dot segments, encodings or trailing slashes cannot widen the scope.
 const MCP_ROUTES = new Set([
   'GET /api/state',
   'GET /api/requests',
   'GET /api/requests/:id',
+  'POST /api/requests/:id/cancel',
+  'GET /api/agent/history',
   'POST /api/agent/intents',
   'POST /api/agent/x402/resolve',
   'POST /api/agent/x402/fetch',
   'GET /api/tasks',
   'GET /api/tasks/:taskId',
   'POST /api/tasks/:taskId/payments',
+  'POST /api/tasks/:taskId/payments/:paymentId/worker-run',
+  'POST /api/tasks/:taskId/payments/:paymentId/output',
 ]);
 
 function tokenPath(usersDir: string, owner: string): string {

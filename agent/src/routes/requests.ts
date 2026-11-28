@@ -7,6 +7,7 @@ import {
 } from '@nexus/shared';
 import { ApprovalError, approveRequest, cancelRequest, expirePendingApprovals } from '../approvals.js';
 import type { AppContext } from '../context.js';
+import { requestIdentity } from '../auth-hook.js';
 import { IdempotencyConflictError, runAction, runCommand, type AgentAction } from '../pipeline.js';
 import { fetchWithX402, resolveX402Payment } from '../x402.js';
 import { resolveUserContext } from './shared.js';
@@ -151,7 +152,8 @@ export function registerRequestRoutes(app: FastifyInstance, ctx: AppContext): vo
     const userCtx = resolveUserContext(ctx, req);
     const { id } = req.params as { id: string };
     try {
-      return { request: cancelRequest(userCtx, id) };
+      const by = requestIdentity(ctx, req)?.kind === 'token' ? 'agent' : 'owner';
+      return { request: cancelRequest(userCtx, id, by) };
     } catch (err) {
       if (err instanceof ApprovalError) {
         const status = err.code === 'not_found' ? 404 : 409;
