@@ -3,8 +3,9 @@ import { SolanaSignAndSendTransaction, SolanaSignMessage } from '@solana/wallet-
 import { getWallets } from '@wallet-standard/app';
 import type { Wallet, WalletAccount } from '@wallet-standard/base';
 import { solToLamports } from '@nexus/shared';
-import { PublicKey, SystemProgram, Transaction, Connection } from '@solana/web3.js';
+import { PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { getPhantom, sendSolFromPhantom, type PhantomProvider } from './phantom.js';
+import { getSolanaConnection } from './lib/solana.js';
 
 type StandardConnectFeature = {
   connect(options?: { silent?: boolean }): Promise<{ accounts: readonly WalletAccount[] }>;
@@ -188,7 +189,7 @@ export async function sendSolFromWallet(params: {
       lamports: solToLamports(params.amountSol),
     }),
   );
-  const connection = new Connection(params.rpcUrl, 'confirmed');
+  const connection = getSolanaConnection(params.rpcUrl);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
   transaction.lastValidBlockHeight = lastValidBlockHeight;

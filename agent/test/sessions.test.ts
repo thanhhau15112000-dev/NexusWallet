@@ -26,6 +26,20 @@ describe('SessionManager challenges', () => {
   });
 });
 
+describe('SessionManager session cap', () => {
+  it('ends only the same wallet\'s oldest session when that wallet logs in again past the cap', () => {
+    const sm = new SessionManager([], 1800);
+    const other = login(sm);
+    const key = nacl.sign.keyPair();
+    const sessions = Array.from({ length: 11 }, () => login(sm, key).session);
+
+    expect(sm.getSession(sessions[0]!.token)).toBeNull();
+    expect(sm.getSession(sessions[1]!.token)).not.toBeNull();
+    expect(sm.getSession(sessions[10]!.token)).not.toBeNull();
+    expect(sm.getSession(other.session.token)?.owner).toBe(other.pubkey);
+  });
+});
+
 describe('SessionManager persistence', () => {
   it('keeps sessions across a restart and stores only token hashes', () => {
     const storePath = join(mkdtempSync(join(tmpdir(), 'nexus-sessions-')), 'sessions.json');

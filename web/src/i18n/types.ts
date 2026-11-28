@@ -314,6 +314,7 @@ export type TranslationDictionary = {
     tokenHidden: string;
     tokenOnceWarning: string;
     rotateWarning: string;
+    cancelRotate: string;
     loading: string;
     loadFailed: string;
     clipboardUnavailable: string;
@@ -499,6 +500,7 @@ export type TranslationDictionary = {
     toasts: {
       connectOwnerFirst: string;
       enterValidSol: string;
+      invalidExpiry: string;
       noOwnerTokens: string;
       insufficientOwnerBalance: string;
       capExceedsBudget: string;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TelegramAlertLanguage, TelegramNotificationEvents } from '@nexus/shared';
 import { Bell, Check, Copy, ExternalLink, RefreshCw, Send, Unplug } from './icons.js';
 import {
@@ -7,15 +7,12 @@ import {
   type TelegramNotificationState,
 } from '../api.js';
 import { useI18n } from '../i18n/context.js';
+import { errorText } from '../lib/errors.js';
 import { cn } from '../lib/utils.js';
 import { Card, DateTime, Notice, Pill } from './ui.js';
 import { Button } from './ui/button.js';
 
 type Toast = { tone: 'ok' | 'warn' | 'bad'; text: string };
-
-function errorText(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback;
-}
 
 function ToggleRow(props: {
   id: string;
@@ -84,6 +81,9 @@ export function NotificationsPanel(props: {
     approvalExpired: false,
   });
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const { active, onToast } = props;
 
   const syncFromState = useCallback(
     (next: TelegramNotificationState, preserveDraft: boolean) => {
@@ -119,20 +119,20 @@ export function NotificationsPanel(props: {
   );
 
   useEffect(() => {
-    if (!props.active) return;
-    void load(dirty);
-  }, [props.active, load, dirty]);
+    if (!active) return;
+    void load(dirtyRef.current);
+  }, [active, load]);
 
   // Poll until the user confirms /start <token> in Telegram or the link expires.
   useEffect(() => {
-    if (!props.active || !linkToken) return;
+    if (!active || !linkToken) return;
     const expiresAtMs = new Date(linkToken.expiresAt).getTime();
     let cancelled = false;
     const timer = window.setInterval(() => {
       if (Date.now() >= expiresAtMs) {
         if (!cancelled) {
           setLinkToken(null);
-          props.onToast({ tone: 'warn', text: dict.notifications.linkExpired });
+          onToast({ tone: 'warn', text: dict.notifications.linkExpired });
         }
         return;
       }
@@ -141,9 +141,9 @@ export function NotificationsPanel(props: {
         .then((next) => {
           if (cancelled) return;
           if (next.settings.chatId) {
-            syncFromState(next, dirty);
+            syncFromState(next, dirtyRef.current);
             setLinkToken(null);
-            props.onToast({ tone: 'ok', text: dict.notifications.connectedToast });
+            onToast({ tone: 'ok', text: dict.notifications.connectedToast });
           }
         })
         .catch(() => undefined);
@@ -153,7 +153,7 @@ export function NotificationsPanel(props: {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [props.active, linkToken, dirty, dict.notifications.connectedToast, dict.notifications.linkExpired, props, syncFromState]);
+  }, [active, linkToken, dict.notifications.connectedToast, dict.notifications.linkExpired, onToast, syncFromState]);
 
   const startConnect = async () => {
     setBusyAction('link');

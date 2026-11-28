@@ -138,19 +138,43 @@ function payToForItem(item: CatalogItem, env: Env): string | null {
   return env.MERCHANT_WALLET;
 }
 
+const FEE_PAYER_TTL_MS = 5 * 60_000;
+const FETCH_TIMEOUT_MS = 10_000;
+const feePayerCache = new Map<string, { feePayer: string; expiresAt: number }>();
+
+export function resetFeePayerCache(): void {
+  feePayerCache.clear();
+}
+
 function facilitatorUrl(env: Env): string {
   return (env.FACILITATOR_URL?.trim() || DEFAULT_FACILITATOR_URL).replace(/\/+$/, '');
 }
 
 /** The facilitator's fee payer for Solana devnet, read from its `/supported` list. */
 async function fetchFeePayer(env: Env): Promise<string | null> {
-  const res = await fetch(`${facilitatorUrl(env)}/supported`);
+  const baseUrl = facilitatorUrl(env);
+  const now = Date.now();
+  const cached = feePayerCache.get(baseUrl);
+  if (cached && cached.expiresAt > now) {
+    return cached.feePayer;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/supported`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  } catch {
+    return null;
+  }
   if (!res.ok) return null;
   const body = (await res.json().catch(() => null)) as {
     kinds?: Array<{ x402Version?: number; scheme?: string; network?: string; extra?: { feePayer?: string } }>;
   } | null;
   const kind = body?.kinds?.find((k) => k.x402Version === 2 && k.scheme === 'exact' && k.network === SOLANA_DEVNET);
-  return kind?.extra?.feePayer ?? null;
+  const feePayer = typeof kind?.extra?.feePayer === 'string' && kind.extra.feePayer ? kind.extra.feePayer : null;
+  if (feePayer) {
+    feePayerCache.set(baseUrl, { feePayer, expiresAt: now + FEE_PAYER_TTL_MS });
+  }
+  return feePayer;
 }
 
 function paymentRequirements(env: Env, item: CatalogItem, payTo: string, feePayer: string): PaymentRequirements {
@@ -186,6 +210,7 @@ async function rpc<T>(env: Env, method: string, params: unknown[]): Promise<T> {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   const json = (await res.json()) as { result?: T; error?: { message?: string } };
   if (json.error || json.result === undefined) throw new Error(json.error?.message ?? `${method} failed`);
@@ -402,10 +427,22 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
     // The server's own requirements, never the client's copy, decide what counts as paid.
     const facilitatorBody = JSON.stringify({ x402Version: 2, paymentPayload, paymentRequirements: requirements });
-    const post = (path: string) =>
-      fetch(`${facilitatorUrl(env)}/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: facilitatorBody });
+    // Settle is never timed out: once the facilitator has the signed transfer it can land on chain,
+    // so the merchant waits for the facilitator's own answer rather than reporting a failure early.
+    const post = (path: string, timeoutMs?: number) =>
+      fetch(`${facilitatorUrl(env)}/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: facilitatorBody,
+        ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+      });
 
-    const verifyRes = await post('verify');
+    let verifyRes: Response;
+    try {
+      verifyRes = await post('verify', FETCH_TIMEOUT_MS);
+    } catch {
+      return jsonResponse({ error: 'Facilitator request failed' }, 502);
+    }
     const verifyJson = (await verifyRes.json().catch(() => null)) as { isValid?: boolean; invalidReason?: string } | null;
     if (!verifyRes.ok || !verifyJson?.isValid) {
       return paymentRequired(resourceUrl, item, requirements, verifyJson?.invalidReason || 'Payment verification failed', {
@@ -414,7 +451,12 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       });
     }
 
-    const settleRes = await post('settle');
+    let settleRes: Response;
+    try {
+      settleRes = await post('settle');
+    } catch {
+      return jsonResponse({ error: 'Facilitator request failed' }, 502);
+    }
     const settleJson = (await settleRes.json().catch(() => null)) as SettleResponse | null;
     if (!settleRes.ok || !settleJson?.success) {
       // The facilitator's own answer, so a failed settlement can be diagnosed from the client.

@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { ZodError } from 'zod';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,9 +15,20 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { PAYER_SIG, SETTLED_TX } = vi.hoisted(() => ({
+const { PAYER_SIG, SETTLED_TX, mockLookup } = vi.hoisted(() => ({
   PAYER_SIG: '5xAgentSig1111111111111111111111111111111111111111111111111111111111111111111111111111',
   SETTLED_TX: '5xSettledTx111111111111111111111111111111111111111111111111111111111111111111111111111',
+  mockLookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
+vi.mock('node:dns/promises', () => ({
+  lookup: mockLookup,
+}));
+
+// x402 requests go through undici's fetch; route them to the global fetch each test stubs.
+vi.mock('undici', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('undici')>()),
+  fetch: (input: string | URL | Request, init?: RequestInit) => globalThis.fetch(input, init),
 }));
 
 vi.mock('../src/chain.js', async (importOriginal) => {
@@ -47,7 +59,7 @@ import { registerRoutes } from '../src/routes.js';
 import { Store } from '../src/store.js';
 import { SessionManager } from '../src/sessions.js';
 import type { AppContext } from '../src/context.js';
-import { resolveX402Payment, fetchWithX402 } from '../src/x402.js';
+import { resolveX402Payment, fetchWithX402, rejectPrivateLookup } from '../src/x402.js';
 
 const MERCHANT = '6VPd7LHbx96D2QiSsAo5JrEdRQUdW1PGk3bUNYhVECAz';
 const STRANGER = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
@@ -126,6 +138,7 @@ function makeContext(overrides?: Partial<AppContext>): AppContext {
 }
 
 afterEach(() => {
+  mockLookup.mockReset().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
   vi.mocked(getMintDecimals).mockReset().mockResolvedValue(6);
   vi.mocked(transferSol).mockClear();
   vi.mocked(transferSpl).mockClear();
@@ -524,6 +537,36 @@ describe('x402 v2 Payment Guard integration', () => {
     }
   });
 
+  it('reports a paid retry that fails in transit as submitted, not settled', async () => {
+    const ctx = makeContext();
+    const challenge = v2Challenge({ resource: 'https://merchant.example.com/items/coffee' });
+    const challengeHeader = Buffer.from(JSON.stringify(challenge)).toString('base64');
+    const mockFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (new Headers(init?.headers).get(X402_PAYMENT_HEADER)) throw new Error('socket hang up');
+      return new Response('{}', {
+        status: 402,
+        headers: { 'content-type': 'application/json', [X402_PAYMENT_REQUIRED_HEADER]: challengeHeader },
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    try {
+      const res = await fetchWithX402(ctx, 'https://merchant.example.com/items/coffee', undefined, 'fetch-lost-1');
+      expect(res.status).toBe(502);
+      expect(res.error?.code).toBe('X402_FETCH_FAILED');
+      expect(res.payment?.status).toBe('submitted');
+      expect(res.error?.remediation).toContain('fetch-lost-1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('refuses connections whose DNS answer is a private address', async () => {
+    const error = await new Promise<NodeJS.ErrnoException | null>((resolve) => {
+      rejectPrivateLookup('localhost', { all: true }, (err) => resolve(err));
+    });
+    expect(error?.code).toBe('ERR_PRIVATE_ADDRESS');
+  });
+
   it('blocks SSRF targets in fetchWithX402 before calling fetch', async () => {
     const ctx = makeContext();
     const mockFetch = vi.fn();
@@ -593,6 +636,58 @@ describe('HTTP routes for x402', () => {
       const body = JSON.parse(res.body);
       expect(body.status).toBe(200);
       expect(body.payment.status).toBe('not_required');
+    } finally {
+      vi.unstubAllGlobals();
+      await app.close();
+    }
+  });
+
+  it('blocks DNS-resolved private IPs and unresolvable hosts before calling fetch', async () => {
+    const ctx = makeContext();
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+    try {
+      for (const address of ['127.0.0.1', '169.254.169.254', '::1', '::ffff:127.0.0.1']) {
+        mockLookup.mockResolvedValueOnce([{ address, family: address.includes(':') ? 6 : 4 }]);
+        const res = await fetchWithX402(ctx, 'https://rebind.example.com/secret');
+        expect(res.status).toBe(400);
+        expect(res.error?.code).toBe('INVALID_TARGET_URL');
+      }
+
+      mockLookup.mockRejectedValueOnce(new Error('ENOTFOUND'));
+      const unresolvable = await fetchWithX402(ctx, 'https://missing.example.com/secret');
+      expect(unresolvable.status).toBe(400);
+      expect(unresolvable.error?.code).toBe('INVALID_TARGET_URL');
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects oversized response bodies and invalid HTTP methods on x402/fetch', async () => {
+    const ctx = makeContext();
+    const app = Fastify();
+    app.setErrorHandler((error, _req, reply) => {
+      if (error instanceof ZodError) {
+        return reply.status(400).send({ error: 'invalid_request', issues: error.issues });
+      }
+      throw error;
+    });
+    await registerRoutes(app, ctx);
+    const oversized = new Uint8Array(2 * 1024 * 1024 + 64).fill(65);
+    const mockFetch = vi.fn(async () => new Response(oversized, { status: 200 }));
+    vi.stubGlobal('fetch', mockFetch);
+    try {
+      const res = await fetchWithX402(ctx, 'https://example.com/huge');
+      expect(res.status).toBe(502);
+      expect(res.error?.code).toBe('X402_FETCH_FAILED');
+
+      const badMethod = await app.inject({
+        method: 'POST',
+        url: '/api/agent/x402/fetch',
+        payload: { url: 'https://example.com/free', method: 'TRACE' },
+      });
+      expect(badMethod.statusCode).toBe(400);
     } finally {
       vi.unstubAllGlobals();
       await app.close();

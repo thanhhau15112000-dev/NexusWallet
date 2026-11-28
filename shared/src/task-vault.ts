@@ -496,14 +496,22 @@ export function computeCanonicalSeed(id: Uint8Array | string): Uint8Array {
   return sha256Sync(id);
 }
 
-/** Canonical message signed by worker upon completing a payment request */
+/** Canonical message string signed by worker upon completing a payment request */
+export function formatReceiptSigningMessage(
+  taskId: string,
+  paymentId: string,
+  resultHash: string,
+): string {
+  return `NEXUS_RECEIPT_V1:${taskId}:${paymentId}:${resultHash}`;
+}
+
+/** Canonical message bytes signed by worker upon completing a payment request */
 export function computeReceiptSigningMessage(
   taskId: string,
   paymentId: string,
   resultHash: string,
 ): Uint8Array {
-  const canonical = `NEXUS_RECEIPT_V1:${taskId}:${paymentId}:${resultHash}`;
-  return new TextEncoder().encode(canonical);
+  return new TextEncoder().encode(formatReceiptSigningMessage(taskId, paymentId, resultHash));
 }
 
 // ----------------------------------------------------------- hashing & vectors

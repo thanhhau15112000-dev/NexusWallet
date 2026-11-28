@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { LAMPORTS_PER_SOL, type AuditEntryView } from '@nexus/shared';
 import { ChevronLeft, ChevronRight, Clock, ExternalLink, RefreshCw } from './icons.js';
 import { api, type AgentHistoryItem } from '../api.js';
+import { errorText } from '../lib/errors.js';
+import { usePageVisible } from '../lib/usePageVisible.js';
 import { Card, DateTime, Empty, Notice, Pill } from './ui.js';
 import { Button } from './ui/button.js';
 import {
@@ -177,14 +179,56 @@ function ChainHistory(props: { active: boolean }) {
   );
 }
 
+function AuditHistory(props: { active: boolean }) {
+  const { dict } = useI18n();
+  const [entries, setEntries] = useState<AuditEntryView[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await api.audit(60);
+      setEntries(result.entries);
+      setError(null);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!props.active) return;
+    void load();
+    const timer = window.setInterval(() => void load(), POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [props.active, load]);
+
+  return (
+    <AuditPanel
+      entries={entries}
+      error={error}
+      actions={
+        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
+          <RefreshCw size={13} className={cn(loading && 'animate-spin')} aria-hidden="true" />
+          {dict.history.refresh}
+        </Button>
+      }
+    />
+  );
+}
+
 type HistoryView = 'chain' | 'audit';
 
 /**
  * What already happened: the SOL moving in and out on-chain, and the agent's audit log.
  */
-export function HistoryPanel(props: { active: boolean; audit: AuditEntryView[] }) {
+export function HistoryPanel(props: { active: boolean }) {
   const { dict } = useI18n();
   const [view, setView] = useState<HistoryView>('chain');
+  const pageVisible = usePageVisible();
+  const visibleAndActive = props.active && pageVisible;
   return (
     <Tabs value={view} onValueChange={(value) => setView(value as HistoryView)}>
       <TabsList>
@@ -192,10 +236,10 @@ export function HistoryPanel(props: { active: boolean; audit: AuditEntryView[] }
         <TabsTrigger value="audit">{dict.history.viewAudit}</TabsTrigger>
       </TabsList>
       <TabsContent value="chain">
-        <ChainHistory active={props.active && view === 'chain'} />
+        <ChainHistory active={visibleAndActive && view === 'chain'} />
       </TabsContent>
       <TabsContent value="audit">
-        <AuditPanel entries={props.audit} />
+        <AuditHistory active={visibleAndActive && view === 'audit'} />
       </TabsContent>
     </Tabs>
   );

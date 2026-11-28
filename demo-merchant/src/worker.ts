@@ -6,6 +6,7 @@ import {
   TASK_VAULT_PROGRAM_PUBKEY,
   computeCanonicalSeed,
   computeOutputHash,
+  computeReceiptSigningMessage,
   decodeEscrowAccount,
   deriveEscrowPda,
   deriveTaskCapabilityPda,
@@ -44,16 +45,22 @@ function requireWorker(env: WorkerEnv): Keypair {
 }
 
 async function readEscrow(env: WorkerEnv, escrow: PublicKey): Promise<OnChainEscrow | null> {
-  const res = await fetch(env.SOLANA_RPC_URL!, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'getAccountInfo',
-      params: [escrow.toBase58(), { encoding: 'base64', commitment: 'confirmed' }],
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(env.SOLANA_RPC_URL!, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getAccountInfo',
+        params: [escrow.toBase58(), { encoding: 'base64', commitment: 'confirmed' }],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new WorkerError(502, 'rpc_failed');
+  }
   const json = (await res.json()) as {
     result?: { value: { owner: string; data: [string, string] } | null };
     error?: { message?: string };
@@ -115,7 +122,7 @@ export async function runJob(env: WorkerEnv, job: JobRequest) {
         outputSummary: `${WORKER_SERVICE_LABEL} completed ${job.serviceId} for escrow ${escrowPda.toBase58()}`,
       };
   const resultHash = computeOutputHash(resultPayload);
-  const message = new TextEncoder().encode(`NEXUS_RECEIPT_V1:${job.taskId}:${job.paymentId}:${resultHash}`);
+  const message = computeReceiptSigningMessage(job.taskId, job.paymentId, resultHash);
   return {
     workerPubkey: keypair.publicKey.toBase58(),
     workerSignature: bs58.encode(nacl.sign.detached(message, keypair.secretKey)),

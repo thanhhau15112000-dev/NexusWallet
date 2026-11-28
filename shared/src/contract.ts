@@ -286,6 +286,7 @@ export type AuditEntry = {
   sealed: { iv: string; tag: string; ciphertext: string };
   prevHash?: string;
   hash?: string;
+  hashVersion?: 2;
 };
 
 export type AuditEntryView = AuditEntry & { detail: unknown };

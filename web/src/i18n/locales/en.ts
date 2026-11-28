@@ -344,6 +344,7 @@ export const en: TranslationDictionary = {
     tokenHidden: 'A token exists for this wallet, but only its hash is stored, so it cannot be shown again.',
     tokenOnceWarning: 'The token is shown only once. Copy it now: after you leave or reload this page it cannot be shown again.',
     rotateWarning: 'Creating a new token disconnects every client that still uses the old one.',
+    cancelRotate: 'Keep current token',
     loading: 'Loading…',
     loadFailed: 'Failed to load MCP config',
     clipboardUnavailable: 'Clipboard is not available; select the text and copy it manually',
@@ -580,6 +581,7 @@ export const en: TranslationDictionary = {
     toasts: {
       connectOwnerFirst: 'Connect your owner wallet first',
       enterValidSol: 'Enter valid positive amounts',
+      invalidExpiry: 'Enter an expiry between 0.05 and 168 hours',
       noOwnerTokens: 'The owner wallet holds no {unit} to fund this task',
       insufficientOwnerBalance: 'The budget exceeds the owner wallet balance of {balance} {unit}',
       capExceedsBudget: 'Per-payment cap cannot exceed budget',
