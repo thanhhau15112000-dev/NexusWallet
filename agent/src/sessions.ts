@@ -18,7 +18,8 @@ const CHALLENGE_TTL_MS = 2 * 60 * 1000;
 // Pending challenges live two minutes and are small. The cap only bounds memory; it is high enough
 // that a per-address rate limit cannot be outrun by a few clients evicting real users' challenges.
 const MAX_CHALLENGES = 4096;
-const MAX_SESSIONS = 10_000;
+// Per wallet, so a new login only ever ends that same wallet's oldest session, never another user's.
+const MAX_SESSIONS_PER_OWNER = 10;
 export const SESSION_COOKIE_NAME = 'nexus_session';
 
 function tokenHash(token: string): string {
@@ -95,10 +96,10 @@ export class SessionManager {
 
     const token = randomBytes(32).toString('base64url');
     const expiresAt = Date.now() + this.ttlSeconds * 1000;
-    while (this.sessions.size >= MAX_SESSIONS) {
-      const oldest = this.sessions.keys().next().value as string | undefined;
-      if (!oldest) break;
-      this.sessions.delete(oldest);
+    // Map order is insertion order, so the first matches are this wallet's oldest sessions.
+    const ownSessions = [...this.sessions].filter(([, session]) => session.owner === input.pubkey);
+    for (const [hash] of ownSessions.slice(0, Math.max(0, ownSessions.length - MAX_SESSIONS_PER_OWNER + 1))) {
+      this.sessions.delete(hash);
     }
     this.sessions.set(tokenHash(token), { owner: input.pubkey, expiresAt });
     this.persist();

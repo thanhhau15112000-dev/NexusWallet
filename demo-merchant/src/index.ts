@@ -140,7 +140,6 @@ function payToForItem(item: CatalogItem, env: Env): string | null {
 
 const FEE_PAYER_TTL_MS = 5 * 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
-const SETTLE_TIMEOUT_MS = 25_000;
 const feePayerCache = new Map<string, { feePayer: string; expiresAt: number }>();
 
 export function resetFeePayerCache(): void {
@@ -428,12 +427,14 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
     // The server's own requirements, never the client's copy, decide what counts as paid.
     const facilitatorBody = JSON.stringify({ x402Version: 2, paymentPayload, paymentRequirements: requirements });
-    const post = (path: string, timeoutMs: number) =>
+    // Settle is never timed out: once the facilitator has the signed transfer it can land on chain,
+    // so the merchant waits for the facilitator's own answer rather than reporting a failure early.
+    const post = (path: string, timeoutMs?: number) =>
       fetch(`${facilitatorUrl(env)}/${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: facilitatorBody,
-        signal: AbortSignal.timeout(timeoutMs),
+        ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
       });
 
     let verifyRes: Response;
@@ -452,7 +453,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
     let settleRes: Response;
     try {
-      settleRes = await post('settle', SETTLE_TIMEOUT_MS);
+      settleRes = await post('settle');
     } catch {
       return jsonResponse({ error: 'Facilitator request failed' }, 502);
     }

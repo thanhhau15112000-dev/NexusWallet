@@ -146,7 +146,7 @@ export function McpConnectPanel() {
                       disabled={busy}
                       onClick={() => setConfirmRotate(false)}
                     >
-                      {dict.agent.cancelFreezeBtn}
+                      {dict.mcp.cancelRotate}
                     </Button>
                   </div>
                 </div>

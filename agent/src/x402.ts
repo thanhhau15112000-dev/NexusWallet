@@ -9,8 +9,10 @@
  * longer land.
  */
 import { randomUUID } from 'node:crypto';
+import { lookup as lookupCallback } from 'node:dns';
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { isIP, type LookupFunction } from 'node:net';
+import { Agent, fetch as undiciFetch } from 'undici';
 import {
   X402_PAYMENT_HEADER,
   X402_PAYMENT_REQUIRED_HEADER,
@@ -395,8 +397,9 @@ export const X402_FETCH_TIMEOUT_MS = 15_000;
 export const X402_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 /**
- * Resolve DNS before connecting so hostnames resolving to loopback, link-local, or private IP
- * ranges cannot bypass the string-level SSRF guard.
+ * Resolve DNS up front so a hostname resolving to loopback, link-local, or a private range is
+ * refused with a clear error. The connection itself is guarded by `rejectPrivateLookup`, since the
+ * host is resolved again when the request connects.
  */
 export async function assertSafeExternalHttpUrlResolved(
   rawUrl: string,
@@ -418,6 +421,32 @@ export async function assertSafeExternalHttpUrlResolved(
   return parsed;
 }
 
+/**
+ * DNS lookup for outgoing x402 connections: fails when any resolved address is private, so a host
+ * that passed the check above cannot rebind to an internal address when the socket connects.
+ */
+export const rejectPrivateLookup: LookupFunction = (hostname, options, callback) => {
+  lookupCallback(hostname, options, (err, address, family) => {
+    if (err) return callback(err, address, family);
+    const records = Array.isArray(address) ? address : [{ address, family }];
+    if (records.some((record) => isPrivateIp(record.address))) {
+      const refused: NodeJS.ErrnoException = new Error(`Refusing request to local or private host: ${hostname}`);
+      refused.code = 'ERR_PRIVATE_ADDRESS';
+      return callback(refused, address, family);
+    }
+    callback(null, address, family);
+  });
+};
+
+const externalDispatcher = new Agent({ connect: { lookup: rejectPrivateLookup } });
+
+/** `fetch` for agent-chosen URLs: every connection goes through `rejectPrivateLookup`. */
+function externalFetch(url: string, init: RequestInit): Promise<Response> {
+  return undiciFetch(url, {
+    ...(init as Parameters<typeof undiciFetch>[1]),
+    dispatcher: externalDispatcher,
+  }) as unknown as Promise<Response>;
+}
 
 export type X402FetchResult = {
   status: number;
@@ -515,7 +544,7 @@ export async function fetchWithX402(
   };
   let first: Response;
   try {
-    first = await fetch(url, fetchInit);
+    first = await externalFetch(url, fetchInit);
   } catch (err) {
     return {
       status: 502,
@@ -597,19 +626,25 @@ export async function fetchWithX402(
   let final: Response;
   let body: { headers: Record<string, string>; data: unknown };
   try {
-    final = await fetch(url, {
+    final = await externalFetch(url, {
       ...fetchInit,
       headers,
       signal: init?.signal ?? AbortSignal.timeout(X402_FETCH_TIMEOUT_MS),
     });
     body = await readResponse(final);
   } catch (err) {
+    // The signed payment was already sent, so the server may have settled it: the outcome is
+    // unknown, not failed. A retry with the same key reuses the same signed payment.
     return {
       status: 502,
       headers: {},
       data: null,
-      payment: { idempotencyKey: resolution.idempotencyKey, requestId: resolution.request.id, status: 'not_settled' },
-      error: { code: 'X402_FETCH_FAILED', message: errorText(err) },
+      payment: { idempotencyKey: resolution.idempotencyKey, requestId: resolution.request.id, status: 'submitted' },
+      error: {
+        code: 'X402_FETCH_FAILED',
+        message: errorText(err),
+        remediation: `Retry with idempotencyKey ${resolution.idempotencyKey}: the same signed payment is reused while it can still land, so a retry cannot pay twice.`,
+      },
     };
   }
   const settlement = decodeX402PaymentResponse(final.headers.get(X402_PAYMENT_RESPONSE_HEADER));

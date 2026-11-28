@@ -314,6 +314,7 @@ export type TranslationDictionary = {
     tokenHidden: string;
     tokenOnceWarning: string;
     rotateWarning: string;
+    cancelRotate: string;
     loading: string;
     loadFailed: string;
     clipboardUnavailable: string;

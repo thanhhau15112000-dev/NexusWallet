@@ -133,7 +133,7 @@ export function App() {
   // An agent holding a transfer links the owner to ?request=<id>; open the approvals tab for it.
   const [focusRequestId] = useState(() => new URLSearchParams(window.location.search).get('request'));
   const [activeTab, setActiveTab] = useState<FeatureTab>(focusRequestId ? 'approvals' : 'wallet');
-  const [docsMounted, setDocsMounted] = useState(() => focusRequestId === 'docs');
+  const [docsMounted, setDocsMounted] = useState(false);
   const pageVisible = usePageVisible();
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);

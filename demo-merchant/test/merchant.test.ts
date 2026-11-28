@@ -87,6 +87,19 @@ describe('demo-merchant x402 Worker', () => {
     expect(data.item).toBe('coffee');
   });
 
+  it('times out verify but never aborts settle, which may already be landing on chain', async () => {
+    facilitator();
+    const fetchMock = vi.mocked(globalThis.fetch);
+    const res = await handleRequest(
+      new Request('https://merchant.example.com/items/coffee', { headers: { 'PAYMENT-SIGNATURE': paymentHeader } }),
+      BASE_ENV,
+    );
+    expect(res.status).toBe(200);
+    const initFor = (path: string) => fetchMock.mock.calls.find(([url]) => String(url).endsWith(`/${path}`))?.[1];
+    expect(initFor('verify')?.signal).toBeInstanceOf(AbortSignal);
+    expect(initFor('settle')?.signal).toBeUndefined();
+  });
+
   it('returns 402 without settling when verification fails', async () => {
     const calls = facilitator({ verify: { isValid: false, invalidReason: 'invalid_exact_svm_payload_amount' } });
     const res = await handleRequest(

@@ -25,6 +25,12 @@ vi.mock('node:dns/promises', () => ({
   lookup: mockLookup,
 }));
 
+// x402 requests go through undici's fetch; route them to the global fetch each test stubs.
+vi.mock('undici', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('undici')>()),
+  fetch: (input: string | URL | Request, init?: RequestInit) => globalThis.fetch(input, init),
+}));
+
 vi.mock('../src/chain.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/chain.js')>();
   return {
@@ -53,7 +59,7 @@ import { registerRoutes } from '../src/routes.js';
 import { Store } from '../src/store.js';
 import { SessionManager } from '../src/sessions.js';
 import type { AppContext } from '../src/context.js';
-import { resolveX402Payment, fetchWithX402 } from '../src/x402.js';
+import { resolveX402Payment, fetchWithX402, rejectPrivateLookup } from '../src/x402.js';
 
 const MERCHANT = '6VPd7LHbx96D2QiSsAo5JrEdRQUdW1PGk3bUNYhVECAz';
 const STRANGER = 'HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH';
@@ -529,6 +535,36 @@ describe('x402 v2 Payment Guard integration', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('reports a paid retry that fails in transit as submitted, not settled', async () => {
+    const ctx = makeContext();
+    const challenge = v2Challenge({ resource: 'https://merchant.example.com/items/coffee' });
+    const challengeHeader = Buffer.from(JSON.stringify(challenge)).toString('base64');
+    const mockFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      if (new Headers(init?.headers).get(X402_PAYMENT_HEADER)) throw new Error('socket hang up');
+      return new Response('{}', {
+        status: 402,
+        headers: { 'content-type': 'application/json', [X402_PAYMENT_REQUIRED_HEADER]: challengeHeader },
+      });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    try {
+      const res = await fetchWithX402(ctx, 'https://merchant.example.com/items/coffee', undefined, 'fetch-lost-1');
+      expect(res.status).toBe(502);
+      expect(res.error?.code).toBe('X402_FETCH_FAILED');
+      expect(res.payment?.status).toBe('submitted');
+      expect(res.error?.remediation).toContain('fetch-lost-1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('refuses connections whose DNS answer is a private address', async () => {
+    const error = await new Promise<NodeJS.ErrnoException | null>((resolve) => {
+      rejectPrivateLookup('localhost', { all: true }, (err) => resolve(err));
+    });
+    expect(error?.code).toBe('ERR_PRIVATE_ADDRESS');
   });
 
   it('blocks SSRF targets in fetchWithX402 before calling fetch', async () => {

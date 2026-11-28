@@ -29,13 +29,16 @@ ENV HOST=0.0.0.0
 ENV PORT=8787
 ENV AGENT_DATA_DIR=/data
 
-RUN mkdir -p /data && chown -R node:node /app /data
+RUN mkdir -p /data
 
 # Keystore, audit log and request state live on a volume, so a restart resumes
 # with the same agent wallet.
 VOLUME ["/data"]
 EXPOSE 8787
 
-USER node
 WORKDIR /app/agent
-CMD ["pnpm", "start"]
+# A mounted volume keeps the owner of whoever wrote it first (older images ran as root), so the
+# entrypoint hands it to the node user at start, then drops root before running the agent.
+ENTRYPOINT ["/bin/sh", "-c", "chown -R node:node \"$AGENT_DATA_DIR\" && exec env HOME=/home/node setpriv --reuid=node --regid=node --init-groups -- \"$@\"", "sh"]
+# The local tsx binary, not pnpm: corepack prepared pnpm for root only.
+CMD ["./node_modules/.bin/tsx", "src/server.ts"]
